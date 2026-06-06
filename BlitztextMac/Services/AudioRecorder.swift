@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import Observation
 
 @Observable
@@ -12,6 +13,7 @@ final class AudioRecorder: NSObject, AVAudioRecorderDelegate {
     private var audioRecorder: AVAudioRecorder?
     private var levelTimer: Timer?
     private var currentFileURL: URL?
+    private var savedDefaultDeviceID: AudioDeviceID?
 
     private func makeRecordingURL() -> URL {
         FileManager.default.temporaryDirectory
@@ -24,6 +26,13 @@ final class AudioRecorder: NSObject, AVAudioRecorderDelegate {
         recordingURL = nil
         if let currentFileURL {
             try? FileManager.default.removeItem(at: currentFileURL)
+        }
+
+        let selectedUID = UserDefaults.standard.string(forKey: "selectedMicUID") ?? ""
+        if !selectedUID.isEmpty,
+           let device = MicrophoneService.availableInputDevices().first(where: { $0.uid == selectedUID }) {
+            savedDefaultDeviceID = MicrophoneService.defaultInputDeviceID()
+            MicrophoneService.setDefaultInputDevice(device.id)
         }
 
         let settings: [String: Any] = [
@@ -57,6 +66,10 @@ final class AudioRecorder: NSObject, AVAudioRecorderDelegate {
         currentFileURL = nil
         audioRecorder = nil
         audioLevel = 0
+        if let saved = savedDefaultDeviceID {
+            MicrophoneService.setDefaultInputDevice(saved)
+            savedDefaultDeviceID = nil
+        }
     }
 
     func discardRecording() {
