@@ -150,7 +150,7 @@ private enum MenuBarStatusIconRenderer {
         let dotSize: CGFloat = 3.5
         let dotRect = CGRect(
             x: bounds.maxX - dotSize - 0.8,
-            y: bounds.minY + 0.8,
+            y: bounds.maxY - dotSize - 0.8,
             width: dotSize,
             height: dotSize
         )
