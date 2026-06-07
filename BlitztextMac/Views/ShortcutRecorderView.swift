@@ -47,7 +47,9 @@ struct ShortcutRecorderView: View {
 
         switch event.type {
         case .keyDown:
-            let shortcut = Shortcut(modifiers: flags, keyCode: event.keyCode)
+            // `.function` is set by macOS for any F-key press (Apple or HID keyboard) —
+            // strip it so recordings stay clean ("F1" not "fn F1") and match reliably.
+            let shortcut = Shortcut(modifiers: flags.subtracting(.function), keyCode: event.keyCode)
             stopRecording()
             onRecord(shortcut)
 

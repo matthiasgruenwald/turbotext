@@ -12,7 +12,10 @@ struct Shortcut {
     }
 
     func matches(keyCode code: UInt16, flags: NSEvent.ModifierFlags) -> Bool {
-        self.keyCode == code && flags.intersection(.deviceIndependentFlagsMask) == modifiers
+        // macOS sets `.function` on F-key events regardless of keyboard (Apple or HID) —
+        // it's noise here, not a user-chosen modifier, so ignore it for keyCode shortcuts.
+        self.keyCode == code
+            && flags.intersection(.deviceIndependentFlagsMask).subtracting(.function) == modifiers.subtracting(.function)
     }
 }
 
