@@ -35,5 +35,21 @@
       "Bash(curl -s --max-time 5 *)",
       "Bash(mktemp *)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/check-swift-file-length.sh",
+            "timeout": 5
+          }
+        ],
+        "description": "Warn when an edited Swift file exceeds the 800-line limit from CLAUDE.md",
+        "id": "post:swift-file-length-check"
+      }
+    ]
   }
 }

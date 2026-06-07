@@ -4,62 +4,26 @@
 
 Always respond in **German** (Deutsch). Code, commits, and PR text stay in English.
 
-## Workflow: Every Request
+## Workflow: Every Feature/Change
 
-Before implementing any feature or significant change:
-
-1. Run `/grill-with-docs` to build shared terminology and align on approach
-2. Then implement
-
-No exceptions — even for small features. Skip only for: typo fixes, single-line hotfixes.
-
-## Project Overview
-
-macOS app (Swift/SwiftUI) for blind-typing training. Speaks text aloud while the user types without looking at the screen. Built as open source preview.
-
-## Tech Stack
-
-- Swift, SwiftUI, SwiftData
-- `@Observable` (not `ObservableObject`)
-- AVFoundation for audio, CoreML/WhisperKit for transcription
-- XcodeGen (`project.yml`) — always regenerate `.xcodeproj` after structural changes
-
-## Build
-
-```bash
-./build.sh --install --run
-# or
-xcodegen generate && xcodebuild build
-```
-
-## Architecture
-
-```
-BlitztextMac/
-  App/          # Entry point, AppDelegate
-  Features/     # Feature modules (Settings, Training, …)
-  Services/     # Stateless services (AudioRecorder, TranscriptionService, MicrophoneService)
-  Views/        # Shared UI components
-  Resources/    # Assets, localization
-```
+1. Run `/grill-with-docs` to build shared terminology and align on approach. Skip only for typo fixes / single-line hotfixes.
+2. Implement.
+3. If the change is UI-relevant (default assumption — only skip if explicitly told otherwise): rebuild and test in the real app.
+   - `./build.sh --install --run`
+   - If `Blitztext` is already running: ask for confirmation before `killall Blitztext`, then install + start the new build
+   - Verify the change in the running app before reporting done
 
 ## Coding Rules
 
 - Immutable data: always return new values, never mutate in-place
-- `@Observable` for state, not `@ObservableObject`
+- `@Observable` for state, not `@ObservableObject` (exception: `WaveformView.swift` — legacy, not yet migrated)
 - Files max 800 lines, functions max 50 lines
 - No comments except non-obvious WHY
+- XcodeGen: regenerate `.xcodeproj` (`xcodegen generate`) after adding/removing/moving files
 
 ## Git & GitHub
-
-Permissions are pre-approved in `.claude/settings.json`:
-- All `git` read/write commands
-- All `gh issue`, `gh pr`, `gh label`, `gh api` commands
-- Push, pull, fetch, merge — no confirmation needed
 
 Commit style: `type: short description` (imperative, English, lowercase)
 Branch style: `feature/short-name`, `fix/short-name`
 
-## Issues & PRs
-
-Create issues and PRs without asking for confirmation. Use `gh` CLI directly.
+Create issues and PRs without asking for confirmation — use `gh` CLI directly.
