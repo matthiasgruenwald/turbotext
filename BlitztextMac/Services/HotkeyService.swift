@@ -23,109 +23,92 @@ enum HotkeyMode: String, Codable, CaseIterable, Identifiable {
 }
 
 enum HotkeyEvent {
-    case down(WorkflowType)  // Keys pressed
-    case up(WorkflowType)    // Keys released (for hold mode)
-    case cancel              // Escape pressed
+    case down(WorkflowType)
+    case up(WorkflowType)
+    case cancel
 }
 
 @Observable
 @MainActor
 final class HotkeyService {
-    private var globalMonitor: Any?
-    private var localMonitor: Any?
-    private var keyMonitor: Any?
-    private var activeCombo: WorkflowType?  // Which combo is currently held
+    private var flagsMonitorGlobal: Any?
+    private var flagsMonitorLocal: Any?
+    private var keyDownMonitor: Any?
+    private var keyUpMonitor: Any?
+    private var activeCombo: WorkflowType?
 
+    let store: ShortcutStore
     var onHotkeyEvent: ((HotkeyEvent) -> Void)?
 
+    init(store: ShortcutStore) {
+        self.store = store
+    }
+
     func start() {
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            Task { @MainActor in
-                self?.handleFlags(event)
-            }
+        flagsMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            Task { @MainActor in self?.handleFlags(event) }
         }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            Task { @MainActor in
-                self?.handleFlags(event)
-            }
+        flagsMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            Task { @MainActor in self?.handleFlags(event) }
             return event
         }
-        // Escape key monitor for toggle mode
-        keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            Task { @MainActor in
-                if event.keyCode == 53 { // Escape
-                    self?.handleEscape()
-                }
-            }
+        keyDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            Task { @MainActor in self?.handleKeyDown(event) }
+        }
+        keyUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyUp) { [weak self] event in
+            Task { @MainActor in self?.handleKeyUp(event) }
         }
     }
 
     func stop() {
-        if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
-        if let localMonitor { NSEvent.removeMonitor(localMonitor) }
-        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
-        globalMonitor = nil
-        localMonitor = nil
-        keyMonitor = nil
+        [flagsMonitorGlobal, flagsMonitorLocal, keyDownMonitor, keyUpMonitor]
+            .compactMap { $0 }
+            .forEach { NSEvent.removeMonitor($0) }
+        flagsMonitorGlobal = nil
+        flagsMonitorLocal = nil
+        keyDownMonitor = nil
+        keyUpMonitor = nil
     }
 
     private func handleFlags(_ event: NSEvent) {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
-        // fn + Shift + Control -> local transcription
-        if flags == [.function, .shift, .control] {
+        if let type = store.workflow(matching: flags) {
             if activeCombo == nil {
-                activeCombo = .localTranscription
-                onHotkeyEvent?(.down(.localTranscription))
+                activeCombo = type
+                onHotkeyEvent?(.down(type))
             }
             return
         }
 
-        // fn + Shift -> transcription
-        if flags == [.function, .shift] {
-            if activeCombo == nil {
-                activeCombo = .transcription
-                onHotkeyEvent?(.down(.transcription))
-            }
-            return
-        }
-
-        // fn + Control -> Textverbesserer
-        if flags == [.function, .control] {
-            if activeCombo == nil {
-                activeCombo = .textImprover
-                onHotkeyEvent?(.down(.textImprover))
-            }
-            return
-        }
-
-        // fn + Option -> Rage Mode
-        if flags == [.function, .option] {
-            if activeCombo == nil {
-                activeCombo = .dampfAblassen
-                onHotkeyEvent?(.down(.dampfAblassen))
-            }
-            return
-        }
-
-        // fn + Command -> Emoji Mode
-        if flags == [.function, .command] {
-            if activeCombo == nil {
-                activeCombo = .emojiText
-                onHotkeyEvent?(.down(.emojiText))
-            }
-            return
-        }
-
-        // Keys released -- fire up event
         if let combo = activeCombo {
             activeCombo = nil
             onHotkeyEvent?(.up(combo))
         }
     }
 
-    private func handleEscape() {
-        activeCombo = nil
-        onHotkeyEvent?(.cancel)
+    private func handleKeyDown(_ event: NSEvent) {
+        if event.keyCode == 53 {
+            activeCombo = nil
+            onHotkeyEvent?(.cancel)
+            return
+        }
+
+        guard activeCombo == nil else { return }
+
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if let type = store.workflow(matching: event.keyCode, flags: flags) {
+            activeCombo = type
+            onHotkeyEvent?(.down(type))
+        }
+    }
+
+    private func handleKeyUp(_ event: NSEvent) {
+        guard let combo = activeCombo else { return }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if store.shortcuts(for: combo).contains(where: { $0.matches(keyCode: event.keyCode, flags: flags) }) {
+            activeCombo = nil
+            onHotkeyEvent?(.up(combo))
+        }
     }
 }

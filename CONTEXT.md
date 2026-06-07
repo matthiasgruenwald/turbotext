@@ -10,6 +10,18 @@
 
 **Paid Mode** — Wenn Online-Transkription aktiv UND (kein Groq-Key konfiguriert ODER Groq-Fallback aktiv). Wird im Menüleisten-Icon als kleiner Punkt angezeigt.
 
+## Shortcut-System
+
+**Shortcut** — eine Tastenkombination bestehend aus `NSEvent.ModifierFlags` + optionalem `keyCode: UInt16`. Repräsentiert einen einzelnen Auslöser für einen Workflow.
+
+**Shortcut-Array** — pro `WorkflowType` eine geordnete Liste von beliebig vielen Shortcuts. Workflow feuert, wenn IRGENDEIN Shortcut in der Liste matcht (OR-Logik).
+
+**fn-Default-Shortcuts** — die aktuellen hardcodierten `fn`-Kombis (z.B. `fn+Shift` = Transkription). Bleiben als Defaults im Shortcut-Array voreingestellt, sind aber löschbar und überschreibbar.
+
+**Key Recorder** — UI-Modus zum Erfassen neuer Shortcuts: Nutzer klickt Button → App lauscht auf nächste Tastenkombination via `NSEvent`-Monitor → Combo wird dem Shortcut-Array des Workflows hinzugefügt. Kein Ersetzen — immer append.
+
+**F-Key-Shortcut** — Shortcut ohne Modifier-Flags, nur `keyCode` (F1–F12). Für non-Apple-Tastaturen (z.B. Perixx), wo `fn` als Modifier-Flag nicht von macOS exponiert wird.
+
 ## ADR-0001: Groq-Fallback ist persistent, nicht session-basiert
 
 **Kontext:** Quota wird täglich zurückgesetzt. Bei App-Neustart während laufendem Training würde ein session-basierter Fallback erneut Groq versuchen, obwohl das Kontingent noch nicht zurückgesetzt ist.

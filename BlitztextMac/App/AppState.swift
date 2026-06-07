@@ -56,7 +56,8 @@ final class AppState {
     }
 
     // Hotkeys
-    let hotkeyService = HotkeyService()
+    let shortcutStore: ShortcutStore
+    let hotkeyService: HotkeyService
 
     // Computed
     var isConfigured: Bool {
@@ -71,6 +72,9 @@ final class AppState {
     }
 
     init() {
+        let store = ShortcutStore()
+        self.shortcutStore = store
+        self.hotkeyService = HotkeyService(store: store)
         self.appSettings = Self.loadAppSettings()
         self.transcriptionSettings = Self.loadTranscriptionSettings()
         self.textImprovementSettings = Self.loadTextImprovementSettings()
