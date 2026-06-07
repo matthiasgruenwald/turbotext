@@ -45,6 +45,9 @@ final class HotkeyService {
     }
 
     func start() {
+        // Trigger the Input Monitoring TCC prompt — required for the global
+        // keyDown/keyUp monitors below to receive any events at all.
+        _ = CGRequestListenEventAccess()
         flagsMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             Task { @MainActor in self?.handleFlags(event) }
         }
