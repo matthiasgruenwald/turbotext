@@ -150,6 +150,7 @@ struct AccessSettingsView: View {
                             .textFieldStyle(.roundedBorder)
                             .font(.system(size: 11.5))
                             .focused($focusedField, equals: .groqAPIKey)
+                            .onSubmit { save() }
 
                         Button("Einfuegen") {
                             pasteGroqKeyFromClipboard()
@@ -433,7 +434,7 @@ struct AccessSettingsView: View {
 
         // Groq key (optional)
         let trimmedGroqKey = groqAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if editingGroqKey && !trimmedGroqKey.isEmpty {
+        if !trimmedGroqKey.isEmpty {
             do {
                 try KeychainService.save(key: .groqAPIKey, value: trimmedGroqKey)
                 groqAPIKey = ""
@@ -487,6 +488,7 @@ struct AccessSettingsView: View {
         groqAPIKey = trimmedKey
         NSPasteboard.general.clearContents()
         saveErrorText = nil
+        save()
     }
 
     private func pasteAPIKeyFromClipboard() {
