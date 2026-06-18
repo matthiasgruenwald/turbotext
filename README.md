@@ -34,16 +34,14 @@ You are welcome to use, fork, adapt, and share this project under the license te
 
 ## Screenshots
 
-Screenshots are from the original blitztext-app and will be updated.
-
 <table>
   <tr>
-    <td><img src="docs/screenshots/online-mode.png" alt="Blitztext online transcription mode" width="420"></td>
-    <td><img src="docs/screenshots/local-mode.png" alt="Blitztext secure local transcription mode" width="420"></td>
+    <td><img src="docs/screenshots/menubar-workflows.png" alt="Turbotext menubar with workflows" width="300"></td>
+    <td><img src="docs/screenshots/settings-mic-hotkeys.png" alt="Settings: microphone and hotkey configuration" width="300"></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/local-model-picker.png" alt="Blitztext local model picker" width="420"></td>
-    <td><img src="docs/screenshots/settings-customize.png" alt="Blitztext settings and customization view" width="420"></td>
+    <td><img src="docs/screenshots/settings-api-keys.png" alt="Settings: Groq and OpenAI API keys" width="300"></td>
+    <td><img src="docs/screenshots/settings-hotkeys-detail.png" alt="Settings: hotkeys per workflow" width="300"></td>
   </tr>
 </table>
 
