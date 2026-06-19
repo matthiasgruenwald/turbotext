@@ -3,6 +3,7 @@ import SwiftUI
 struct WorkflowRowView: View {
     let type: WorkflowType
     let enabled: Bool
+    let shortcuts: [Shortcut]
     var customName: String? = nil
     var subtitle: String? = nil
     let action: () -> Void
@@ -38,9 +39,13 @@ struct WorkflowRowView: View {
 
                 Spacer()
 
-                // Hotkey badge
-                HotkeyBadge(label: type.hotkeyLabel, enabled: enabled)
-                    .opacity(enabled ? 1 : 0.4)
+                // Hotkey badges
+                HStack(spacing: 6) {
+                    ForEach(shortcuts, id: \.self) { shortcut in
+                        HotkeyBadge(label: shortcut.displayText, enabled: enabled)
+                    }
+                }
+                .opacity(enabled ? 1 : 0.4)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -72,7 +77,7 @@ struct HotkeyBadge: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            ForEach(label.components(separatedBy: " + "), id: \.self) { key in
+            ForEach(label.components(separatedBy: " "), id: \.self) { key in
                 Text(key)
                     .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                     .foregroundStyle(keyTextColor)
