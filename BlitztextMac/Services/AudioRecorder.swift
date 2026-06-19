@@ -1,19 +1,22 @@
 import AVFoundation
+import AudioToolbox
 import CoreAudio
 import Observation
 
 @Observable
-final class AudioRecorder: NSObject, AVAudioRecorderDelegate {
+final class AudioRecorder: NSObject {
     var isRecording = false
     var recordingURL: URL?
     var errorMessage: String?
     var audioLevel: Float = 0
     var lastRecordingDuration: TimeInterval = 0
 
-    private var audioRecorder: AVAudioRecorder?
-    private var levelTimer: Timer?
+    private let engine = AVAudioEngine()
+    private var outputFile: AVAudioFile?
     private var currentFileURL: URL?
-    private var savedDefaultDeviceID: AudioDeviceID?
+    private var recordingStartedAt: Date?
+    private var levelTimer: Timer?
+    private var meteredPeakLevel: Float = -160
 
     private func makeRecordingURL() -> URL {
         FileManager.default.temporaryDirectory
@@ -28,30 +31,51 @@ final class AudioRecorder: NSObject, AVAudioRecorderDelegate {
             try? FileManager.default.removeItem(at: currentFileURL)
         }
 
-        let selectedUID = UserDefaults.standard.string(forKey: "selectedMicUID") ?? ""
-        if !selectedUID.isEmpty,
-           let device = MicrophoneService.availableInputDevices().first(where: { $0.uid == selectedUID }) {
-            savedDefaultDeviceID = MicrophoneService.defaultInputDeviceID()
-            MicrophoneService.setDefaultInputDevice(device.id)
+        // App-internal device selection only: routes this recording to the preferred
+        // input device without touching the macOS-wide default input (see ADR-0003).
+        if let preferredUID = preferredInputDeviceUID(),
+           let preferredDeviceID = MicrophoneService.availableInputDevices().first(where: { $0.uid == preferredUID })?.id {
+            setEngineInputDevice(preferredDeviceID)
         }
 
-        let settings: [String: Any] = [
+        let inputNode = engine.inputNode
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            errorMessage = "Kein Mikrofon verfügbar."
+            return
+        }
+
+        let fileSettings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 16000,
-            AVNumberOfChannelsKey: 1,
+            AVSampleRateKey: inputFormat.sampleRate,
+            AVNumberOfChannelsKey: inputFormat.channelCount,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         ]
 
+        let fileURL = makeRecordingURL()
         do {
-            let fileURL = makeRecordingURL()
+            let file = try AVAudioFile(forWriting: fileURL, settings: fileSettings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            outputFile = file
             currentFileURL = fileURL
-            audioRecorder = try AVAudioRecorder(url: fileURL, settings: settings)
-            audioRecorder?.delegate = self
-            audioRecorder?.isMeteringEnabled = true
-            audioRecorder?.record()
+        } catch {
+            currentFileURL = nil
+            errorMessage = "Aufnahme konnte nicht gestartet werden: \(error.localizedDescription)"
+            return
+        }
+
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+            self?.handleBuffer(buffer)
+        }
+
+        do {
+            engine.prepare()
+            try engine.start()
+            recordingStartedAt = Date()
             isRecording = true
             startMetering()
         } catch {
+            inputNode.removeTap(onBus: 0)
+            outputFile = nil
             currentFileURL = nil
             errorMessage = "Aufnahme konnte nicht gestartet werden: \(error.localizedDescription)"
         }
@@ -59,17 +83,17 @@ final class AudioRecorder: NSObject, AVAudioRecorderDelegate {
 
     func stopRecording() {
         stopMetering()
-        lastRecordingDuration = audioRecorder?.currentTime ?? 0
-        audioRecorder?.stop()
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        if let recordingStartedAt {
+            lastRecordingDuration = Date().timeIntervalSince(recordingStartedAt)
+        }
+        self.recordingStartedAt = nil
+        outputFile = nil
         isRecording = false
         recordingURL = currentFileURL
         currentFileURL = nil
-        audioRecorder = nil
         audioLevel = 0
-        if let saved = savedDefaultDeviceID {
-            MicrophoneService.setDefaultInputDevice(saved)
-            savedDefaultDeviceID = nil
-        }
     }
 
     func discardRecording() {
@@ -84,12 +108,44 @@ final class AudioRecorder: NSObject, AVAudioRecorderDelegate {
         }
     }
 
+    private func handleBuffer(_ buffer: AVAudioPCMBuffer) {
+        meteredPeakLevel = Self.peakLevel(of: buffer)
+        try? outputFile?.write(from: buffer)
+    }
+
+    private static func peakLevel(of buffer: AVAudioPCMBuffer) -> Float {
+        guard let channelData = buffer.floatChannelData else { return -160 }
+        let frameCount = Int(buffer.frameLength)
+        guard frameCount > 0 else { return -160 }
+        var peak: Float = 0
+        for sample in 0..<frameCount {
+            peak = max(peak, abs(channelData[0][sample]))
+        }
+        guard peak > 0 else { return -160 }
+        return 20 * log10(peak)
+    }
+
+    private func preferredInputDeviceUID() -> String? {
+        UserDefaults.standard.string(forKey: "selectedMicUID").flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    private func setEngineInputDevice(_ deviceID: AudioDeviceID) {
+        guard let inputUnit = engine.inputNode.audioUnit else { return }
+        var mutableDeviceID = deviceID
+        AudioUnitSetProperty(
+            inputUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &mutableDeviceID,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+    }
+
     private func startMetering() {
         levelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             guard let self else { return }
-            self.audioRecorder?.updateMeters()
-            let power = self.audioRecorder?.averagePower(forChannel: 0) ?? -160
-            let normalized = max(0, min(1, (power + 50) / 50))
+            let normalized = max(0, min(1, (self.meteredPeakLevel + 50) / 50))
             self.audioLevel = normalized
         }
     }
@@ -97,15 +153,5 @@ final class AudioRecorder: NSObject, AVAudioRecorderDelegate {
     private func stopMetering() {
         levelTimer?.invalidate()
         levelTimer = nil
-    }
-
-    // MARK: - AVAudioRecorderDelegate
-
-    nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
-        if !flag {
-            Task { @MainActor in
-                self.errorMessage = "Aufnahme fehlgeschlagen"
-            }
-        }
     }
 }

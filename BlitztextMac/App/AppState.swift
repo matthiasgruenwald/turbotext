@@ -59,6 +59,10 @@ final class AppState {
     let shortcutStore: ShortcutStore
     let hotkeyService: HotkeyService
 
+    // Microphone favorites
+    let microphoneFavoritesStore: MicrophoneFavoritesStore
+    private let microphoneAutoSelectionService: MicrophoneAutoSelectionService
+
     // Computed
     var isConfigured: Bool {
         KeychainService.isConfigured || !LocalTranscriptionService.installedModels().isEmpty
@@ -75,6 +79,9 @@ final class AppState {
         let store = ShortcutStore()
         self.shortcutStore = store
         self.hotkeyService = HotkeyService(store: store)
+        let micFavorites = MicrophoneFavoritesStore()
+        self.microphoneFavoritesStore = micFavorites
+        self.microphoneAutoSelectionService = MicrophoneAutoSelectionService(favoritesStore: micFavorites)
         self.appSettings = Self.loadAppSettings()
         self.transcriptionSettings = Self.loadTranscriptionSettings()
         self.textImprovementSettings = Self.loadTextImprovementSettings()
@@ -83,6 +90,7 @@ final class AppState {
         refreshAccessibilityPermission()
         autoSelectFastLocalModelIfNeeded()
         prewarmLocalTranscriptionIfNeeded()
+        microphoneAutoSelectionService.start()
     }
 
     // MARK: - Custom Display Names
