@@ -1,6 +1,6 @@
 # Privacy Notes
 
-Blitztext macOS Preview does not include a hosted backend.
+Turbotext macOS Preview does not include a hosted backend.
 
 When you use the online workflows, your Mac sends data directly to OpenAI:
 

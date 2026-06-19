@@ -1,6 +1,6 @@
 # Security Policy
 
-Blitztext macOS Preview is experimental software.
+Turbotext macOS Preview is experimental software.
 
 It is provided as-is, without warranty, support guarantees, or production-readiness claims.
 

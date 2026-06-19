@@ -1,6 +1,6 @@
 # Turbotext
 
-Turbotext is a fork of [blitztext-app](https://github.com/cmagnussen/blitztext-app) by cmagnussen — an experimental open-source macOS menubar app for turning speech into text.
+Turbotext is a fork of [turbotext-app](https://github.com/cmagnussen/turbotext-app) by cmagnussen — an experimental open-source macOS menubar app for turning speech into text.
 
 > Turbotext — Groq-powered transcription with configurable hotkeys & mic
 
@@ -54,7 +54,7 @@ You are welcome to use, fork, adapt, and share this project under the license te
 - **OpenAI API key** (optional) for rewriting workflows:
   - `gpt-4o-mini` and optionally `gpt-4o`
 - For local-only transcription: a WhisperKit CoreML model in:
-  `~/Library/Application Support/Blitztext/models/whisperkit/`
+  `~/Library/Application Support/Turbotext/models/whisperkit/`
 
 The build pulls one Swift Package dependency automatically:
 
@@ -125,7 +125,7 @@ Read [docs/privacy.md](docs/privacy.md) before using with sensitive content.
 ## Project Structure
 
 ```text
-BlitztextMac/
+TurbotextMac/
   App/          App lifecycle and paste handling
   Features/     Workflows, menu bar UI, settings
   Services/     Recording, Groq/OpenAI calls, hotkeys, local storage

@@ -1,4 +1,4 @@
-# BlitztextMac — Claude Instructions
+# TurbotextMac — Claude Instructions
 
 ## Language
 
@@ -10,7 +10,7 @@ Always respond in **German** (Deutsch). Code, commits, and PR text stay in Engli
 2. Implement.
 3. If the change is UI-relevant (default assumption — only skip if explicitly told otherwise): rebuild and test in the real app.
    - `./build.sh --install --run`
-   - If `Blitztext` is already running: ask for confirmation before `killall Blitztext`, then install + start the new build
+   - If `Turbotext` is already running: ask for confirmation before `killall Turbotext`, then install + start the new build
    - Verify the change in the running app before reporting done
 
 ## Coding Rules

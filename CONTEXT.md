@@ -1,4 +1,4 @@
-# BlitztextMac — Domain Context
+# TurbotextMac — Domain Context
 
 Architekturentscheidungen (ADRs) liegen in `docs/adr/`, nicht in dieser Datei.
 

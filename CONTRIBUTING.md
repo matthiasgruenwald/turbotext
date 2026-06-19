@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for taking a look at Blitztext macOS Preview.
+Thanks for taking a look at Turbotext macOS Preview.
 
 This repository is intentionally a preview. Contributions should make it easier to learn from, build, fork, or safely extend.
 

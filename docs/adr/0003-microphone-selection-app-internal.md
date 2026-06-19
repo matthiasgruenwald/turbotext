@@ -4,4 +4,4 @@
 
 **Entscheidung:** `MicrophoneService` setzt den ausgewählten Favoriten nur für die App-interne Aufnahme (`AudioRecorder`), NICHT via `setDefaultInputDevice` für macOS systemweit. Nutzer kann optional explizit "macOS-Standard verwenden" wählen, um auf bisheriges Verhalten zurückzufallen.
 
-**Konsequenz:** Andere Apps sind von der Favoritenliste nicht betroffen — nur Blitztext selbst nutzt das priorisierte Mikro.
+**Konsequenz:** Andere Apps sind von der Favoritenliste nicht betroffen — nur Turbotext selbst nutzt das priorisierte Mikro.
