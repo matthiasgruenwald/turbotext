@@ -139,3 +139,57 @@ final class ShortcutStoreTests: XCTestCase {
         XCTAssertNil(store.workflow(matching: 99, flags: []))
     }
 }
+
+// MARK: - WorkflowRowView Shortcut Display
+
+final class WorkflowRowViewShortcutDisplayTests: XCTestCase {
+
+    private func makeStore() -> ShortcutStore {
+        ShortcutStore(userDefaultsKey: "test_\(UUID().uuidString)")
+    }
+
+    func testDisplayedShortcutsComeFromStoreNotHardcodedDefault() {
+        let store = makeStore()
+        let custom = Shortcut(modifiers: [.control, .shift], keyCode: nil)
+        store.remove(store.shortcuts(for: .transcription).first!, from: .transcription)
+        store.add(custom, for: .transcription)
+
+        let displayed = store.shortcuts(for: .transcription)
+
+        XCTAssertEqual(displayed, [custom])
+        XCTAssertNotEqual(displayed.first?.displayText, "fn ⇧")
+    }
+
+    func testDisplayedShortcutsReflectMultipleAssignments() {
+        let store = makeStore()
+        let second = Shortcut(modifiers: [.control, .option], keyCode: nil)
+        store.add(second, for: .textImprover)
+
+        let displayed = store.shortcuts(for: .textImprover)
+
+        XCTAssertEqual(displayed.count, 2)
+        XCTAssertTrue(displayed.contains(second))
+    }
+
+    func testDisplayedShortcutsUpdateImmediatelyAfterChange() {
+        let store = makeStore()
+        XCTAssertFalse(store.shortcuts(for: .emojiText).isEmpty)
+
+        let replacement = Shortcut(modifiers: [.command, .shift], keyCode: nil)
+        for existing in store.shortcuts(for: .emojiText) {
+            store.remove(existing, from: .emojiText)
+        }
+        store.add(replacement, for: .emojiText)
+
+        XCTAssertEqual(store.shortcuts(for: .emojiText), [replacement])
+    }
+
+    func testNoShortcutsYieldsEmptyDisplayList() {
+        let store = makeStore()
+        for existing in store.shortcuts(for: .dampfAblassen) {
+            store.remove(existing, from: .dampfAblassen)
+        }
+
+        XCTAssertTrue(store.shortcuts(for: .dampfAblassen).isEmpty)
+    }
+}
