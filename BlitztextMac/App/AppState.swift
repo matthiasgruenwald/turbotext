@@ -63,6 +63,9 @@ final class AppState {
     let microphoneFavoritesStore: MicrophoneFavoritesStore
     private let microphoneAutoSelectionService: MicrophoneAutoSelectionService
 
+    // Network status
+    let networkPingService: NetworkPingService
+
     // Computed
     var isConfigured: Bool {
         KeychainService.isConfigured || !LocalTranscriptionService.installedModels().isEmpty
@@ -82,6 +85,7 @@ final class AppState {
         let micFavorites = MicrophoneFavoritesStore()
         self.microphoneFavoritesStore = micFavorites
         self.microphoneAutoSelectionService = MicrophoneAutoSelectionService(favoritesStore: micFavorites)
+        self.networkPingService = NetworkPingService()
         self.appSettings = Self.loadAppSettings()
         self.transcriptionSettings = Self.loadTranscriptionSettings()
         self.textImprovementSettings = Self.loadTextImprovementSettings()
@@ -91,6 +95,7 @@ final class AppState {
         autoSelectFastLocalModelIfNeeded()
         prewarmLocalTranscriptionIfNeeded()
         microphoneAutoSelectionService.start()
+        networkPingService.start()
     }
 
     // MARK: - Custom Display Names

@@ -40,6 +40,8 @@ struct MenuBarView: View {
 
                     Spacer()
 
+                    NetworkStatusDot(service: appState.networkPingService)
+
                     Button {
                         appState.page = .settings
                     } label: {
