@@ -27,3 +27,17 @@ Commit style: `type: short description` (imperative, English, lowercase)
 Branch style: `feature/short-name`, `fix/short-name`
 
 Create issues and PRs without asking for confirmation — use `gh` CLI directly.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues (`matthiasgruenwald/turbotext`), via `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at repo root. See `docs/agents/domain.md`.

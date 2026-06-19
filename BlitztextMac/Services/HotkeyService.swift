@@ -36,6 +36,7 @@ final class HotkeyService {
     private var keyDownMonitor: Any?
     private var keyUpMonitor: Any?
     private var activeCombo: WorkflowType?
+    private var holdModeFallbackTimer: Timer?
 
     let store: ShortcutStore
     var onHotkeyEvent: ((HotkeyEvent) -> Void)?
@@ -64,6 +65,8 @@ final class HotkeyService {
     }
 
     func stop() {
+        holdModeFallbackTimer?.invalidate()
+        holdModeFallbackTimer = nil
         [flagsMonitorGlobal, flagsMonitorLocal, keyDownMonitor, keyUpMonitor]
             .compactMap { $0 }
             .forEach { NSEvent.removeMonitor($0) }
@@ -80,14 +83,37 @@ final class HotkeyService {
             if activeCombo == nil {
                 activeCombo = type
                 onHotkeyEvent?(.down(type))
+                startHoldModeFallback(for: type)
             }
             return
         }
 
         if let combo = activeCombo {
             activeCombo = nil
+            holdModeFallbackTimer?.invalidate()
+            holdModeFallbackTimer = nil
             onHotkeyEvent?(.up(combo))
         }
+    }
+
+    // Backup for MacBook fn/globe key: flagsChanged may not fire reliably on release.
+    // Polls NSEvent.modifierFlags every 80 ms and fires .up when the shortcut is no longer held.
+    private func startHoldModeFallback(for type: WorkflowType) {
+        holdModeFallbackTimer?.invalidate()
+        let shortcuts = store.shortcuts(for: type)
+        let timer = Timer(timeInterval: 0.08, repeats: true) { [weak self] t in
+            Task { @MainActor [weak self] in
+                guard let self, self.activeCombo == type else { t.invalidate(); return }
+                let current = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                guard !shortcuts.contains(where: { $0.matches(flags: current) }) else { return }
+                t.invalidate()
+                self.holdModeFallbackTimer = nil
+                self.activeCombo = nil
+                self.onHotkeyEvent?(.up(type))
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        holdModeFallbackTimer = timer
     }
 
     private func handleKeyDown(_ event: NSEvent) {

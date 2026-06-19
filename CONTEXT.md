@@ -1,5 +1,7 @@
 # BlitztextMac — Domain Context
 
+Architekturentscheidungen (ADRs) liegen in `docs/adr/`, nicht in dieser Datei.
+
 ## Transkriptions-Backend
 
 **CloudTranscriptionRouter** — Logik in `TranscriptionService`, die Groq-first mit OpenAI-Fallback kombiniert. Kein eigener Typ, aber konzeptuell der Router.
@@ -22,10 +24,12 @@
 
 **F-Key-Shortcut** — Shortcut ohne Modifier-Flags, nur `keyCode` (F1–F12). Für non-Apple-Tastaturen (z.B. Perixx), wo `fn` als Modifier-Flag nicht von macOS exponiert wird.
 
-## ADR-0001: Groq-Fallback ist persistent, nicht session-basiert
+**Shortcut-Badge** — im Hauptmenü zeigt pro Workflow ALLE aktiven Shortcuts nebeneinander (nicht nur den ersten), da Workflows meist nur 1–3 Shortcuts haben.
 
-**Kontext:** Quota wird täglich zurückgesetzt. Bei App-Neustart während laufendem Training würde ein session-basierter Fallback erneut Groq versuchen, obwohl das Kontingent noch nicht zurückgesetzt ist.
+## Mikrofon-System
 
-**Entscheidung:** `GroqQuotaStore` persistiert `fallbackActive` + `rateLimitResetAt` in `UserDefaults`. Beim App-Start prüft `clearIfExpired()` ob das Reset-Datum überschritten ist.
+**Mikrofon-Favoritenliste** — vom Nutzer priorisierte Liste von Mikro-UIDs, persistiert in `UserDefaults`. Ersetzt NICHT den macOS-Systemstandard, sondern ist eine App-interne Auswahl. Beim App-Start und bei Gerätewechsel (`kAudioHardwarePropertyDevices`-Notification) wählt die App das höchstpriorisierte verfügbare Gerät aus der Liste. Ist kein Favorit verfügbar, fällt die App auf den macOS-Systemstandard zurück. Nutzer kann alternativ explizit "macOS-Standard verwenden" wählen (kein Override).
 
-**Konsequenz:** Ein paar Anfragen die direkt nach Reset kommen könnten theoretisch nochmal 429 bekommen — kein Problem, der Fallback aktiviert sich einfach erneut bis zum nächsten Reset.
+## Netzwerk-Qualität
+
+**Netzwerk-Qualitätsindikator** — Ampel-Status (grün/gelb/rot) im Hauptmenü, basiert auf rollierendem Fenster der letzten 10 ICMP-Pings (alle 3s) gegen einen festen, generischen Host (z.B. 1.1.1.1). Grün: 0% Verlust, <150ms Latenz. Gelb: ≥15% Verlust ODER 150–500ms Latenz. Rot: >30% Verlust ODER keine Antwort. Hover zeigt exakte Latenz/Verlust-Zahlen sofort (kein Standard-Tooltip-Delay).

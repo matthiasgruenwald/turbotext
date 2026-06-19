@@ -41,12 +41,12 @@ final class TranscriptionWorkflow: Workflow {
     }
 
     func start() {
-        phase = .running("Aufnahme läuft ...")
         recorder.startRecording()
-
         if let error = recorder.errorMessage {
             phase = .error(error)
+            return
         }
+        phase = .running("Aufnahme läuft ...")
     }
 
     func stop() {
