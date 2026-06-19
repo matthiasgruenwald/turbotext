@@ -130,7 +130,7 @@ struct MenuBarView: View {
                     .frame(width: 22, height: 22)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(appState.appSettings.secureLocalModeEnabled ? "Sicherer lokaler Modus" : onlineModeTitle)
+                    Text(appState.appSettings.secureLocalModeEnabled ? "Lokal · kein Server" : "Online · \(onlineModeTitle)")
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(.primary)
 
@@ -237,7 +237,7 @@ struct MenuBarView: View {
                 return appState.localModelDownloadStatusText ?? "Lokales Modell wird geladen."
             }
             if selectedModelInstalled {
-                return "Lokal mit \(appState.selectedLocalModelDisplayName)."
+                return "Verarbeitung auf diesem Gerät mit \(appState.selectedLocalModelDisplayName)."
             }
             return "\(appState.selectedLocalModelDisplayName) ist noch nicht installiert."
         }
@@ -247,15 +247,15 @@ struct MenuBarView: View {
 
         if hasGroqKey {
             if store.fallbackActive {
-                return "OpenAI Whisper · Groq-Kontingent aufgebraucht."
+                return "Über Server verarbeitet · Groq-Kontingent aufgebraucht, jetzt OpenAI Whisper."
             }
             if let remaining = store.formattedRemaining {
-                return "Groq Whisper · noch \(remaining) heute."
+                return "Über Server verarbeitet · noch \(remaining) Groq-Kontingent heute."
             }
-            return "Groq Whisper"
+            return "Über Server verarbeitet via Groq Whisper."
         }
 
-        return "OpenAI Whisper"
+        return "Über Server verarbeitet via OpenAI Whisper."
     }
 
     private var accessibilityHintBanner: some View {
