@@ -196,163 +196,183 @@ struct WorkflowsSettingsView: View {
     @State private var newTerm = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 20) {
+                blitztextPlusSection
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-            // MARK: Blitztext+
-            VStack(alignment: .leading, spacing: 10) {
-                SectionLabel(text: "Blitztext+")
-
-                // Tone
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Schreibstil")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-
-                    Picker("", selection: $appState.textImprovementSettings.tone) {
-                        ForEach(TextImprovementSettings.TextTone.allCases) { tone in
-                            Text(tone.displayName).tag(tone)
-                        }
-                    }
-                    .pickerStyle(.segmented)
+                VStack(alignment: .leading, spacing: 16) {
+                    dampfAblassenSection
+                    emojiTextSection
                 }
-
-                // System Prompt
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Eigene Anweisung")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-
-                    TextEditor(text: $appState.textImprovementSettings.systemPrompt)
-                        .font(.system(size: 11))
-                        .frame(height: 64)
-                        .scrollContentBackground(.hidden)
-                        .padding(8)
-                        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
-                        .overlay(alignment: .topLeading) {
-                            if appState.textImprovementSettings.systemPrompt.isEmpty {
-                                Text("z.B. \"Schreibe pr\u{00E4}gnant und ohne F\u{00FC}llw\u{00F6}rter.\"")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.quaternary)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 12)
-                                    .allowsHitTesting(false)
-                            }
-                        }
-                }
-
-                // Context
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Kontext")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-
-                    TextField("z.B. \"E-Mails im Bereich Unternehmensberatung\"", text: $appState.textImprovementSettings.context)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 11))
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            // MARK: Blitztext $%&!
-            VStack(alignment: .leading, spacing: 10) {
-                SectionLabel(text: "Blitztext $%&!")
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Eigene Anweisung")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-
-                    TextEditor(text: $appState.dampfAblassenSettings.systemPrompt)
-                        .font(.system(size: 11))
-                        .frame(height: 80)
-                        .scrollContentBackground(.hidden)
-                        .padding(8)
-                        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
-                        .overlay(alignment: .topLeading) {
-                            if appState.dampfAblassenSettings.systemPrompt.isEmpty {
-                                Text("z.B. \"Formuliere den Text sachlich und freundlich um.\"")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.quaternary)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 12)
-                                    .allowsHitTesting(false)
-                            }
-                        }
-                }
-            }
-
-            // MARK: Blitztext :)
-            VStack(alignment: .leading, spacing: 10) {
-                SectionLabel(text: "Blitztext :)")
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Emoji-Dichte")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-
-                    Picker("", selection: $appState.emojiTextSettings.emojiDensity) {
-                        ForEach(EmojiTextSettings.EmojiDensity.allCases) { density in
-                            Text(density.displayName).tag(density)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-            }
-
-            // MARK: Eigennamen
-            VStack(alignment: .leading, spacing: 10) {
-                SectionLabel(text: "Eigennamen")
-
-                // Term chips
-                if !appState.textImprovementSettings.customTerms.isEmpty {
-                    FlowLayout(spacing: 5) {
-                        ForEach(appState.textImprovementSettings.customTerms, id: \.self) { term in
-                            HStack(spacing: 3) {
-                                Text(term)
-                                    .font(.system(size: 10.5))
-                                Button {
-                                    withAnimation(.easeOut(duration: 0.15)) {
-                                        appState.textImprovementSettings.customTerms.removeAll { $0 == term }
-                                    }
-                                } label: {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 7, weight: .bold))
-                                        .foregroundStyle(.tertiary)
-                                }
-                                .buttonStyle(SubtleButtonStyle())
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                Capsule()
-                                    .fill(Color(nsColor: .controlBackgroundColor))
-                            )
-                            .overlay(
-                                Capsule()
-                                    .strokeBorder(Color.primary.opacity(0.04), lineWidth: 0.5)
-                            )
-                        }
-                    }
-                }
-
-                HStack(spacing: 6) {
-                    TextField("Neuer Begriff", text: $newTerm)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 11))
-                        .onSubmit { addTerm() }
-
-                    Button { addTerm() } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(.blue.opacity(0.7))
-                    }
-                    .buttonStyle(SubtleButtonStyle())
-                    .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
+            customTermsSection
         }
         .padding(16)
+    }
+
+    // MARK: Blitztext+
+    private var blitztextPlusSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(text: "Blitztext+")
+
+            // Tone
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Schreibstil")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                Picker("", selection: $appState.textImprovementSettings.tone) {
+                    ForEach(TextImprovementSettings.TextTone.allCases) { tone in
+                        Text(tone.displayName).tag(tone)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            // System Prompt
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Eigene Anweisung")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                TextEditor(text: $appState.textImprovementSettings.systemPrompt)
+                    .font(.system(size: 11))
+                    .frame(height: 64)
+                    .scrollContentBackground(.hidden)
+                    .padding(8)
+                    .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
+                    .overlay(alignment: .topLeading) {
+                        if appState.textImprovementSettings.systemPrompt.isEmpty {
+                            Text("z.B. \"Schreibe pr\u{00E4}gnant und ohne F\u{00FC}llw\u{00F6}rter.\"")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.quaternary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 12)
+                                .allowsHitTesting(false)
+                        }
+                    }
+            }
+
+            // Context
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Kontext")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                TextField("z.B. \"E-Mails im Bereich Unternehmensberatung\"", text: $appState.textImprovementSettings.context)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11))
+            }
+        }
+    }
+
+    // MARK: Blitztext $%&!
+    private var dampfAblassenSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(text: "Blitztext $%&!")
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Eigene Anweisung")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                TextEditor(text: $appState.dampfAblassenSettings.systemPrompt)
+                    .font(.system(size: 11))
+                    .frame(height: 72)
+                    .scrollContentBackground(.hidden)
+                    .padding(8)
+                    .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
+                    .overlay(alignment: .topLeading) {
+                        if appState.dampfAblassenSettings.systemPrompt.isEmpty {
+                            Text("z.B. \"Formuliere den Text sachlich und freundlich um.\"")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.quaternary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 12)
+                                .allowsHitTesting(false)
+                        }
+                    }
+            }
+        }
+    }
+
+    // MARK: Blitztext :)
+    private var emojiTextSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(text: "Blitztext :)")
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Emoji-Dichte")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                Picker("", selection: $appState.emojiTextSettings.emojiDensity) {
+                    ForEach(EmojiTextSettings.EmojiDensity.allCases) { density in
+                        Text(density.displayName).tag(density)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+        }
+    }
+
+    // MARK: Eigennamen
+    private var customTermsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(text: "Eigennamen")
+
+            // Term chips
+            if !appState.textImprovementSettings.customTerms.isEmpty {
+                FlowLayout(spacing: 5) {
+                    ForEach(appState.textImprovementSettings.customTerms, id: \.self) { term in
+                        HStack(spacing: 3) {
+                            Text(term)
+                                .font(.system(size: 10.5))
+                            Button {
+                                withAnimation(.easeOut(duration: 0.15)) {
+                                    appState.textImprovementSettings.customTerms.removeAll { $0 == term }
+                                }
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 7, weight: .bold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .buttonStyle(SubtleButtonStyle())
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                        )
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Color.primary.opacity(0.04), lineWidth: 0.5)
+                        )
+                    }
+                }
+            }
+
+            HStack(spacing: 6) {
+                TextField("Neuer Begriff", text: $newTerm)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11))
+                    .onSubmit { addTerm() }
+
+                Button { addTerm() } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.blue.opacity(0.7))
+                }
+                .buttonStyle(SubtleButtonStyle())
+                .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
     }
 
     private func addTerm() {
@@ -426,134 +446,14 @@ struct CredentialsSettingsView: View {
     @FocusState private var focusedField: FieldFocus?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 8) {
-                SectionLabel(text: "Berechtigungen")
+        VStack(alignment: .leading, spacing: 16) {
+            permissionsSection
 
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: appState.accessibilityPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(appState.accessibilityPermissionGranted ? .green : .orange)
-                        .frame(width: 18, height: 18)
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(appState.accessibilityPermissionGranted ? "Direktes Einfügen ist freigegeben." : "Direktes Einfügen ist noch nicht freigegeben.")
-                            .font(.system(size: 11.5, weight: .semibold))
-                            .foregroundStyle(.primary)
-
-                        Text("Öffne Bedienungshilfen und aktiviere Blitztext. Falls Blitztext schon aktiv ist, einmal aus- und wieder einschalten.")
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                HStack(spacing: 8) {
-                    Button("Bedienungshilfen öffnen") {
-                        appState.requestAccessibilityPermission()
-                    }
-                    .buttonStyle(SubtleButtonStyle())
-
-                    Button("Erneut prüfen") {
-                        appState.refreshAccessibilityPermission()
-                    }
-                    .buttonStyle(SubtleButtonStyle())
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    SectionLabel(text: "Groq API Key")
-                    Spacer()
-                    if appState.hasValue(for: .groqAPIKey) && !editingGroqKey {
-                        Button("Aendern") { editingGroqKey = true }
-                            .font(.system(size: 10, weight: .medium))
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.blue)
-                    }
-                }
-
-                if appState.hasValue(for: .groqAPIKey) && !editingGroqKey {
-                    HStack(spacing: 6) {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.green.opacity(0.8))
-                        Text(appState.apiKeyDisplayValue(for: .groqAPIKey))
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(8)
+            HStack(alignment: .top, spacing: 20) {
+                groqKeySection
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(Color(nsColor: .controlBackgroundColor))
-                    )
-                } else {
-                    HStack(spacing: 8) {
-                        SecureField("gsk_...", text: $groqAPIKey)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 11.5))
-                            .focused($focusedField, equals: .groqAPIKey)
-                            .onSubmit { save() }
-
-                        Button("Einfuegen") {
-                            pasteGroqKeyFromClipboard()
-                        }
-                        .buttonStyle(SubtleButtonStyle())
-                    }
-                }
-
-                Text("Optional. Schnellere Transkription über Groq, solange das Tages-Kontingent reicht. Danach automatisch OpenAI.")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    SectionLabel(text: "OpenAI API Key")
-                    Spacer()
-                    if appState.hasValue(for: .openAIAPIKey) && !editingAPIKey {
-                        Button("Aendern") { editingAPIKey = true }
-                            .font(.system(size: 10, weight: .medium))
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.blue)
-                    }
-                }
-
-                if appState.hasValue(for: .openAIAPIKey) && !editingAPIKey {
-                    HStack(spacing: 6) {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.green.opacity(0.8))
-                        Text(appState.apiKeyDisplayValue(for: .openAIAPIKey))
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(8)
+                openAIKeySection
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(Color(nsColor: .controlBackgroundColor))
-                    )
-                } else {
-                    HStack(spacing: 8) {
-                        SecureField("sk-...", text: $openAIAPIKey)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 11.5))
-                            .focused($focusedField, equals: .openAIAPIKey)
-
-                        Button("Einfuegen") {
-                            pasteAPIKeyFromClipboard()
-                        }
-                        .buttonStyle(SubtleButtonStyle())
-                    }
-                }
-
-                Text("Dein Key bleibt lokal in dieser App. Audio und Text werden direkt an die OpenAI API gesendet.")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let saveErrorText {
@@ -597,6 +497,144 @@ struct CredentialsSettingsView: View {
                 editingAPIKey = true
                 focusedField = .openAIAPIKey
             }
+        }
+    }
+
+    // MARK: Berechtigungen
+    private var permissionsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel(text: "Berechtigungen")
+
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: appState.accessibilityPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(appState.accessibilityPermissionGranted ? .green : .orange)
+                    .frame(width: 18, height: 18)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(appState.accessibilityPermissionGranted ? "Direktes Einfügen ist freigegeben." : "Direktes Einfügen ist noch nicht freigegeben.")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(.primary)
+
+                    Text("Öffne Bedienungshilfen und aktiviere Blitztext. Falls Blitztext schon aktiv ist, einmal aus- und wieder einschalten.")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button("Bedienungshilfen öffnen") {
+                    appState.requestAccessibilityPermission()
+                }
+                .buttonStyle(SubtleButtonStyle())
+
+                Button("Erneut prüfen") {
+                    appState.refreshAccessibilityPermission()
+                }
+                .buttonStyle(SubtleButtonStyle())
+            }
+        }
+    }
+
+    // MARK: Groq API Key
+    private var groqKeySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                SectionLabel(text: "Groq API Key")
+                Spacer()
+                if appState.hasValue(for: .groqAPIKey) && !editingGroqKey {
+                    Button("Aendern") { editingGroqKey = true }
+                        .font(.system(size: 10, weight: .medium))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
+                }
+            }
+
+            if appState.hasValue(for: .groqAPIKey) && !editingGroqKey {
+                HStack(spacing: 6) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.green.opacity(0.8))
+                    Text(appState.apiKeyDisplayValue(for: .groqAPIKey))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                )
+            } else {
+                HStack(spacing: 8) {
+                    SecureField("gsk_...", text: $groqAPIKey)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11.5))
+                        .focused($focusedField, equals: .groqAPIKey)
+                        .onSubmit { save() }
+
+                    Button("Einfuegen") {
+                        pasteGroqKeyFromClipboard()
+                    }
+                    .buttonStyle(SubtleButtonStyle())
+                }
+            }
+
+            Text("Optional. Schnellere Transkription über Groq, solange das Tages-Kontingent reicht. Danach automatisch OpenAI.")
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: OpenAI API Key
+    private var openAIKeySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                SectionLabel(text: "OpenAI API Key")
+                Spacer()
+                if appState.hasValue(for: .openAIAPIKey) && !editingAPIKey {
+                    Button("Aendern") { editingAPIKey = true }
+                        .font(.system(size: 10, weight: .medium))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
+                }
+            }
+
+            if appState.hasValue(for: .openAIAPIKey) && !editingAPIKey {
+                HStack(spacing: 6) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.green.opacity(0.8))
+                    Text(appState.apiKeyDisplayValue(for: .openAIAPIKey))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                )
+            } else {
+                HStack(spacing: 8) {
+                    SecureField("sk-...", text: $openAIAPIKey)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11.5))
+                        .focused($focusedField, equals: .openAIAPIKey)
+
+                    Button("Einfuegen") {
+                        pasteAPIKeyFromClipboard()
+                    }
+                    .buttonStyle(SubtleButtonStyle())
+                }
+            }
+
+            Text("Dein Key bleibt lokal in dieser App. Audio und Text werden direkt an die OpenAI API gesendet.")
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

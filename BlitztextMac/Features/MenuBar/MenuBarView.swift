@@ -16,7 +16,7 @@ struct MenuBarView: View {
                 workflowPage
             }
         }
-        .frame(width: appState.page == .settings ? 580 : 340)
+        .frame(width: appState.page == .settings ? 680 : 340)
         .animation(.easeInOut(duration: 0.2), value: appState.page)
     }
 
