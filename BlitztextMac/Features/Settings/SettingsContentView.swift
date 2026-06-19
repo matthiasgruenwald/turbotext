@@ -81,7 +81,7 @@ private struct SettingsSidebarView: View {
 
 // MARK: - Section Label (quiet style)
 
-private struct SectionLabel: View {
+struct SectionLabel: View {
     let text: String
 
     var body: some View {
@@ -96,7 +96,6 @@ private struct SectionLabel: View {
 struct TranscriptionSettingsView: View {
     @Bindable var appState: AppState
     @State private var availableDevices: [AudioInputDevice] = []
-    @AppStorage("selectedMicUID") private var selectedMicUID: String = ""
 
     private var installedLocalModels: [LocalTranscriptionModel] {
         LocalTranscriptionService.installedModels()
@@ -178,18 +177,10 @@ struct TranscriptionSettingsView: View {
             }
 
             // MARK: Mikrofon
-            VStack(alignment: .leading, spacing: 10) {
-                SectionLabel(text: "Mikrofon")
-
-                Picker("", selection: $selectedMicUID) {
-                    Text("System-Standard").tag("")
-                    ForEach(availableDevices) { device in
-                        Text(device.name).tag(device.uid)
-                    }
-                }
-                .labelsHidden()
-                .controlSize(.small)
-            }
+            MicrophoneFavoritesSectionView(
+                store: appState.microphoneFavoritesStore,
+                availableDevices: availableDevices
+            )
         }
         .padding(16)
         .onAppear {
