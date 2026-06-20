@@ -8,6 +8,44 @@ enum MenuBarStatus: Equatable {
     case error(WorkflowType?)
 }
 
+/// Which cloud-mode marker the idle menu bar icon should show.
+/// `.none` covers both secure-local mode and not-yet-configured states.
+enum MenuBarCloudIndicator: Equatable {
+    case none
+    case groqReady
+    case openAIFallback
+
+    static func resolve(secureLocalModeEnabled: Bool, hasGroqKey: Bool, fallbackActive: Bool) -> MenuBarCloudIndicator {
+        if secureLocalModeEnabled { return .none }
+        if hasGroqKey && !fallbackActive { return .groqReady }
+        return .openAIFallback
+    }
+}
+
+/// Idle-state tooltip text. Missing permissions take precedence over quota info,
+/// since they're the more urgent reason Turbotext might not work as expected.
+enum MenuBarIdleTooltip {
+    static func text(
+        accessibilityGranted: Bool,
+        inputMonitoringGranted: Bool,
+        cloudIndicator: MenuBarCloudIndicator,
+        groqQuotaRemaining: String?
+    ) -> String {
+        var missing: [String] = []
+        if !accessibilityGranted { missing.append("Bedienungshilfen fehlen") }
+        if !inputMonitoringGranted { missing.append("Tastaturüberwachung fehlt") }
+
+        guard missing.isEmpty else {
+            return "Turbotext eingeschränkt: \(missing.joined(separator: ", "))"
+        }
+
+        guard cloudIndicator == .groqReady, let groqQuotaRemaining else {
+            return "Turbotext ist bereit"
+        }
+        return "Turbotext ist bereit · noch \(groqQuotaRemaining) Groq-Kontingent"
+    }
+}
+
 @MainActor
 final class MenuBarStatusController {
     private weak var button: NSStatusBarButton?
@@ -15,7 +53,9 @@ final class MenuBarStatusController {
     private var animationFrame = 0
     private var currentStatus: MenuBarStatus = .idle
 
-    private var paidModeActive = false
+    private var cloudIndicator: MenuBarCloudIndicator = .none
+    private var accessibilityGranted = false
+    private var inputMonitoringGranted = false
 
     func attach(to button: NSStatusBarButton) {
         self.button = button
@@ -31,9 +71,17 @@ final class MenuBarStatusController {
         renderCurrentStatus()
     }
 
-    func setPaidMode(_ active: Bool) {
-        guard paidModeActive != active else { return }
-        paidModeActive = active
+    func setCloudIndicator(_ indicator: MenuBarCloudIndicator) {
+        guard cloudIndicator != indicator else { return }
+        cloudIndicator = indicator
+        renderCurrentStatus()
+    }
+
+    func setPermissions(accessibilityGranted: Bool, inputMonitoringGranted: Bool) {
+        guard self.accessibilityGranted != accessibilityGranted
+            || self.inputMonitoringGranted != inputMonitoringGranted else { return }
+        self.accessibilityGranted = accessibilityGranted
+        self.inputMonitoringGranted = inputMonitoringGranted
         renderCurrentStatus()
     }
 
@@ -71,7 +119,7 @@ final class MenuBarStatusController {
 
     private func renderCurrentStatus() {
         guard let button else { return }
-        button.image = MenuBarStatusIconRenderer.makeImage(for: currentStatus, frame: animationFrame, isPaidMode: paidModeActive)
+        button.image = MenuBarStatusIconRenderer.makeImage(for: currentStatus, frame: animationFrame, cloudIndicator: cloudIndicator)
         button.image?.isTemplate = true
         button.toolTip = tooltip(for: currentStatus)
     }
@@ -79,7 +127,12 @@ final class MenuBarStatusController {
     private func tooltip(for status: MenuBarStatus) -> String {
         switch status {
         case .idle:
-            return "Turbotext ist bereit"
+            return MenuBarIdleTooltip.text(
+                accessibilityGranted: accessibilityGranted,
+                inputMonitoringGranted: inputMonitoringGranted,
+                cloudIndicator: cloudIndicator,
+                groqQuotaRemaining: GroqQuotaStore.shared.formattedRemaining
+            )
         case .recording(let type):
             return "\(type.displayName): Aufnahme läuft"
         case .processing(let type):
@@ -103,8 +156,8 @@ final class MenuBarStatusController {
 }
 
 private enum MenuBarStatusIconRenderer {
-    static func makeImage(for status: MenuBarStatus, frame: Int, isPaidMode: Bool = false) -> NSImage {
-        if case .idle = status, let baseImage = baseTemplateImage(), !isPaidMode {
+    static func makeImage(for status: MenuBarStatus, frame: Int, cloudIndicator: MenuBarCloudIndicator = .none) -> NSImage {
+        if case .idle = status, let baseImage = baseTemplateImage(), cloudIndicator == .none {
             return baseImage
         }
 
@@ -114,7 +167,12 @@ private enum MenuBarStatusIconRenderer {
 
             switch status {
             case .idle:
-                if isPaidMode {
+                switch cloudIndicator {
+                case .none:
+                    break
+                case .groqReady:
+                    drawGroqReadyDot(in: bounds)
+                case .openAIFallback:
                     drawPaidModeDot(in: bounds)
                 }
             case .recording(let type):
@@ -151,6 +209,21 @@ private enum MenuBarStatusIconRenderer {
         let dotRect = CGRect(
             x: bounds.maxX - dotSize - 0.8,
             y: bounds.maxY - dotSize - 0.8,
+            width: dotSize,
+            height: dotSize
+        )
+        let path = NSBezierPath(ovalIn: dotRect)
+        NSColor.black.withAlphaComponent(0.85).setFill()
+        path.fill()
+    }
+
+    // Bottom-left corner, filled (mirrors drawPaidModeDot's top-right placement) so the
+    // two indicators stay distinguishable even rendered tiny in a monochrome template icon.
+    private static func drawGroqReadyDot(in bounds: CGRect) {
+        let dotSize: CGFloat = 3.5
+        let dotRect = CGRect(
+            x: bounds.minX + 0.8,
+            y: bounds.minY + 0.8,
             width: dotSize,
             height: dotSize
         )

@@ -46,10 +46,12 @@ struct WorkflowRowView: View {
                             Text("oder")
                                 .font(.system(size: 9, weight: .medium))
                                 .foregroundStyle(.tertiary)
+                                .fixedSize()
                         }
                         HotkeyBadge(label: shortcut.displayText, enabled: enabled)
                     }
                 }
+                .layoutPriority(1)
                 .opacity(enabled ? 1 : 0.4)
             }
             .padding(.horizontal, 12)
@@ -86,6 +88,7 @@ struct HotkeyBadge: View {
                 Text(key)
                     .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                     .foregroundStyle(keyTextColor)
+                    .fixedSize()
                     .padding(.horizontal, 7)
                     .padding(.vertical, 4)
                     .background(

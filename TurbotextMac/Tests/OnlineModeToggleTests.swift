@@ -30,4 +30,14 @@ final class OnlineModeToggleTests: XCTestCase {
         XCTAssertTrue(OnlineModeToggle.isToggleEnabled(secureLocalModeEnabled: true, localModelInstalled: false))
         XCTAssertTrue(OnlineModeToggle.isToggleEnabled(secureLocalModeEnabled: true, localModelInstalled: true))
     }
+
+    func testDisabledReasonExplainsMissingModelWhileOnline() {
+        let reason = OnlineModeToggle.disabledReason(secureLocalModeEnabled: false, localModelInstalled: false)
+        XCTAssertEqual(reason, "Lokales Modell muss erst installiert werden, um offline zu wechseln.")
+    }
+
+    func testDisabledReasonIsNilWhenToggleEnabled() {
+        XCTAssertNil(OnlineModeToggle.disabledReason(secureLocalModeEnabled: false, localModelInstalled: true))
+        XCTAssertNil(OnlineModeToggle.disabledReason(secureLocalModeEnabled: true, localModelInstalled: false))
+    }
 }
