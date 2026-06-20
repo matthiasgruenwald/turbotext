@@ -133,6 +133,17 @@ final class AppState {
         }
     }
 
+    var groqFallbackBannerContent: (title: String, detail: String)? {
+        guard !appSettings.secureLocalModeEnabled, GroqQuotaStore.shared.fallbackActive else { return nil }
+        var detail = "OpenAI Whisper aktiv."
+        if let resetAt = GroqQuotaStore.shared.rateLimitResetAt {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            detail += " Groq zurück um \(formatter.string(from: resetAt))."
+        }
+        return (title: "Groq-Kontingent aufgebraucht", detail: detail)
+    }
+
     func workflowSubtitle(for type: WorkflowType) -> String {
         switch type {
         case .transcription:
