@@ -129,6 +129,86 @@ enum GroqTranscriptionService {
         }.value
     }
 
+    /// Lightweight proactive quota check: posts a near-silent clip to fill in
+    /// `x-ratelimit-remaining-audio-seconds` before any real transcription happens.
+    static func checkQuota(apiKey: String) async throws -> GroqRateLimitInfo {
+        return try await Task.detached(priority: .utility) {
+            let boundary = UUID().uuidString
+            var request = URLRequest(url: transcriptionsURL)
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+            request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            request.timeoutInterval = 15
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+
+            var body = Data()
+            body.append("--\(boundary)\r\n")
+            body.append("Content-Disposition: form-data; name=\"file\"; filename=\"quota-check.wav\"\r\n")
+            body.append("Content-Type: audio/wav\r\n\r\n")
+            body.append(silentWavData)
+            body.append("\r\n")
+
+            body.append("--\(boundary)\r\n")
+            body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
+            body.append(model)
+            body.append("\r\n")
+
+            body.append("--\(boundary)--\r\n")
+            request.httpBody = body
+
+            let (_, response) = try await session.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw GroqTranscriptionError.networkError("Ungueltige Antwort")
+            }
+
+            if httpResponse.statusCode == 429 {
+                throw GroqTranscriptionError.rateLimitExceeded(resetAt: parseResetDate(from: httpResponse))
+            }
+
+            return GroqRateLimitInfo(
+                remainingAudioSeconds: parseRemainingSeconds(from: httpResponse),
+                resetAt: parseResetDate(from: httpResponse)
+            )
+        }.value
+    }
+
+    /// 100ms of silence at 16kHz mono — minimal real audio so Groq returns
+    /// rate-limit headers without meaningfully spending the user's quota.
+    private static let silentWavData: Data = makeSilentWav(durationSeconds: 0.1, sampleRate: 16000)
+
+    private static func makeSilentWav(durationSeconds: Double, sampleRate: Int) -> Data {
+        let bytesPerSample = 2
+        let numSamples = Int(durationSeconds * Double(sampleRate))
+        let dataSize = numSamples * bytesPerSample
+
+        func littleEndian(_ value: UInt32) -> Data {
+            var v = value.littleEndian
+            return Data(bytes: &v, count: 4)
+        }
+        func littleEndian(_ value: UInt16) -> Data {
+            var v = value.littleEndian
+            return Data(bytes: &v, count: 2)
+        }
+
+        var wav = Data()
+        wav.append("RIFF")
+        wav.append(littleEndian(UInt32(36 + dataSize)))
+        wav.append("WAVE")
+        wav.append("fmt ")
+        wav.append(littleEndian(UInt32(16)))
+        wav.append(littleEndian(UInt16(1))) // PCM
+        wav.append(littleEndian(UInt16(1))) // mono
+        wav.append(littleEndian(UInt32(sampleRate)))
+        wav.append(littleEndian(UInt32(sampleRate * bytesPerSample)))
+        wav.append(littleEndian(UInt16(bytesPerSample)))
+        wav.append(littleEndian(UInt16(16))) // bits per sample
+        wav.append("data")
+        wav.append(littleEndian(UInt32(dataSize)))
+        wav.append(Data(count: dataSize))
+        return wav
+    }
+
     private static func groqErrorMessage(from data: Data) -> String? {
         (try? JSONDecoder().decode(GroqErrorResponse.self, from: data))?.error?.message
     }
