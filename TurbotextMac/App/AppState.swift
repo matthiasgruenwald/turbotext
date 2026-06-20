@@ -30,6 +30,7 @@ final class AppState {
     var localModelDownloadErrorText: String?
     var onMenuBarStatusChange: ((MenuBarStatus) -> Void)?
     var onPreferredContentSizeChange: ((CGSize) -> Void)?
+    var requestedSettingsSection: SettingsSection?
     private var activeLaunchSource: WorkflowLaunchSource = .manual
     private var activePasteTarget: PasteTarget?
     private var lastPopoverPasteTarget: PasteTarget?
@@ -77,6 +78,18 @@ final class AppState {
 
     var currentPhase: WorkflowPhase {
         activeWorkflow?.phase ?? .idle
+    }
+
+    func openMicrophoneSettings() {
+        requestedSettingsSection = .transcription
+        page = .settings
+    }
+
+    var activeMicrophoneDisplayName: String {
+        microphoneFavoritesStore.activeDeviceDisplayName(
+            availableDevices: MicrophoneService.availableInputDevices(),
+            defaultDeviceID: MicrophoneService.defaultInputDeviceID()
+        )
     }
 
     init() {

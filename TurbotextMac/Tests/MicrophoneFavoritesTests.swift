@@ -70,6 +70,58 @@ final class MicrophoneFavoritesSelectionTests: XCTestCase {
     }
 }
 
+// MARK: - MicrophoneFavoritesStore active device display name
+
+final class MicrophoneFavoritesActiveDisplayNameTests: XCTestCase {
+
+    private func makeStore() -> MicrophoneFavoritesStore {
+        MicrophoneFavoritesStore(
+            favoritesKey: "test_favorites_\(UUID().uuidString)",
+            useSystemDefaultKey: "test_useSystemDefault_\(UUID().uuidString)"
+        )
+    }
+
+    private func device(_ uid: String, name: String? = nil) -> AudioInputDevice {
+        AudioInputDevice(id: AudioDeviceID(abs(uid.hashValue) % Int(UInt32.max)), name: name ?? uid, uid: uid)
+    }
+
+    func testUsesTopFavoriteNameWhenNotUsingSystemDefault() {
+        let store = makeStore()
+        store.addFavorite(uid: "built-in")
+        let available = [device("built-in", name: "MacBook Mikrofon")]
+
+        let name = store.activeDeviceDisplayName(availableDevices: available, defaultDeviceID: nil)
+
+        XCTAssertEqual(name, "MacBook Mikrofon")
+    }
+
+    func testFallsBackToDefaultDeviceNameWhenUsingSystemDefault() {
+        let store = makeStore()
+        store.useSystemDefault = true
+        let defaultDevice = device("built-in", name: "MacBook Mikrofon")
+
+        let name = store.activeDeviceDisplayName(availableDevices: [defaultDevice], defaultDeviceID: defaultDevice.id)
+
+        XCTAssertEqual(name, "MacBook Mikrofon")
+    }
+
+    func testFallsBackToDefaultDeviceNameWhenFavoriteUnavailable() {
+        let store = makeStore()
+        store.addFavorite(uid: "docking-station")
+        let defaultDevice = device("built-in", name: "MacBook Mikrofon")
+
+        let name = store.activeDeviceDisplayName(availableDevices: [defaultDevice], defaultDeviceID: defaultDevice.id)
+
+        XCTAssertEqual(name, "MacBook Mikrofon")
+    }
+
+    func testFallsBackToPlaceholderWhenNothingResolves() {
+        let store = makeStore()
+        let name = store.activeDeviceDisplayName(availableDevices: [], defaultDeviceID: nil)
+        XCTAssertEqual(name, "Mikrofon")
+    }
+}
+
 // MARK: - MicrophoneFavoritesStore mutation
 
 final class MicrophoneFavoritesStoreTests: XCTestCase {

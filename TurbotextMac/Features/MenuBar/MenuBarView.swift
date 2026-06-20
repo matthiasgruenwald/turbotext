@@ -147,6 +147,8 @@ struct MenuBarView: View {
             }
             .padding(.vertical, 2)
 
+            Spacer(minLength: 0)
+
             appFooter
         }
     }
@@ -177,9 +179,13 @@ struct MenuBarView: View {
                 Spacer(minLength: 4)
 
                 Toggle("", isOn: Binding(
-                    get: { appState.appSettings.secureLocalModeEnabled },
-                    set: { newValue in
-                        if newValue {
+                    get: { !appState.appSettings.secureLocalModeEnabled },
+                    set: { requestedOnline in
+                        guard let next = OnlineModeToggle.nextSecureLocalModeEnabled(
+                            requestedOnline: requestedOnline,
+                            localModelInstalled: selectedModelInstalled
+                        ) else { return }
+                        if next {
                             appState.enableSecureLocalMode()
                         } else {
                             appState.appSettings.secureLocalModeEnabled = false
@@ -189,7 +195,13 @@ struct MenuBarView: View {
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)
-                .disabled(appState.isDownloadingLocalModel)
+                .disabled(
+                    appState.isDownloadingLocalModel
+                        || !OnlineModeToggle.isToggleEnabled(
+                            secureLocalModeEnabled: appState.appSettings.secureLocalModeEnabled,
+                            localModelInstalled: selectedModelInstalled
+                        )
+                )
             }
 
             if appState.appSettings.secureLocalModeEnabled {
@@ -329,7 +341,22 @@ struct MenuBarView: View {
     }
 
     private var configuredHeader: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
+            Button {
+                appState.openMicrophoneSettings()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Text(appState.activeMicrophoneDisplayName)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .buttonStyle(SubtleButtonStyle())
+
             Circle()
                 .fill(.green)
                 .frame(width: 7, height: 7)
@@ -696,7 +723,7 @@ struct MenuBarView: View {
                 NSApplication.shared.terminate(nil)
             }
             .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(.quaternary)
+            .foregroundStyle(.secondary)
             .buttonStyle(SubtleButtonStyle())
             Spacer()
         }

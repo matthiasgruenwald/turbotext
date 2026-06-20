@@ -48,9 +48,14 @@ struct SettingsContentView: View {
         .onPreferenceChange(SettingsContentHeightKey.self) { measuredContentHeight = $0 }
         .onAppear {
             appState.refreshAccessibilityPermission()
-            selectedSection = SettingsSection.defaultSection(
-                accessibilityPermissionGranted: appState.accessibilityPermissionGranted
-            )
+            if let requestedSection = appState.requestedSettingsSection {
+                selectedSection = requestedSection
+                appState.requestedSettingsSection = nil
+            } else {
+                selectedSection = SettingsSection.defaultSection(
+                    accessibilityPermissionGranted: appState.accessibilityPermissionGranted
+                )
+            }
         }
     }
 
