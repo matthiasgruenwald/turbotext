@@ -484,7 +484,11 @@ struct ShortcutsSettingsView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(appState.displayName(for: type))
                                 .font(.system(size: 11.5, weight: .medium))
-                            WorkflowShortcutListView(type: type, store: appState.shortcutStore)
+                            WorkflowShortcutListView(
+                                type: type,
+                                store: appState.shortcutStore,
+                                inputMonitoringGranted: appState.inputMonitoringPermissionGranted
+                            )
                         }
                     }
                 }
@@ -764,6 +768,10 @@ struct AppManagementSettingsView: View {
 
             Divider()
 
+            inputMonitoringPermissionSection
+
+            Divider()
+
             HStack(alignment: .top, spacing: 20) {
                 updatesSection
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -812,6 +820,43 @@ struct AppManagementSettingsView: View {
             HStack(spacing: 8) {
                 Button("Bedienungshilfen öffnen") {
                     appState.requestAccessibilityPermission()
+                }
+                .buttonStyle(SubtleButtonStyle())
+
+                Button("Erneut prüfen") {
+                    appState.refreshAccessibilityPermission()
+                }
+                .buttonStyle(SubtleButtonStyle())
+            }
+        }
+    }
+
+    // MARK: Tastaturüberwachung
+    private var inputMonitoringPermissionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel(text: "Tastaturüberwachung")
+
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: appState.inputMonitoringPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(appState.inputMonitoringPermissionGranted ? .green : .orange)
+                    .frame(width: 18, height: 18)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(appState.inputMonitoringPermissionGranted ? "Tastatur-Tastenkürzel sind freigegeben." : "Tastatur-Tastenkürzel (z. B. F5) sind noch nicht freigegeben.")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(.primary)
+
+                    Text("Öffne Tastaturüberwachung und aktiviere Turbotext, sonst funktionieren Tastenkürzel mit einer Taste (z. B. F5) nicht. Reine Modifikator-Kürzel (z. B. fn+⇧) sind nicht betroffen.")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button("Tastaturüberwachung öffnen") {
+                    appState.requestInputMonitoringPermission()
                 }
                 .buttonStyle(SubtleButtonStyle())
 

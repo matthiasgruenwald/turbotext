@@ -533,6 +533,18 @@ final class AppState {
         }
     }
 
+    func requestInputMonitoringPermission() {
+        inputMonitoringPermissionGranted = InputMonitoringPermissionService.requestPermissionPrompt()
+        InputMonitoringPermissionService.openSystemSettings()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.refreshAccessibilityPermission()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            self?.refreshAccessibilityPermission()
+        }
+    }
+
     private func autoSelectFastLocalModelIfNeeded() {
         guard !appSettings.hasAutoSelectedFastLocalModel,
               LocalTranscriptionService.shouldAutoSelectRecommendedFastModel(
