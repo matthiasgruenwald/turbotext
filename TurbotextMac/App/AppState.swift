@@ -144,7 +144,11 @@ final class AppState {
             }
             let store = GroqQuotaStore.shared
             let hasGroqKey = KeychainService.load(key: .groqAPIKey) != nil
-            if hasGroqKey && !store.fallbackActive { return "Online: Groq Whisper." }
+            if hasGroqKey {
+                if store.fallbackActive { return "Online: OpenAI Whisper · Groq aufgebraucht." }
+                if let remaining = store.formattedRemaining { return "Online: Groq Whisper · noch \(remaining)" }
+                return "Online: Groq Whisper."
+            }
             return "Online: OpenAI Whisper."
         case .localTranscription:
             return "Nur lokal. Kein Server."
