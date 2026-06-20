@@ -458,6 +458,7 @@ struct MenuBarView: View {
                     onboardingStep(number: "1", title: "OpenAI Key speichern", detail: "Öffne die Einstellungen und trage deinen eigenen OpenAI API Key ein.")
                     onboardingStep(number: "2", title: "Berechtigungen erlauben", detail: "Mikrofon und Bedienungshilfen für das Einfügen freigeben.")
                     onboardingStep(number: "3", title: "Workflow wählen", detail: "Turbotext oder einen der Verbesserer-Workflows direkt aus der Menüleiste starten.")
+                    onboardingGroqStep
                 }
 
                 HStack(spacing: 8) {
@@ -560,6 +561,52 @@ struct MenuBarView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var onboardingGroqStep: some View {
+        switch appState.groqOnboardingState {
+        case .missing:
+            HStack(alignment: .top, spacing: 10) {
+                Text("+")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+                    .background(
+                        Circle()
+                            .fill(Color.primary.opacity(0.05))
+                    )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Optional: Groq Key für mehr Tempo")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text("Kostenloses Tier auf console.groq.com. Ohne Groq Key läuft Turbotext über den erforderlichen OpenAI Key weiter.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Link("console.groq.com öffnen", destination: URL(string: "https://console.groq.com")!)
+                        .font(.system(size: 11, weight: .medium))
+                }
+            }
+        case .configured:
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.green)
+                    .frame(width: 18, height: 18)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Groq Key gespeichert")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text("Optionales Schnell-Tier ist aktiv.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }

@@ -75,6 +75,9 @@ final class AppState {
     var shouldShowOnboarding: Bool {
         !isConfigured && !appSettings.hasSeenOnboarding
     }
+    var groqOnboardingState: GroqOnboardingState {
+        GroqOnboardingState.resolve(hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil)
+    }
 
     var currentPhase: WorkflowPhase {
         activeWorkflow?.phase ?? .idle
