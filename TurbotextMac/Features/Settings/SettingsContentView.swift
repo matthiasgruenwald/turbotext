@@ -756,15 +756,7 @@ struct AppManagementSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 20) {
-                permissionsSection
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Divider()
-
-                installationSection
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            permissionsSection
 
             Divider()
 
@@ -772,19 +764,22 @@ struct AppManagementSettingsView: View {
 
             Divider()
 
-            HStack(alignment: .top, spacing: 20) {
-                updatesSection
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            updatesSection
 
-                Divider()
+            Divider()
 
-                launchAtLoginSection
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            launchAtLoginSection
 
             Divider()
 
             hintSection
+
+            Divider()
+
+            installationSection
+
+            Divider()
+
             cleanupSection
         }
         .padding(16)

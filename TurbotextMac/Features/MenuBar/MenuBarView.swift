@@ -12,6 +12,7 @@ struct MenuBarView: View {
     @Bindable var appState: AppState
     @State private var settingsContentHeight: CGFloat = 0
     @State private var mainContentHeight: CGFloat = 0
+    @State private var showInputMonitoringDismissConfirmation = false
 
     private static let settingsChromeHeight: CGFloat = 140
     private static let settingsMinHeight: CGFloat = 420
@@ -87,6 +88,18 @@ struct MenuBarView: View {
         }
         .onAppear {
             appState.onPreferredContentSizeChange?(preferredSize)
+        }
+        .confirmationDialog(
+            "Hinweis weiterhin anzeigen?",
+            isPresented: $showInputMonitoringDismissConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Nicht mehr anzeigen", role: .destructive) {
+                appState.dismissInputMonitoringHintPermanently()
+            }
+            Button("Weiterhin anzeigen", role: .cancel) {}
+        } message: {
+            Text("Du findest den Status jederzeit unter Einstellungen → App-Verwaltung.")
         }
     }
 
@@ -166,6 +179,12 @@ struct MenuBarView: View {
 
             if !appState.accessibilityPermissionGranted {
                 accessibilityHintBanner
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
+            }
+
+            if appState.shouldShowInputMonitoringHint {
+                inputMonitoringHintBanner
                     .padding(.horizontal, 16)
                     .padding(.bottom, 6)
             }
@@ -391,6 +410,53 @@ struct MenuBarView: View {
                 appState.requestAccessibilityPermission()
             }
             .font(.system(size: 10.5, weight: .medium))
+            .buttonStyle(SubtleButtonStyle())
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.orange.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.orange.opacity(0.12), lineWidth: 0.5)
+        )
+    }
+
+    private var inputMonitoringHintBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "keyboard.badge.exclamationmark")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.orange)
+                .frame(width: 18, height: 18)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Tastaturüberwachung freigeben (nur für eigene Hotkeys nötig).")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Text("Turbotext steht dort evtl. nicht in der Liste — über + hinzufügen.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            Button("Öffnen") {
+                appState.requestInputMonitoringPermission()
+            }
+            .font(.system(size: 10.5, weight: .medium))
+            .buttonStyle(SubtleButtonStyle())
+
+            Button {
+                showInputMonitoringDismissConfirmation = true
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, height: 16)
+            }
             .buttonStyle(SubtleButtonStyle())
         }
         .padding(10)
