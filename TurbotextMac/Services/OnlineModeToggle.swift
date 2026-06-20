@@ -12,4 +12,11 @@ enum OnlineModeToggle {
     static func isToggleEnabled(secureLocalModeEnabled: Bool, localModelInstalled: Bool) -> Bool {
         secureLocalModeEnabled || localModelInstalled
     }
+
+    static func disabledReason(secureLocalModeEnabled: Bool, localModelInstalled: Bool) -> String? {
+        guard !isToggleEnabled(secureLocalModeEnabled: secureLocalModeEnabled, localModelInstalled: localModelInstalled) else {
+            return nil
+        }
+        return "Lokales Modell muss erst installiert werden, um offline zu wechseln."
+    }
 }
