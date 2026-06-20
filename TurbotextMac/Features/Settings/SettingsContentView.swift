@@ -510,6 +510,10 @@ struct CredentialsSettingsView: View {
         return trimmed.range(of: pattern, options: .regularExpression) != nil ? trimmed : nil
     }
 
+    static func shouldShowCancelButton(hasExistingValue: Bool, isEditing: Bool) -> Bool {
+        hasExistingValue && isEditing
+    }
+
     @Bindable var appState: AppState
 
     private enum FieldFocus {
