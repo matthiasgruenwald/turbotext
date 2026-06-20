@@ -36,6 +36,7 @@ final class AppState {
     private var lastPopoverPasteTarget: PasteTarget?
     private var menuBarStatusResetTask: Task<Void, Never>?
     private var workflowCleanupTask: Task<Void, Never>?
+    private var isCheckingGroqQuota = false
 
     // Persisted settings
     var appSettings: AppSettings {
@@ -113,6 +114,34 @@ final class AppState {
         prewarmLocalTranscriptionIfNeeded()
         microphoneAutoSelectionService.start()
         networkPingService.start()
+        checkGroqQuotaIfNeeded()
+    }
+
+    func checkGroqQuotaIfNeeded() {
+        guard !isCheckingGroqQuota else { return }
+        guard let apiKey = KeychainService.load(key: .groqAPIKey) else { return }
+        let store = GroqQuotaStore.shared
+        guard GroqQuotaCheckScheduler.shouldCheck(
+            hasGroqKey: true,
+            secureLocalModeEnabled: appSettings.secureLocalModeEnabled,
+            remainingAudioSeconds: store.remainingAudioSeconds,
+            fallbackActive: store.fallbackActive
+        ) else { return }
+
+        isCheckingGroqQuota = true
+        Task { @MainActor [weak self] in
+            defer { self?.isCheckingGroqQuota = false }
+            do {
+                let info = try await GroqTranscriptionService.checkQuota(apiKey: apiKey)
+                if let remaining = info.remainingAudioSeconds, let resetAt = info.resetAt {
+                    store.update(remainingSeconds: remaining, resetAt: resetAt)
+                }
+            } catch GroqTranscriptionError.rateLimitExceeded(let resetAt) {
+                store.activateFallback(resetAt: resetAt)
+            } catch {
+                // Best-effort check; a real transcription will fill the quota later.
+            }
+        }
     }
 
     // MARK: - Custom Display Names
@@ -142,6 +171,14 @@ final class AppState {
             detail += " Groq zurück um \(formatter.string(from: resetAt))."
         }
         return (title: "Groq-Kontingent aufgebraucht", detail: detail)
+    }
+
+    var onlineKeyHintBannerContent: (title: String, detail: String)? {
+        OnlineKeyHintBanner.content(
+            secureLocalModeEnabled: appSettings.secureLocalModeEnabled,
+            hasAnyAPIKey: KeychainService.load(key: .openAIAPIKey) != nil
+                || KeychainService.load(key: .groqAPIKey) != nil
+        )
     }
 
     func workflowSubtitle(for type: WorkflowType) -> String {
@@ -379,6 +416,7 @@ final class AppState {
     }
 
     func prepareForPopoverPresentation() {
+        checkGroqQuotaIfNeeded()
         lastPopoverPasteTarget = captureCurrentFrontmostApp()
         if let activeWorkflow, activeWorkflow.phase.isActive {
             page = .workflow

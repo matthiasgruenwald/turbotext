@@ -136,6 +136,12 @@ struct MenuBarView: View {
                     .padding(.bottom, 6)
             }
 
+            if let hint = appState.onlineKeyHintBannerContent {
+                onlineKeyHintBanner(title: hint.title, detail: hint.detail)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
+            }
+
             // Workflow list
             VStack(spacing: 0) {
                 ForEach(WorkflowType.mainMenuCases) { type in
@@ -331,6 +337,44 @@ struct MenuBarView: View {
 
             Button("Öffnen") {
                 appState.requestAccessibilityPermission()
+            }
+            .font(.system(size: 10.5, weight: .medium))
+            .buttonStyle(SubtleButtonStyle())
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.orange.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.orange.opacity(0.12), lineWidth: 0.5)
+        )
+    }
+
+    private func onlineKeyHintBanner(title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "key.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.orange)
+                .frame(width: 18, height: 18)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Text(detail)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            Button("Öffnen") {
+                appState.requestedSettingsSection = .credentials
+                appState.page = .settings
             }
             .font(.system(size: 10.5, weight: .medium))
             .buttonStyle(SubtleButtonStyle())
