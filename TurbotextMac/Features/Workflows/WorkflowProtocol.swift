@@ -112,19 +112,22 @@ struct AppSettings: Codable {
     var secureLocalModeEnabled: Bool = false
     var selectedLocalTranscriptionModelName: String = LocalTranscriptionService.recommendedFastModelName
     var hasAutoSelectedFastLocalModel: Bool = false
+    var hasDismissedInputMonitoringHint: Bool = false
 
     init(
         hotkeyMode: HotkeyMode = .hold,
         hasSeenOnboarding: Bool = false,
         secureLocalModeEnabled: Bool = false,
         selectedLocalTranscriptionModelName: String = LocalTranscriptionService.recommendedFastModelName,
-        hasAutoSelectedFastLocalModel: Bool = false
+        hasAutoSelectedFastLocalModel: Bool = false,
+        hasDismissedInputMonitoringHint: Bool = false
     ) {
         self.hotkeyMode = hotkeyMode
         self.hasSeenOnboarding = hasSeenOnboarding
         self.secureLocalModeEnabled = secureLocalModeEnabled
         self.selectedLocalTranscriptionModelName = selectedLocalTranscriptionModelName
         self.hasAutoSelectedFastLocalModel = hasAutoSelectedFastLocalModel
+        self.hasDismissedInputMonitoringHint = hasDismissedInputMonitoringHint
     }
 
     enum CodingKeys: String, CodingKey {
@@ -133,6 +136,7 @@ struct AppSettings: Codable {
         case secureLocalModeEnabled
         case selectedLocalTranscriptionModelName
         case hasAutoSelectedFastLocalModel
+        case hasDismissedInputMonitoringHint
     }
 
     init(from decoder: Decoder) throws {
@@ -147,6 +151,10 @@ struct AppSettings: Codable {
         hasAutoSelectedFastLocalModel = try container.decodeIfPresent(
             Bool.self,
             forKey: .hasAutoSelectedFastLocalModel
+        ) ?? false
+        hasDismissedInputMonitoringHint = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .hasDismissedInputMonitoringHint
         ) ?? false
     }
 }

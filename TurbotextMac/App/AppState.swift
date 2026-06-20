@@ -533,6 +533,17 @@ final class AppState {
         }
     }
 
+    var shouldShowInputMonitoringHint: Bool {
+        InputMonitoringHintBanner.shouldShow(
+            inputMonitoringGranted: inputMonitoringPermissionGranted,
+            dismissed: appSettings.hasDismissedInputMonitoringHint
+        )
+    }
+
+    func dismissInputMonitoringHintPermanently() {
+        appSettings.hasDismissedInputMonitoringHint = true
+    }
+
     func requestInputMonitoringPermission() {
         inputMonitoringPermissionGranted = InputMonitoringPermissionService.requestPermissionPrompt()
         InputMonitoringPermissionService.openSystemSettings()
