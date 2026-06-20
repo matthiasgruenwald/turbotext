@@ -45,12 +45,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         appState.onPreferredContentSizeChange = { [weak self] size in
             self?.popover.contentSize = size
         }
-        GroqQuotaStore.shared.onFallbackChanged = { [weak self] active in
-            let hasGroqKey = KeychainService.load(key: .groqAPIKey) != nil
-            self?.menuBarStatusController.setPaidMode(!hasGroqKey || active)
+        appState.onCloudIndicatorRefreshNeeded = { [weak self] in
+            self?.refreshMenuBarCloudIndicator()
         }
-        let hasGroqKey = KeychainService.load(key: .groqAPIKey) != nil
-        menuBarStatusController.setPaidMode(!hasGroqKey || GroqQuotaStore.shared.fallbackActive)
+        GroqQuotaStore.shared.onFallbackChanged = { [weak self] _ in
+            self?.refreshMenuBarCloudIndicator()
+        }
+        appState.refreshAccessibilityPermission()
+        refreshMenuBarCloudIndicator()
         appState.hotkeyService.start()
 
         // Listen for popover dismiss requests (from auto-paste)
@@ -64,6 +66,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         DispatchQueue.main.async { [weak self] in
             self?.showOnboardingIfNeeded()
         }
+    }
+
+    private func refreshMenuBarCloudIndicator() {
+        let hasGroqKey = KeychainService.load(key: .groqAPIKey) != nil
+        let indicator = MenuBarCloudIndicator.resolve(
+            secureLocalModeEnabled: appState.appSettings.secureLocalModeEnabled,
+            hasGroqKey: hasGroqKey,
+            fallbackActive: GroqQuotaStore.shared.fallbackActive
+        )
+        menuBarStatusController.setCloudIndicator(indicator)
+        menuBarStatusController.setPermissions(
+            accessibilityGranted: appState.accessibilityPermissionGranted,
+            inputMonitoringGranted: appState.inputMonitoringPermissionGranted
+        )
     }
 
     @objc private func handleDismissPopover() {

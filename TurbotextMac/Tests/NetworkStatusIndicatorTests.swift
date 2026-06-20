@@ -29,4 +29,16 @@ final class NetworkStatusIndicatorTests: XCTestCase {
         let text = NetworkStatusIndicator.hoverText(averageLatencyMs: nil, packetLossPercent: 100)
         XCTAssertEqual(text, "Keine Verbindung")
     }
+
+    func testStatusLabelForGreen() {
+        XCTAssertEqual(NetworkStatusIndicator.statusLabel(for: .green), "Online")
+    }
+
+    func testStatusLabelForYellow() {
+        XCTAssertEqual(NetworkStatusIndicator.statusLabel(for: .yellow), "Eingeschränkte Verbindung")
+    }
+
+    func testStatusLabelForRed() {
+        XCTAssertEqual(NetworkStatusIndicator.statusLabel(for: .red), "Keine Verbindung")
+    }
 }

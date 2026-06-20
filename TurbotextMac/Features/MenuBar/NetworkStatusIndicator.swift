@@ -27,6 +27,7 @@ struct NetworkStatusDot: View {
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
         }
+        .help(NetworkStatusIndicator.statusLabel(for: service.status))
         .onHover { hovering in
             isHovering = hovering
         }
@@ -48,5 +49,13 @@ enum NetworkStatusIndicator {
             return "Keine Verbindung"
         }
         return "\(Int(averageLatencyMs.rounded())) ms · \(Int(packetLossPercent.rounded()))% Verlust"
+    }
+
+    static func statusLabel(for status: NetworkQualityStatus) -> String {
+        switch status {
+        case .green: return "Online"
+        case .yellow: return "Eingeschränkte Verbindung"
+        case .red: return "Keine Verbindung"
+        }
     }
 }

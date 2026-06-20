@@ -16,7 +16,12 @@ final class AppState {
     private static let concealedPasteboardType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
 
     var activeWorkflow: (any Workflow)?
-    var page: PopoverPage = .main
+    var page: PopoverPage = .main {
+        didSet {
+            guard oldValue != page else { return }
+            onCloudIndicatorRefreshNeeded?()
+        }
+    }
     var isPopoverShown = false
     var menuBarStatus: MenuBarStatus = .idle {
         didSet {
@@ -24,12 +29,24 @@ final class AppState {
             onMenuBarStatusChange?(menuBarStatus)
         }
     }
-    var accessibilityPermissionGranted = false
+    var accessibilityPermissionGranted = false {
+        didSet {
+            guard oldValue != accessibilityPermissionGranted else { return }
+            onCloudIndicatorRefreshNeeded?()
+        }
+    }
+    var inputMonitoringPermissionGranted = false {
+        didSet {
+            guard oldValue != inputMonitoringPermissionGranted else { return }
+            onCloudIndicatorRefreshNeeded?()
+        }
+    }
     var localModelDownloadProgress: Double?
     var localModelDownloadStatusText: String?
     var localModelDownloadErrorText: String?
     var onMenuBarStatusChange: ((MenuBarStatus) -> Void)?
     var onPreferredContentSizeChange: ((CGSize) -> Void)?
+    var onCloudIndicatorRefreshNeeded: (() -> Void)?
     var requestedSettingsSection: SettingsSection?
     private var activeLaunchSource: WorkflowLaunchSource = .manual
     private var activePasteTarget: PasteTarget?
@@ -43,6 +60,7 @@ final class AppState {
         didSet {
             saveSettings()
             prewarmLocalTranscriptionIfNeeded()
+            onCloudIndicatorRefreshNeeded?()
         }
     }
     var transcriptionSettings: TranscriptionSettings {
@@ -416,6 +434,7 @@ final class AppState {
     }
 
     func prepareForPopoverPresentation() {
+        refreshAccessibilityPermission()
         checkGroqQuotaIfNeeded()
         lastPopoverPasteTarget = captureCurrentFrontmostApp()
         if let activeWorkflow, activeWorkflow.phase.isActive {
@@ -499,6 +518,7 @@ final class AppState {
 
     func refreshAccessibilityPermission() {
         accessibilityPermissionGranted = AccessibilityPermissionService.currentStatus()
+        inputMonitoringPermissionGranted = InputMonitoringPermissionService.currentStatus()
     }
 
     func requestAccessibilityPermission() {

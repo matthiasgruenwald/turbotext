@@ -1,12 +1,22 @@
 import AppKit
 import SwiftUI
 
+struct MainContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct MenuBarView: View {
     @Bindable var appState: AppState
     @State private var settingsContentHeight: CGFloat = 0
+    @State private var mainContentHeight: CGFloat = 0
 
     private static let settingsChromeHeight: CGFloat = 140
     private static let settingsMinHeight: CGFloat = 420
+    private static let mainMinHeight: CGFloat = 480
+    private static let mainWidth: CGFloat = 340
     private static let screenMarginFraction: CGFloat = 0.9
 
     private var settingsHeight: CGFloat {
@@ -20,11 +30,26 @@ struct MenuBarView: View {
         )
     }
 
-    private var preferredSize: CGSize {
-        CGSize(
-            width: appState.page == .settings ? 680 : 340,
-            height: appState.page == .settings ? settingsHeight : 480
+    private var mainHeight: CGFloat {
+        let screenHeight = NSScreen.main?.visibleFrame.height ?? 900
+        return PopoverSizing.clampedHeight(
+            contentHeight: mainContentHeight,
+            chrome: 0,
+            screenHeight: screenHeight,
+            minHeight: Self.mainMinHeight,
+            screenMarginFraction: Self.screenMarginFraction
         )
+    }
+
+    private var preferredSize: CGSize {
+        switch appState.page {
+        case .settings:
+            return CGSize(width: 680, height: settingsHeight)
+        case .main:
+            return CGSize(width: Self.mainWidth, height: mainHeight)
+        case .onboarding, .workflow:
+            return CGSize(width: Self.mainWidth, height: Self.mainMinHeight)
+        }
     }
 
     var body: some View {
@@ -41,6 +66,21 @@ struct MenuBarView: View {
             }
         }
         .frame(width: preferredSize.width, height: preferredSize.height)
+        // Hidden, unconstrained copy purely to measure the main page's natural
+        // content height (toggle/banners can change row count and thus height).
+        .background(
+            mainPage
+                .frame(width: Self.mainWidth, alignment: .topLeading)
+                .fixedSize(horizontal: false, vertical: true)
+                .opacity(0)
+                .allowsHitTesting(false)
+                .background(
+                    GeometryReader { geometry in
+                        Color.clear.preference(key: MainContentHeightKey.self, value: geometry.size.height)
+                    }
+                )
+        )
+        .onPreferenceChange(MainContentHeightKey.self) { mainContentHeight = $0 }
         .animation(.easeInOut(duration: 0.2), value: appState.page)
         .onChange(of: preferredSize) { _, newSize in
             appState.onPreferredContentSizeChange?(newSize)
@@ -190,29 +230,41 @@ struct MenuBarView: View {
 
                 Spacer(minLength: 4)
 
-                Toggle("", isOn: Binding(
-                    get: { !appState.appSettings.secureLocalModeEnabled },
-                    set: { requestedOnline in
-                        guard let next = OnlineModeToggle.nextSecureLocalModeEnabled(
-                            requestedOnline: requestedOnline,
-                            localModelInstalled: selectedModelInstalled
-                        ) else { return }
-                        if next {
-                            appState.enableSecureLocalMode()
-                        } else {
-                            appState.appSettings.secureLocalModeEnabled = false
+                // .help() doesn't fire on a disabled control's own hover (macOS stops
+                // tracking mouse on disabled views), so the tooltip lives on this
+                // always-hit-testable wrapper instead of on the Toggle itself.
+                let isToggleDisabled = appState.isDownloadingLocalModel
+                    || !OnlineModeToggle.isToggleEnabled(
+                        secureLocalModeEnabled: appState.appSettings.secureLocalModeEnabled,
+                        localModelInstalled: selectedModelInstalled
+                    )
+                Group {
+                    Toggle("", isOn: Binding(
+                        get: { !appState.appSettings.secureLocalModeEnabled },
+                        set: { requestedOnline in
+                            guard let next = OnlineModeToggle.nextSecureLocalModeEnabled(
+                                requestedOnline: requestedOnline,
+                                localModelInstalled: selectedModelInstalled
+                            ) else { return }
+                            if next {
+                                appState.enableSecureLocalMode()
+                            } else {
+                                appState.appSettings.secureLocalModeEnabled = false
+                            }
                         }
-                    }
-                ))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .disabled(
-                    appState.isDownloadingLocalModel
-                        || !OnlineModeToggle.isToggleEnabled(
-                            secureLocalModeEnabled: appState.appSettings.secureLocalModeEnabled,
-                            localModelInstalled: selectedModelInstalled
-                        )
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .disabled(isToggleDisabled)
+                    .opacity(isToggleDisabled ? 0.4 : 1.0)
+                }
+                .contentShape(Rectangle())
+                .help(
+                    OnlineModeToggle.disabledReason(
+                        secureLocalModeEnabled: appState.appSettings.secureLocalModeEnabled,
+                        localModelInstalled: selectedModelInstalled
+                    ) ?? ""
                 )
             }
 

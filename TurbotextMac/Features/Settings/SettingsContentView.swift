@@ -497,8 +497,14 @@ struct ShortcutsSettingsView: View {
 // MARK: - 4. Zugangsdaten
 
 struct CredentialsSettingsView: View {
-    private static let openAIAPIKeyPattern = #"^sk-[A-Za-z0-9_-]{20,}$"#
-    private static let groqAPIKeyPattern = #"^gsk_[A-Za-z0-9]{20,}$"#
+    static let openAIAPIKeyPattern = #"^sk-[A-Za-z0-9_-]{20,}$"#
+    static let groqAPIKeyPattern = #"^gsk_[A-Za-z0-9]{20,}$"#
+
+    static func validatedKey(fromClipboardText text: String, pattern: String) -> String? {
+        let firstLine = text.components(separatedBy: .newlines).first ?? text
+        let trimmed = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.range(of: pattern, options: .regularExpression) != nil ? trimmed : nil
+    }
 
     @Bindable var appState: AppState
 
@@ -517,12 +523,9 @@ struct CredentialsSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 20) {
-                groqKeySection
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                openAIKeySection
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            groqKeySection
+            Divider()
+            openAIKeySection
 
             if let saveErrorText {
                 Text(saveErrorText)
@@ -531,37 +534,20 @@ struct CredentialsSettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            // Save button (right-aligned, text only)
-            HStack {
-                Spacer()
-                Button {
-                    save()
-                } label: {
-                    if saved {
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 10, weight: .bold))
-                            Text("Gespeichert")
-                        }
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.green)
-                    } else {
-                        Text("Speichern")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.blue)
-                    }
+            if saved {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("Gespeichert")
                 }
-                .buttonStyle(SubtleButtonStyle())
-                .animation(.easeInOut(duration: 0.2), value: saved)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.green)
             }
         }
         .padding(16)
         .onAppear {
             load()
-            if !appState.hasValue(for: .groqAPIKey) && !appState.hasValue(for: .openAIAPIKey) {
-                editingAPIKey = true
-                focusedField = .openAIAPIKey
-            } else if !appState.hasValue(for: .openAIAPIKey) {
+            if !appState.hasValue(for: .openAIAPIKey) {
                 editingAPIKey = true
                 focusedField = .openAIAPIKey
             }
@@ -575,7 +561,7 @@ struct CredentialsSettingsView: View {
                 SectionLabel(text: "Groq API Key")
                 Spacer()
                 if appState.hasValue(for: .groqAPIKey) && !editingGroqKey {
-                    Button("Aendern") { editingGroqKey = true }
+                    Button("Ändern") { editingGroqKey = true }
                         .font(.system(size: 10, weight: .medium))
                         .buttonStyle(.plain)
                         .foregroundStyle(.blue)
@@ -605,7 +591,7 @@ struct CredentialsSettingsView: View {
                         .focused($focusedField, equals: .groqAPIKey)
                         .onSubmit { save() }
 
-                    Button("Einfuegen") {
+                    Button("Einfügen") {
                         pasteGroqKeyFromClipboard()
                     }
                     .buttonStyle(SubtleButtonStyle())
@@ -626,7 +612,7 @@ struct CredentialsSettingsView: View {
                 SectionLabel(text: "OpenAI API Key")
                 Spacer()
                 if appState.hasValue(for: .openAIAPIKey) && !editingAPIKey {
-                    Button("Aendern") { editingAPIKey = true }
+                    Button("Ändern") { editingAPIKey = true }
                         .font(.system(size: 10, weight: .medium))
                         .buttonStyle(.plain)
                         .foregroundStyle(.blue)
@@ -655,7 +641,7 @@ struct CredentialsSettingsView: View {
                         .font(.system(size: 11.5))
                         .focused($focusedField, equals: .openAIAPIKey)
 
-                    Button("Einfuegen") {
+                    Button("Einfügen") {
                         pasteAPIKeyFromClipboard()
                     }
                     .buttonStyle(SubtleButtonStyle())
@@ -725,9 +711,7 @@ struct CredentialsSettingsView: View {
             saveErrorText = "Zwischenablage enthält keinen Text."
             return
         }
-        let firstLine = rawText.components(separatedBy: .newlines).first ?? rawText
-        let trimmedKey = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedKey.range(of: Self.groqAPIKeyPattern, options: .regularExpression) != nil else {
+        guard let trimmedKey = Self.validatedKey(fromClipboardText: rawText, pattern: Self.groqAPIKeyPattern) else {
             saveErrorText = "Zwischenablage enthält keinen plausiblen Groq API Key."
             return
         }
@@ -742,17 +726,14 @@ struct CredentialsSettingsView: View {
             saveErrorText = "Zwischenablage enthält keinen Text."
             return
         }
-
-        let firstLine = rawText.components(separatedBy: .newlines).first ?? rawText
-        let trimmedKey = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedKey.range(of: Self.openAIAPIKeyPattern, options: .regularExpression) != nil else {
+        guard let trimmedKey = Self.validatedKey(fromClipboardText: rawText, pattern: Self.openAIAPIKeyPattern) else {
             saveErrorText = "Zwischenablage enthält keinen plausiblen OpenAI API Key."
             return
         }
-
         openAIAPIKey = trimmedKey
         NSPasteboard.general.clearContents()
         saveErrorText = nil
+        save()
     }
 }
 
@@ -903,7 +884,7 @@ struct AppManagementSettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             SectionLabel(text: "Updates")
 
-            Text("Diese Preview hat keinen oeffentlichen Update-Feed. Baue neue Versionen selbst aus dem Repo.")
+            Text("Diese Preview hat keinen öffentlichen Update-Feed. Baue neue Versionen selbst aus dem Repo.")
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -948,7 +929,7 @@ struct AppManagementSettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             SectionLabel(text: "Hinweis")
 
-            Text("Fuer direktes Einfuegen: Turbotext einmal nach /Applications legen und danach Mikrofon sowie Bedienungshilfen erlauben.")
+            Text("Für direktes Einfügen: Turbotext einmal nach /Applications legen und danach Mikrofon sowie Bedienungshilfen erlauben.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1040,7 +1021,7 @@ struct AppManagementSettingsView: View {
             }
             return "Diese Kopie ist korrekt. Zusätzliche Kopien solltest du später entfernen."
         case .userApplications:
-            return "Fuer stabile Hotkeys und Login-Items sollte Turbotext nur aus /Applications laufen."
+            return "Für stabile Hotkeys und Login-Items sollte Turbotext nur aus /Applications laufen."
         case .outsideApplications:
             return "Verschiebe Turbotext einmal nach /Applications, damit Anmeldestart und Hotkeys sauber bleiben."
         case .unknown:
