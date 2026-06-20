@@ -431,11 +431,11 @@ struct MenuBarView: View {
                 .frame(width: 18, height: 18)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("Tastenkürzel mit einer Taste brauchen Tastaturüberwachung.")
+                Text("Tastaturüberwachung freigeben (nur für eigene Hotkeys nötig).")
                     .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(.primary)
 
-                Text("Ohne Freigabe funktionieren Kürzel wie F5 nicht. Reine Modifikator-Kürzel (z. B. fn+⇧) sind nicht betroffen.")
+                Text("Turbotext steht dort evtl. nicht in der Liste — über + hinzufügen.")
                     .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
