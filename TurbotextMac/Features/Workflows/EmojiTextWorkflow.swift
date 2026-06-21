@@ -85,6 +85,7 @@ final class EmojiTextWorkflow: Workflow {
                 // Phase 1: Whisper transcription
                 let rawText = try await TranscriptionService.transcribe(
                     audioURL: url,
+                    durationSeconds: recordingDuration,
                     customTerms: vocabularyHints,
                     language: language
                 )

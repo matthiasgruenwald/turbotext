@@ -9,6 +9,7 @@ final class GroqQuotaStore {
     private(set) var fallbackActive: Bool
     private(set) var remainingAudioSeconds: Int?
     private(set) var rateLimitResetAt: Date?
+    private(set) var usedSecondsToday: Int
 
     var onFallbackChanged: ((Bool) -> Void)?
 
@@ -16,6 +17,8 @@ final class GroqQuotaStore {
         static let fallbackActive = "groqFallbackActive"
         static let remainingSeconds = "groqRemainingAudioSeconds"
         static let resetAt = "groqRateLimitResetAt"
+        static let usedSecondsToday = "groqUsedSecondsToday"
+        static let usedDayKey = "groqUsedDayKey"
     }
 
     private init() {
@@ -27,7 +30,36 @@ final class GroqQuotaStore {
         if defaults.object(forKey: Keys.remainingSeconds) != nil {
             remainingAudioSeconds = defaults.integer(forKey: Keys.remainingSeconds)
         }
+        usedSecondsToday = defaults.string(forKey: Keys.usedDayKey) == Self.dayKey(for: Date())
+            ? defaults.integer(forKey: Keys.usedSecondsToday)
+            : 0
         clearIfExpired()
+    }
+
+    private static func dayKey(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = .current
+        return formatter.string(from: date)
+    }
+
+    func recordUsage(seconds: Int, on date: Date = Date()) {
+        guard seconds > 0 else { return }
+        let defaults = UserDefaults.standard
+        let todayKey = Self.dayKey(for: date)
+        if defaults.string(forKey: Keys.usedDayKey) != todayKey {
+            usedSecondsToday = 0
+            defaults.set(todayKey, forKey: Keys.usedDayKey)
+        }
+        usedSecondsToday += seconds
+        defaults.set(usedSecondsToday, forKey: Keys.usedSecondsToday)
+    }
+
+    func resetUsedToday() {
+        usedSecondsToday = 0
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: Keys.usedSecondsToday)
+        defaults.removeObject(forKey: Keys.usedDayKey)
     }
 
     func clearIfExpired() {
@@ -35,11 +67,13 @@ final class GroqQuotaStore {
         clearFallback()
     }
 
-    func update(remainingSeconds: Int, resetAt: Date) {
+    func update(remainingSeconds: Int, resetAt: Date?) {
         remainingAudioSeconds = remainingSeconds
-        rateLimitResetAt = resetAt
         UserDefaults.standard.set(remainingSeconds, forKey: Keys.remainingSeconds)
-        UserDefaults.standard.set(resetAt.timeIntervalSince1970, forKey: Keys.resetAt)
+        if let resetAt {
+            rateLimitResetAt = resetAt
+            UserDefaults.standard.set(resetAt.timeIntervalSince1970, forKey: Keys.resetAt)
+        }
     }
 
     func activateFallback(resetAt: Date?) {
@@ -67,6 +101,14 @@ final class GroqQuotaStore {
 
     var formattedRemaining: String? {
         guard let seconds = remainingAudioSeconds else { return nil }
+        return Self.formatSeconds(seconds)
+    }
+
+    var formattedUsedToday: String {
+        Self.formatSeconds(usedSecondsToday)
+    }
+
+    private static func formatSeconds(_ seconds: Int) -> String {
         if seconds >= 3600 {
             let h = seconds / 3600
             let m = (seconds % 3600) / 60

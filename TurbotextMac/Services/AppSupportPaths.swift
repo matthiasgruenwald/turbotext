@@ -3,10 +3,13 @@ import Foundation
 enum AppSupportPaths {
     private static let bundleIdentifier = Bundle.main.bundleIdentifier ?? "app.turbotext.mac"
 
+    private static let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
     static var appSupportDirectoryURL: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+        let folderName = isRunningTests ? "TurbotextTests" : "Turbotext"
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first!
-            .appendingPathComponent("Turbotext", isDirectory: true)
+            .appendingPathComponent(folderName, isDirectory: true)
     }
 
     static var settingsURL: URL {

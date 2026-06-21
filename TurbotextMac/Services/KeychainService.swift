@@ -15,7 +15,10 @@ enum KeychainKey: String, CaseIterable, Codable {
 
 /// Stores preview credentials in the user's macOS Keychain.
 enum KeychainService {
-    private static let service = "app.turbotext.preview.credentials"
+    private static let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    private static let service = isRunningTests
+        ? "app.turbotext.preview.credentials.tests"
+        : "app.turbotext.preview.credentials"
 
     static func save(key: KeychainKey, value: String) throws {
         let data = Data(value.utf8)

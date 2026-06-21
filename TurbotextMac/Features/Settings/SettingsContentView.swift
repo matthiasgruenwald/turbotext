@@ -514,6 +514,9 @@ struct CredentialsSettingsView: View {
         hasExistingValue && isEditing
     }
 
+    static let groqKeyPageURL = URL(string: "https://console.groq.com/keys")!
+    static let openAIKeyPageURL = URL(string: "https://platform.openai.com/api-keys")!
+
     @Bindable var appState: AppState
 
     private enum FieldFocus {
@@ -567,6 +570,8 @@ struct CredentialsSettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 SectionLabel(text: "Groq API Key")
+                Link("Key holen auf console.groq.com", destination: Self.groqKeyPageURL)
+                    .font(.system(size: 10, weight: .medium))
                 Spacer()
                 if appState.hasValue(for: .groqAPIKey) && !editingGroqKey {
                     Button("Ändern") { editingGroqKey = true }
@@ -618,6 +623,8 @@ struct CredentialsSettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 SectionLabel(text: "OpenAI API Key")
+                Link("Key holen auf platform.openai.com", destination: Self.openAIKeyPageURL)
+                    .font(.system(size: 10, weight: .medium))
                 Spacer()
                 if appState.hasValue(for: .openAIAPIKey) && !editingAPIKey {
                     Button("Ändern") { editingAPIKey = true }
@@ -864,6 +871,10 @@ struct AppManagementSettingsView: View {
                 }
                 .buttonStyle(SubtleButtonStyle())
             }
+
+            Toggle("Warnung ausgeblendet (im Hauptfenster nicht mehr anzeigen)", isOn: $appState.appSettings.hasDismissedInputMonitoringHint)
+                .toggleStyle(.checkbox)
+                .font(.system(size: 10.5))
         }
     }
 

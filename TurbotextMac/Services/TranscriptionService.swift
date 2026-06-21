@@ -42,6 +42,7 @@ enum TranscriptionService {
 
     static func transcribe(
         audioURL: URL,
+        durationSeconds: TimeInterval,
         customTerms: [String] = [],
         language: String? = nil
     ) async throws -> String {
@@ -56,8 +57,11 @@ enum TranscriptionService {
                     customTerms: customTerms,
                     language: language
                 )
-                if let remaining = info.remainingAudioSeconds, let resetAt = info.resetAt {
-                    await MainActor.run { GroqQuotaStore.shared.update(remainingSeconds: remaining, resetAt: resetAt) }
+                await MainActor.run {
+                    if let remaining = info.remainingAudioSeconds {
+                        GroqQuotaStore.shared.update(remainingSeconds: remaining, resetAt: info.resetAt)
+                    }
+                    GroqQuotaStore.shared.recordUsage(seconds: Int(durationSeconds.rounded()))
                 }
                 return text
             } catch GroqTranscriptionError.rateLimitExceeded(let resetAt) {

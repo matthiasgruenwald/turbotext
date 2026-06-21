@@ -14,31 +14,25 @@ final class WorkflowSubtitleQuotaTests: XCTestCase {
         let store = GroqQuotaStore.shared
         store.activateFallback(resetAt: Date().addingTimeInterval(-10))
         store.clearIfExpired()
+        store.resetUsedToday()
     }
 
-    func testNoGroqKeyReturnsOpenAIWithoutQuotaNote() throws {
+    func testOnlineSubtitleMentionsClipboardRegardlessOfGroqKey() throws {
         KeychainService.delete(key: .groqAPIKey)
         let appState = AppState()
-        XCTAssertEqual(appState.workflowSubtitle(for: .transcription), "Online: OpenAI Whisper.")
+        XCTAssertEqual(appState.workflowSubtitle(for: .transcription), "Sprache rein. Landet in Zwischenablage.")
     }
 
-    func testGroqActiveWithRemainingKnownShowsRemaining() throws {
-        try KeychainService.save(key: .groqAPIKey, value: "gsk_test_key_1234567890")
-        GroqQuotaStore.shared.update(remainingSeconds: 300, resetAt: Date().addingTimeInterval(3600))
-        let appState = AppState()
-        XCTAssertEqual(appState.workflowSubtitle(for: .transcription), "Online: Groq Whisper · noch 5 Min.")
-    }
-
-    func testGroqActiveWithRemainingUnknownShowsPlainGroq() throws {
+    func testOnlineSubtitleMentionsClipboardWithGroqKeyActive() throws {
         try KeychainService.save(key: .groqAPIKey, value: "gsk_test_key_1234567890")
         let appState = AppState()
-        XCTAssertEqual(appState.workflowSubtitle(for: .transcription), "Online: Groq Whisper.")
+        XCTAssertEqual(appState.workflowSubtitle(for: .transcription), "Sprache rein. Landet in Zwischenablage.")
     }
 
-    func testFallbackActiveShowsExhaustedNote() throws {
+    func testOnlineSubtitleMentionsClipboardWithFallbackActive() throws {
         try KeychainService.save(key: .groqAPIKey, value: "gsk_test_key_1234567890")
         GroqQuotaStore.shared.activateFallback(resetAt: Date().addingTimeInterval(3600))
         let appState = AppState()
-        XCTAssertEqual(appState.workflowSubtitle(for: .transcription), "Online: OpenAI Whisper · Groq aufgebraucht.")
+        XCTAssertEqual(appState.workflowSubtitle(for: .transcription), "Sprache rein. Landet in Zwischenablage.")
     }
 }

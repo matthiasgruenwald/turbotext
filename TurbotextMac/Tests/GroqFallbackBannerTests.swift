@@ -24,6 +24,7 @@ final class GroqFallbackBannerTests: XCTestCase {
         GroqQuotaStore.shared.activateFallback(resetAt: nil)
         let appState = AppState()
         appState.appSettings.secureLocalModeEnabled = true
+        defer { appState.appSettings.secureLocalModeEnabled = false }
         XCTAssertNil(appState.groqFallbackBannerContent)
     }
 

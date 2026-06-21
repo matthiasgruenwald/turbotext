@@ -100,6 +100,7 @@ final class TranscriptionWorkflow: Workflow {
                 case .remote:
                     text = try await TranscriptionService.transcribe(
                         audioURL: url,
+                        durationSeconds: recordingDuration,
                         customTerms: vocabularyHints,
                         language: requestLanguage
                     )

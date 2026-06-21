@@ -151,8 +151,8 @@ final class AppState {
             defer { self?.isCheckingGroqQuota = false }
             do {
                 let info = try await GroqTranscriptionService.checkQuota(apiKey: apiKey)
-                if let remaining = info.remainingAudioSeconds, let resetAt = info.resetAt {
-                    store.update(remainingSeconds: remaining, resetAt: resetAt)
+                if let remaining = info.remainingAudioSeconds {
+                    store.update(remainingSeconds: remaining, resetAt: info.resetAt)
                 }
             } catch GroqTranscriptionError.rateLimitExceeded(let resetAt) {
                 store.activateFallback(resetAt: resetAt)
@@ -208,14 +208,7 @@ final class AppState {
                     ? "Lokal: \(LocalTranscriptionModel.displayName(for: modelName))."
                     : "Lokales WhisperKit-Modell fehlt."
             }
-            let store = GroqQuotaStore.shared
-            let hasGroqKey = KeychainService.load(key: .groqAPIKey) != nil
-            if hasGroqKey {
-                if store.fallbackActive { return "Online: OpenAI Whisper · Groq aufgebraucht." }
-                if let remaining = store.formattedRemaining { return "Online: Groq Whisper · noch \(remaining)" }
-                return "Online: Groq Whisper."
-            }
-            return "Online: OpenAI Whisper."
+            return "Sprache rein. Landet in Zwischenablage."
         case .localTranscription:
             return "Nur lokal. Kein Server."
         case .textImprover, .dampfAblassen, .emojiText:
@@ -523,7 +516,6 @@ final class AppState {
 
     func requestAccessibilityPermission() {
         accessibilityPermissionGranted = AccessibilityPermissionService.requestPermissionPrompt()
-        AccessibilityPermissionService.openSystemSettings()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.refreshAccessibilityPermission()

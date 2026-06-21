@@ -8,7 +8,7 @@ final class MenuBarIdleTooltipTests: XCTestCase {
             accessibilityGranted: true,
             inputMonitoringGranted: true,
             cloudIndicator: .none,
-            groqQuotaRemaining: nil
+            groqQuotaUsedToday: nil
         )
         XCTAssertEqual(text, "Turbotext ist bereit")
     }
@@ -18,9 +18,9 @@ final class MenuBarIdleTooltipTests: XCTestCase {
             accessibilityGranted: true,
             inputMonitoringGranted: true,
             cloudIndicator: .groqReady,
-            groqQuotaRemaining: "45 Min."
+            groqQuotaUsedToday: "45 Min."
         )
-        XCTAssertEqual(text, "Turbotext ist bereit · noch 45 Min. Groq-Kontingent")
+        XCTAssertEqual(text, "Turbotext ist bereit · heute 45 Min. Groq-Kontingent genutzt")
     }
 
     func testWarnsWhenAccessibilityMissing() {
@@ -28,7 +28,7 @@ final class MenuBarIdleTooltipTests: XCTestCase {
             accessibilityGranted: false,
             inputMonitoringGranted: true,
             cloudIndicator: .none,
-            groqQuotaRemaining: nil
+            groqQuotaUsedToday: nil
         )
         XCTAssertEqual(text, "Turbotext eingeschränkt: Bedienungshilfen fehlen")
     }
@@ -38,7 +38,7 @@ final class MenuBarIdleTooltipTests: XCTestCase {
             accessibilityGranted: true,
             inputMonitoringGranted: false,
             cloudIndicator: .none,
-            groqQuotaRemaining: nil
+            groqQuotaUsedToday: nil
         )
         XCTAssertEqual(text, "Turbotext eingeschränkt: Tastaturüberwachung fehlt")
     }
@@ -48,7 +48,7 @@ final class MenuBarIdleTooltipTests: XCTestCase {
             accessibilityGranted: false,
             inputMonitoringGranted: false,
             cloudIndicator: .none,
-            groqQuotaRemaining: nil
+            groqQuotaUsedToday: nil
         )
         XCTAssertEqual(text, "Turbotext eingeschränkt: Bedienungshilfen fehlen, Tastaturüberwachung fehlt")
     }
@@ -58,7 +58,7 @@ final class MenuBarIdleTooltipTests: XCTestCase {
             accessibilityGranted: false,
             inputMonitoringGranted: true,
             cloudIndicator: .groqReady,
-            groqQuotaRemaining: "45 Min."
+            groqQuotaUsedToday: "45 Min."
         )
         XCTAssertEqual(text, "Turbotext eingeschränkt: Bedienungshilfen fehlen")
     }

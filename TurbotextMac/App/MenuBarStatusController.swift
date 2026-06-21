@@ -29,7 +29,7 @@ enum MenuBarIdleTooltip {
         accessibilityGranted: Bool,
         inputMonitoringGranted: Bool,
         cloudIndicator: MenuBarCloudIndicator,
-        groqQuotaRemaining: String?
+        groqQuotaUsedToday: String?
     ) -> String {
         var missing: [String] = []
         if !accessibilityGranted { missing.append("Bedienungshilfen fehlen") }
@@ -39,10 +39,10 @@ enum MenuBarIdleTooltip {
             return "Turbotext eingeschränkt: \(missing.joined(separator: ", "))"
         }
 
-        guard cloudIndicator == .groqReady, let groqQuotaRemaining else {
+        guard cloudIndicator == .groqReady, let groqQuotaUsedToday else {
             return "Turbotext ist bereit"
         }
-        return "Turbotext ist bereit · noch \(groqQuotaRemaining) Groq-Kontingent"
+        return "Turbotext ist bereit · heute \(groqQuotaUsedToday) Groq-Kontingent genutzt"
     }
 }
 
@@ -131,7 +131,7 @@ final class MenuBarStatusController {
                 accessibilityGranted: accessibilityGranted,
                 inputMonitoringGranted: inputMonitoringGranted,
                 cloudIndicator: cloudIndicator,
-                groqQuotaRemaining: GroqQuotaStore.shared.formattedRemaining
+                groqQuotaUsedToday: GroqQuotaStore.shared.formattedUsedToday
             )
         case .recording(let type):
             return "\(type.displayName): Aufnahme läuft"
