@@ -13,6 +13,10 @@ enum PopoverSizing {
         let maxAllowed = screenHeight * screenMarginFraction
         return min(max(desired, minHeight), maxAllowed)
     }
+
+    static func clampedWidth(contentWidth: CGFloat, minWidth: CGFloat, maxWidth: CGFloat) -> CGFloat {
+        min(max(contentWidth, minWidth), maxWidth)
+    }
 }
 
 enum AutoGrowingTextHeight {

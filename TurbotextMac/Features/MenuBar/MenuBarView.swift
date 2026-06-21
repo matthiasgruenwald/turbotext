@@ -8,16 +8,25 @@ struct MainContentHeightKey: PreferenceKey {
     }
 }
 
+struct MainContentWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct MenuBarView: View {
     @Bindable var appState: AppState
     @State var settingsContentHeight: CGFloat = 0
     @State private var mainContentHeight: CGFloat = 0
+    @State private var mainContentWidth: CGFloat = 0
     @State var showInputMonitoringDismissConfirmation = false
 
     private static let settingsChromeHeight: CGFloat = 140
     private static let settingsMinHeight: CGFloat = 420
     private static let mainMinHeight: CGFloat = 480
-    private static let mainWidth: CGFloat = 340
+    private static let mainMinWidth: CGFloat = 340
+    private static let mainMaxWidth: CGFloat = 460
     private static let screenMarginFraction: CGFloat = 0.9
 
     private var settingsHeight: CGFloat {
@@ -28,6 +37,14 @@ struct MenuBarView: View {
             screenHeight: screenHeight,
             minHeight: Self.settingsMinHeight,
             screenMarginFraction: Self.screenMarginFraction
+        )
+    }
+
+    private var mainWidth: CGFloat {
+        PopoverSizing.clampedWidth(
+            contentWidth: mainContentWidth,
+            minWidth: Self.mainMinWidth,
+            maxWidth: Self.mainMaxWidth
         )
     }
 
@@ -47,9 +64,9 @@ struct MenuBarView: View {
         case .settings:
             return CGSize(width: 680, height: settingsHeight)
         case .main:
-            return CGSize(width: Self.mainWidth, height: mainHeight)
+            return CGSize(width: mainWidth, height: mainHeight)
         case .onboarding, .workflow:
-            return CGSize(width: Self.mainWidth, height: Self.mainMinHeight)
+            return CGSize(width: Self.mainMinWidth, height: Self.mainMinHeight)
         }
     }
 
@@ -68,10 +85,25 @@ struct MenuBarView: View {
         }
         .frame(width: preferredSize.width, height: preferredSize.height)
         // Hidden, unconstrained copy purely to measure the main page's natural
-        // content height (toggle/banners can change row count and thus height).
+        // content width (e.g. a workflow row with three hotkey badges needs
+        // more horizontal space than the minimum window width).
         .background(
             mainPage
-                .frame(width: Self.mainWidth, alignment: .topLeading)
+                .fixedSize()
+                .opacity(0)
+                .allowsHitTesting(false)
+                .background(
+                    GeometryReader { geometry in
+                        Color.clear.preference(key: MainContentWidthKey.self, value: geometry.size.width)
+                    }
+                )
+        )
+        .onPreferenceChange(MainContentWidthKey.self) { mainContentWidth = $0 }
+        // Hidden copy at the resolved width purely to measure the main page's
+        // natural content height (toggle/banners can change row count and thus height).
+        .background(
+            mainPage
+                .frame(width: mainWidth, alignment: .topLeading)
                 .fixedSize(horizontal: false, vertical: true)
                 .opacity(0)
                 .allowsHitTesting(false)
@@ -377,10 +409,7 @@ struct MenuBarView: View {
             if store.fallbackActive {
                 return "Über Server verarbeitet · Groq-Kontingent aufgebraucht, jetzt OpenAI Whisper."
             }
-            if let remaining = store.formattedRemaining {
-                return "Über Server verarbeitet · noch \(remaining) Groq-Kontingent heute."
-            }
-            return "Über Server verarbeitet via Groq Whisper."
+            return "Über Server verarbeitet · heute \(store.formattedUsedToday) Groq-Kontingent genutzt."
         }
 
         return "Über Server verarbeitet via OpenAI Whisper."

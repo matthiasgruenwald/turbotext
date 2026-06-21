@@ -37,6 +37,24 @@ final class PopoverSizingTests: XCTestCase {
     }
 }
 
+final class PopoverSizingWidthTests: XCTestCase {
+
+    func testGrowsWithContentAboveMinWidth() {
+        let width = PopoverSizing.clampedWidth(contentWidth: 380, minWidth: 340, maxWidth: 460)
+        XCTAssertEqual(width, 380, accuracy: 0.001)
+    }
+
+    func testNeverShrinksBelowMinWidth() {
+        let width = PopoverSizing.clampedWidth(contentWidth: 300, minWidth: 340, maxWidth: 460)
+        XCTAssertEqual(width, 340, accuracy: 0.001)
+    }
+
+    func testCapsAtMaxWidthWhenContentExceedsIt() {
+        let width = PopoverSizing.clampedWidth(contentWidth: 600, minWidth: 340, maxWidth: 460)
+        XCTAssertEqual(width, 460, accuracy: 0.001)
+    }
+}
+
 final class AutoGrowingTextHeightTests: XCTestCase {
 
     func testGrowsWithMeasuredContentBetweenBounds() {
