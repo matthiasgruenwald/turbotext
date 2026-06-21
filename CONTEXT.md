@@ -6,7 +6,7 @@ Architekturentscheidungen (ADRs) liegen in `docs/adr/`, nicht in dieser Datei.
 
 **CloudTranscriptionRouter** — Logik in `TranscriptionService`, die Groq-first mit OpenAI-Fallback kombiniert. Kein eigener Typ, aber konzeptuell der Router.
 
-**Groq-Kontingent** — Tägliches Free-Tier-Budget bei Groq (Audio-Sekunden). Kommt aus HTTP-Response-Headern `x-ratelimit-remaining-audio-seconds` und `x-ratelimit-reset-audio`. Wird persistent in `UserDefaults` via `GroqQuotaStore` gespeichert.
+**Groq-Kontingent** — Tägliches Free-Tier-Budget bei Groq (Audio-Sekunden). Kommt aus HTTP-Response-Header `x-ratelimit-remaining-audio-seconds`; `x-ratelimit-reset-audio` ist optional und wird von Groq offenbar nur kurz vor Limit-Erreichen mitgeschickt. Wird persistent in `UserDefaults` via `GroqQuotaStore` gespeichert.
 
 **Groq-Fallback** — Zustand, in dem der Router nach Groq-429 dauerhaft auf OpenAI umschaltet. Bleibt aktiv bis `rateLimitResetAt` überschritten ist (auch nach App-Neustart). Gespeichert in `GroqQuotaStore.shared`.
 
@@ -29,6 +29,14 @@ Architekturentscheidungen (ADRs) liegen in `docs/adr/`, nicht in dieser Datei.
 ## Mikrofon-System
 
 **Mikrofon-Favoritenliste** — vom Nutzer priorisierte Liste von Mikro-UIDs, persistiert in `UserDefaults`. Ersetzt NICHT den macOS-Systemstandard, sondern ist eine App-interne Auswahl. Beim App-Start und bei Gerätewechsel (`kAudioHardwarePropertyDevices`-Notification) wählt die App das höchstpriorisierte verfügbare Gerät aus der Liste. Ist kein Favorit verfügbar, fällt die App auf den macOS-Systemstandard zurück. Nutzer kann alternativ explizit "macOS-Standard verwenden" wählen (kein Override).
+
+## App-Präsenz
+
+**Dock-Modus** — Activation Policy `.regular` statt `.accessory`: App zeigt Dock-Icon und ist per Cmd+Tab erreichbar. Standardmäßig aktiv (siehe [ADR 0004](docs/adr/0004-dock-mode-default-on.md)). Per Einstellung abschaltbar (→ zurück zu reinem Menüleisten-Betrieb, kein Dock-Icon).
+
+**Hauptfenster** — Normales, nicht-transientes `NSWindow`, hostet dieselbe `MenuBarView` wie der Menüleisten-Popover (geteilter `AppState`, keine Code-Duplikation). Bleibt offen bis explizit geschlossen — im Gegensatz zum Popover, der bei Außenklick automatisch verschwindet (`behavior = .transient`). Existiert nur im Dock-Modus; wird über Dock-Icon-Klick geöffnet.
+
+**Menüleisten-Klick-Vorrang** — Ist das Hauptfenster offen, holt ein Klick auf das Menüleisten-Icon das Fenster nach vorne, statt einen zweiten Popover zu öffnen. Verhindert zwei gleichzeitig sichtbare UI-Kopien desselben States.
 
 ## Netzwerk-Qualität
 
