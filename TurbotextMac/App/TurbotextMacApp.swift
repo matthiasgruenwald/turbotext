@@ -147,16 +147,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     @objc private func togglePopover() {
-        if mainWindowController.isOpen {
+        let action = MenuBarClickDispatch.decide(
+            mainWindowIsOpen: mainWindowController.isOpen,
+            popoverIsShown: popover.isShown
+        )
+
+        switch action {
+        case .bringMainWindowToFront:
             mainWindowController.bringToFrontIfOpen()
             NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-
-        if popover.isShown {
+        case .closePopover:
             popover.performClose(nil)
             appState.isPopoverShown = false
-        } else {
+        case .openPopover:
             appState.prepareForPopoverPresentation()
             showPopover()
         }
