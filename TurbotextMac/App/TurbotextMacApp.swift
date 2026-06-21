@@ -12,10 +12,11 @@ struct TurbotextMacApp: App {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private let menuBarStatusController = MenuBarStatusController()
+    private var mainWindowController: MainWindowController!
     let appState = AppState()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -32,6 +33,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.behavior = .transient
         popover.delegate = self
         popover.contentViewController = NSHostingController(rootView: MenuBarView(appState: appState))
+
+        mainWindowController = MainWindowController(makeWindow: { [weak self] in
+            self?.makeMainWindow() ?? NSWindow()
+        })
 
         DockModeService.apply(dockModeEnabled: appState.appSettings.dockModeEnabled)
 
@@ -142,12 +147,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc private func togglePopover() {
+        if mainWindowController.isOpen {
+            mainWindowController.bringToFrontIfOpen()
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
         if popover.isShown {
             popover.performClose(nil)
             appState.isPopoverShown = false
         } else {
             appState.prepareForPopoverPresentation()
             showPopover()
+        }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        guard appState.appSettings.dockModeEnabled else { return true }
+        appState.prepareForPopoverPresentation()
+        mainWindowController.showOrCreate()
+        NSApp.activate(ignoringOtherApps: true)
+        return true
+    }
+
+    private func makeMainWindow() -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 340, height: 480),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Turbotext"
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.contentViewController = NSHostingController(rootView: MenuBarView(appState: appState))
+        window.center()
+        return window
+    }
+
+    nonisolated func windowWillClose(_ notification: Notification) {
+        Task { @MainActor in
+            mainWindowController.windowWillClose()
         }
     }
 
