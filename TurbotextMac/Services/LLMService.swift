@@ -176,6 +176,9 @@ enum LLMService {
             if !settings.customTerms.isEmpty {
                 prompt += "\n\nWichtig: Diese Eigennamen und Fachbegriffe muessen exakt so geschrieben werden: \(settings.customTerms.joined(separator: ", "))"
             }
+            if !settings.context.isEmpty {
+                prompt += "\n\nKontext: \(settings.context)"
+            }
             return prompt
         }
 

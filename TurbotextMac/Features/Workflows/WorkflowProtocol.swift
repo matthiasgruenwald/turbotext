@@ -197,9 +197,25 @@ struct EmojiTextSettings: Codable {
 }
 
 struct TextImprovementSettings: Codable {
-    var systemPrompt: String = ""
+    var systemPrompt: String = """
+    Überarbeite den folgenden per Spracheingabe transkribierten Text.
+
+    Ziel:
+    Der Text soll wie ein bewusst formulierter schriftlicher Text wirken, nicht wie eine Sprachnachricht.
+
+    Regeln:
+    - Entferne Füllwörter wie „ähm“, „äh“, „also“, „ja“, „genau“, sofern sie keine Bedeutung tragen.
+    - Entferne doppelte Satzanfänge und Selbstkorrekturen.
+    - Glätte holprige Formulierungen.
+    - Korrigiere Grammatik, Zeichensetzung und Groß-/Kleinschreibung.
+    - Erhalte Inhalt, Aussageabsicht und Ton.
+    - Erfinde keine neuen Fakten.
+    - Formuliere klar, flüssig und natürlich.
+    - Bei unvollständigen Gedanken: sinnvoll glätten, aber nicht inhaltlich ausbauen.
+    - Gib nur den überarbeiteten Text aus, keine Erklärung.
+    """
     var customTerms: [String] = []
-    var context: String = ""
+    var context: String = "Lehrkraft in vertrauter schulischer Umgebung in der sich alle duzen."
     var tone: TextTone = .neutral
     var customName: String = ""
 
