@@ -779,6 +779,10 @@ struct AppManagementSettingsView: View {
 
             Divider()
 
+            dockModeSection
+
+            Divider()
+
             launchAtLoginSection
 
             Divider()
@@ -954,6 +958,23 @@ struct AppManagementSettingsView: View {
                     .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    // MARK: Dock-Modus
+    private var dockModeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel(text: "Dock-Modus")
+
+            Toggle("Dock-Icon anzeigen", isOn: $appState.appSettings.dockModeEnabled)
+                .toggleStyle(.switch)
+
+            Text(appState.appSettings.dockModeEnabled
+                ? "Turbotext ist im Dock und per Cmd+Tab erreichbar."
+                : "Turbotext läuft nur in der Menüleiste, kein Dock-Icon.")
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

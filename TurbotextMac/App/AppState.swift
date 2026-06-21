@@ -61,6 +61,9 @@ final class AppState {
             saveSettings()
             prewarmLocalTranscriptionIfNeeded()
             onCloudIndicatorRefreshNeeded?()
+            if oldValue.dockModeEnabled != appSettings.dockModeEnabled {
+                DockModeService.apply(dockModeEnabled: appSettings.dockModeEnabled)
+            }
         }
     }
     var transcriptionSettings: TranscriptionSettings {

@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.delegate = self
         popover.contentViewController = NSHostingController(rootView: MenuBarView(appState: appState))
 
-        NSApp.setActivationPolicy(.accessory)
+        DockModeService.apply(dockModeEnabled: appState.appSettings.dockModeEnabled)
 
         // Hotkey events
         appState.hotkeyService.onHotkeyEvent = { [weak self] event in
