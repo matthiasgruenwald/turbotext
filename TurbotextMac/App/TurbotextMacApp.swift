@@ -56,6 +56,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         GroqQuotaStore.shared.onFallbackChanged = { [weak self] _ in
             self?.refreshMenuBarCloudIndicator()
         }
+        appState.networkPingService.onStatusChanged = { [weak self] status in
+            self?.menuBarStatusController.setNetworkStatus(status)
+        }
+        menuBarStatusController.setNetworkStatus(appState.networkPingService.status)
         appState.refreshAccessibilityPermission()
         refreshMenuBarCloudIndicator()
         appState.hotkeyService.start()

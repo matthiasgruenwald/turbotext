@@ -22,6 +22,14 @@ enum MenuBarCloudIndicator: Equatable {
     }
 }
 
+/// Whether the menu bar icon should show a red X overlay for the current network status.
+/// Only `.red` is a show-stopper; `.yellow` (degraded but working) doesn't warrant the alert.
+enum MenuBarNetworkAlert {
+    static func shouldShowRedX(for status: NetworkQualityStatus) -> Bool {
+        status == .red
+    }
+}
+
 /// Idle-state tooltip text. Missing permissions take precedence over quota info,
 /// since they're the more urgent reason Turbotext might not work as expected.
 enum MenuBarIdleTooltip {
@@ -56,6 +64,7 @@ final class MenuBarStatusController {
     private var cloudIndicator: MenuBarCloudIndicator = .none
     private var accessibilityGranted = false
     private var inputMonitoringGranted = false
+    private var networkStatus: NetworkQualityStatus = .green
 
     func attach(to button: NSStatusBarButton) {
         self.button = button
@@ -74,6 +83,12 @@ final class MenuBarStatusController {
     func setCloudIndicator(_ indicator: MenuBarCloudIndicator) {
         guard cloudIndicator != indicator else { return }
         cloudIndicator = indicator
+        renderCurrentStatus()
+    }
+
+    func setNetworkStatus(_ status: NetworkQualityStatus) {
+        guard networkStatus != status else { return }
+        networkStatus = status
         renderCurrentStatus()
     }
 
@@ -119,7 +134,12 @@ final class MenuBarStatusController {
 
     private func renderCurrentStatus() {
         guard let button else { return }
-        button.image = MenuBarStatusIconRenderer.makeImage(for: currentStatus, frame: animationFrame, cloudIndicator: cloudIndicator)
+        button.image = MenuBarStatusIconRenderer.makeImage(
+            for: currentStatus,
+            frame: animationFrame,
+            cloudIndicator: cloudIndicator,
+            showNetworkAlert: MenuBarNetworkAlert.shouldShowRedX(for: networkStatus)
+        )
         button.image?.isTemplate = true
         button.toolTip = tooltip(for: currentStatus)
     }
@@ -156,14 +176,23 @@ final class MenuBarStatusController {
 }
 
 private enum MenuBarStatusIconRenderer {
-    static func makeImage(for status: MenuBarStatus, frame: Int, cloudIndicator: MenuBarCloudIndicator = .none) -> NSImage {
-        if case .idle = status, let baseImage = baseTemplateImage(), cloudIndicator == .none {
+    static func makeImage(
+        for status: MenuBarStatus,
+        frame: Int,
+        cloudIndicator: MenuBarCloudIndicator = .none,
+        showNetworkAlert: Bool = false
+    ) -> NSImage {
+        if case .idle = status, let baseImage = baseTemplateImage(), cloudIndicator == .none, !showNetworkAlert {
             return baseImage
         }
 
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size, flipped: false) { bounds in
             drawBaseIcon(in: bounds, status: status, frame: frame)
+
+            if showNetworkAlert {
+                drawNetworkAlertX(in: bounds)
+            }
 
             switch status {
             case .idle:
@@ -253,6 +282,22 @@ private enum MenuBarStatusIconRenderer {
             NSColor.black.withAlphaComponent(baseAlpha[index]).setFill()
             path.fill()
         }
+    }
+
+    // Drawn over the base stripes in every status, so a hotkey press still shows the alert
+    // even though the user is usually not looking at the menu bar while recording.
+    private static func drawNetworkAlertX(in bounds: CGRect) {
+        let inset: CGFloat = 3
+        let rect = bounds.insetBy(dx: inset, dy: inset)
+        let path = NSBezierPath()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.line(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.line(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.lineWidth = 2
+        path.lineCapStyle = .round
+        NSColor.black.setStroke()
+        path.stroke()
     }
 
     private static func drawActivityBadge(

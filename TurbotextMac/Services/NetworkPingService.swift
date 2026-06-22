@@ -107,6 +107,8 @@ final class NetworkPingService {
     private(set) var averageLatencyMs: Double?
     private(set) var packetLossPercent: Double = 0
 
+    var onStatusChanged: ((NetworkQualityStatus) -> Void)?
+
     private let host: String
     private var window: NetworkPingRollingWindow
     private var timer: Timer?
@@ -140,9 +142,14 @@ final class NetworkPingService {
     }
 
     private func updatePublishedState() {
-        status = NetworkQualityCalculator.status(for: window.outcomes)
+        let newStatus = NetworkQualityCalculator.status(for: window.outcomes)
+        let statusChanged = newStatus != status
+        status = newStatus
         averageLatencyMs = NetworkQualityCalculator.averageLatencyMs(for: window.outcomes)
         packetLossPercent = NetworkQualityCalculator.packetLossPercent(for: window.outcomes)
+        if statusChanged {
+            onStatusChanged?(newStatus)
+        }
     }
 
     private static func executePing(host: String) async -> PingOutcome {
