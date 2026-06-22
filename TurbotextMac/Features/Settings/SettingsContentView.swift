@@ -677,7 +677,6 @@ struct CredentialsSettingsView: View {
 
     private func save() {
         saveErrorText = nil
-        KeychainService.invalidateCache()
 
         // Groq key (optional)
         let trimmedGroqKey = groqAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -709,7 +708,6 @@ struct CredentialsSettingsView: View {
             }
         }
 
-        KeychainService.invalidateCache()
         if !appState.hasValue(for: .openAIAPIKey) {
             saveErrorText = "OpenAI API Key wurde nicht persistent gespeichert. Bitte App neu starten und erneut versuchen."
             return
@@ -1128,7 +1126,6 @@ struct AppManagementSettingsView: View {
             ? TurbotextCleanupService.cleanupUserData()
             : TurbotextCleanupService.removeLaunchAtLoginRegistration()
 
-        KeychainService.invalidateCache()
         launchAtLoginService.refresh()
         refreshInstallState()
 

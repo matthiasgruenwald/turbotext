@@ -66,11 +66,6 @@ enum KeychainService {
         SecItemDelete(baseQuery(for: key) as CFDictionary)
     }
 
-    /// Force the next `load` to re-read credentials.
-    static func invalidateCache() {
-        // Kept for call-site compatibility. Keychain reads do not use an in-memory cache.
-    }
-
     static var isConfigured: Bool {
         load(key: .openAIAPIKey) != nil
     }
