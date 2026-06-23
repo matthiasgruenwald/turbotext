@@ -110,6 +110,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private func handleHotkeyDown(_ type: WorkflowType) {
         guard appState.isConfigured else { return }
 
+        if let soundKind = OfflineWarningSoundDecision.kind(
+            for: appState.networkPingService.status,
+            workflowType: type
+        ) {
+            OfflineWarningSoundPlayer.play(soundKind)
+        }
+
         let mode = appState.appSettings.hotkeyMode
 
         switch mode {

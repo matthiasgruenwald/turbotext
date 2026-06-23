@@ -216,6 +216,21 @@ struct TranscriptionSettingsView: View {
                 store: appState.microphoneFavoritesStore,
                 availableDevices: availableDevices
             )
+
+            // MARK: Offline-Warnsound
+            VStack(alignment: .leading, spacing: 10) {
+                SectionLabel(text: "Offline-Warnsound")
+
+                Text("Wenn die Internetverbindung beim Drücken eines Tastenkürzels rot angezeigt wird, spielt Turbotext diesen Sound ab. Die Aufnahme startet trotzdem normal.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button("Testen") {
+                    OfflineWarningSoundPlayer.play(.networkUnavailable)
+                }
+                .buttonStyle(SubtleButtonStyle())
+            }
         }
         .padding(16)
         .onAppear {
