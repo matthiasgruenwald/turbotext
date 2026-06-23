@@ -110,19 +110,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private func handleHotkeyDown(_ type: WorkflowType) {
         guard appState.isConfigured else { return }
 
-        if let soundKind = OfflineWarningSoundDecision.kind(
+        let fallback = TranscriptionFallbackResolver.resolve(
             for: appState.networkPingService.status,
-            workflowType: type
-        ) {
+            workflowType: type,
+            autoFallbackToLocalOnOffline: appState.appSettings.autoFallbackToLocalOnOffline,
+            isLocalModelInstalled: appState.selectedLocalModelIsInstalled
+        )
+
+        if let soundKind = fallback.soundKind {
             OfflineWarningSoundPlayer.play(soundKind)
         }
+
+        let backendOverride: TranscriptionBackend? = type == .transcription ? fallback.backend : nil
 
         let mode = appState.appSettings.hotkeyMode
 
         switch mode {
         case .hold:
             // Hold mode: start recording on key down
-            appState.startWorkflow(type, source: .hotkeyBackground)
+            appState.startWorkflow(type, source: .hotkeyBackground, backendOverride: backendOverride)
 
         case .toggle:
             // Toggle mode: if already recording same workflow, stop it
@@ -132,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                 active.stop()
             } else {
                 appState.prepareForPopoverPresentation()
-                appState.startWorkflow(type, source: .manual)
+                appState.startWorkflow(type, source: .manual, backendOverride: backendOverride)
                 showPopover()
             }
         }

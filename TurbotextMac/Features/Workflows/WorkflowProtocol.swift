@@ -114,6 +114,7 @@ struct AppSettings: Codable {
     var hasAutoSelectedFastLocalModel: Bool = false
     var hasDismissedInputMonitoringHint: Bool = false
     var dockModeEnabled: Bool = true
+    var autoFallbackToLocalOnOffline: Bool = false
 
     init(
         hotkeyMode: HotkeyMode = .hold,
@@ -122,7 +123,8 @@ struct AppSettings: Codable {
         selectedLocalTranscriptionModelName: String = LocalTranscriptionService.recommendedFastModelName,
         hasAutoSelectedFastLocalModel: Bool = false,
         hasDismissedInputMonitoringHint: Bool = false,
-        dockModeEnabled: Bool = true
+        dockModeEnabled: Bool = true,
+        autoFallbackToLocalOnOffline: Bool = false
     ) {
         self.hotkeyMode = hotkeyMode
         self.hasSeenOnboarding = hasSeenOnboarding
@@ -131,6 +133,7 @@ struct AppSettings: Codable {
         self.hasAutoSelectedFastLocalModel = hasAutoSelectedFastLocalModel
         self.hasDismissedInputMonitoringHint = hasDismissedInputMonitoringHint
         self.dockModeEnabled = dockModeEnabled
+        self.autoFallbackToLocalOnOffline = autoFallbackToLocalOnOffline
     }
 
     enum CodingKeys: String, CodingKey {
@@ -141,6 +144,7 @@ struct AppSettings: Codable {
         case hasAutoSelectedFastLocalModel
         case hasDismissedInputMonitoringHint
         case dockModeEnabled
+        case autoFallbackToLocalOnOffline
     }
 
     init(from decoder: Decoder) throws {
@@ -161,6 +165,10 @@ struct AppSettings: Codable {
             forKey: .hasDismissedInputMonitoringHint
         ) ?? false
         dockModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .dockModeEnabled) ?? true
+        autoFallbackToLocalOnOffline = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .autoFallbackToLocalOnOffline
+        ) ?? false
     }
 }
 

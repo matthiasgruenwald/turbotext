@@ -209,6 +209,16 @@ struct TranscriptionSettingsView: View {
                         .foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                Toggle("Bei Internetausfall automatisch lokal transkribieren", isOn: $appState.appSettings.autoFallbackToLocalOnOffline)
+                    .toggleStyle(.switch)
+                    .disabled(!appState.selectedLocalModelIsInstalled)
+
+                if !appState.selectedLocalModelIsInstalled {
+                    Text("Erfordert ein installiertes lokales Modell.")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                }
             }
 
             // MARK: Mikrofon
@@ -228,6 +238,18 @@ struct TranscriptionSettingsView: View {
 
                 Button("Testen") {
                     OfflineWarningSoundPlayer.play(.networkUnavailable)
+                }
+                .buttonStyle(SubtleButtonStyle())
+
+                Divider()
+
+                Text("Wenn der automatische Lokal-Fallback aktiv ist, spielt Turbotext stattdessen diesen Sound: Turbotext läuft lokal weiter.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button("Testen") {
+                    OfflineWarningSoundPlayer.play(.localFallbackActive)
                 }
                 .buttonStyle(SubtleButtonStyle())
             }

@@ -250,7 +250,11 @@ final class AppState {
 
     // MARK: - Workflow Management
 
-    func startWorkflow(_ type: WorkflowType, source: WorkflowLaunchSource = .manual) {
+    func startWorkflow(
+        _ type: WorkflowType,
+        source: WorkflowLaunchSource = .manual,
+        backendOverride: TranscriptionBackend? = nil
+    ) {
         guard isWorkflowAvailable(type) else {
             if source == .manual {
                 page = .settings
@@ -269,7 +273,7 @@ final class AppState {
             let workflow = TranscriptionWorkflow(
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
-                backend: appSettings.secureLocalModeEnabled ? .local : .remote,
+                backend: backendOverride ?? (appSettings.secureLocalModeEnabled ? .local : .remote),
                 localModelName: selectedLocalModelName
             )
             configureWorkflowHandlers(workflow)

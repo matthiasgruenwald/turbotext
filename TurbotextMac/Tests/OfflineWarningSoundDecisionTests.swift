@@ -54,3 +54,119 @@ final class OfflineWarningSoundDecisionTests: XCTestCase {
         XCTAssertNil(kind)
     }
 }
+
+// MARK: - TranscriptionFallbackResolver (#43)
+
+final class TranscriptionFallbackResolverTests: XCTestCase {
+
+    // MARK: Red + transcription + toggle on + model installed → local fallback
+
+    func testRedTranscriptionToggleOnModelInstalledFallsBackToLocal() {
+        let decision = TranscriptionFallbackResolver.resolve(
+            for: .red,
+            workflowType: .transcription,
+            autoFallbackToLocalOnOffline: true,
+            isLocalModelInstalled: true
+        )
+        XCTAssertEqual(decision.backend, .local)
+        XCTAssertEqual(decision.soundKind, .localFallbackActive)
+    }
+
+    // MARK: Toggle off → unchanged #42 behavior
+
+    func testRedTranscriptionToggleOffStaysRemoteWithWarningSound() {
+        let decision = TranscriptionFallbackResolver.resolve(
+            for: .red,
+            workflowType: .transcription,
+            autoFallbackToLocalOnOffline: false,
+            isLocalModelInstalled: true
+        )
+        XCTAssertEqual(decision.backend, .remote)
+        XCTAssertEqual(decision.soundKind, .networkUnavailable)
+    }
+
+    // MARK: Model not installed → unchanged #42 behavior even with toggle on
+
+    func testRedTranscriptionToggleOnModelNotInstalledStaysRemoteWithWarningSound() {
+        let decision = TranscriptionFallbackResolver.resolve(
+            for: .red,
+            workflowType: .transcription,
+            autoFallbackToLocalOnOffline: true,
+            isLocalModelInstalled: false
+        )
+        XCTAssertEqual(decision.backend, .remote)
+        XCTAssertEqual(decision.soundKind, .networkUnavailable)
+    }
+
+    // MARK: Other cloud workflow types never trigger fallback, even with toggle on
+
+    func testRedTextImproverToggleOnModelInstalledNeverFallsBack() {
+        let decision = TranscriptionFallbackResolver.resolve(
+            for: .red,
+            workflowType: .textImprover,
+            autoFallbackToLocalOnOffline: true,
+            isLocalModelInstalled: true
+        )
+        XCTAssertEqual(decision.backend, .remote)
+        XCTAssertEqual(decision.soundKind, .networkUnavailable)
+    }
+
+    func testRedDampfAblassenToggleOnModelInstalledNeverFallsBack() {
+        let decision = TranscriptionFallbackResolver.resolve(
+            for: .red,
+            workflowType: .dampfAblassen,
+            autoFallbackToLocalOnOffline: true,
+            isLocalModelInstalled: true
+        )
+        XCTAssertEqual(decision.backend, .remote)
+        XCTAssertEqual(decision.soundKind, .networkUnavailable)
+    }
+
+    func testRedEmojiTextToggleOnModelInstalledNeverFallsBack() {
+        let decision = TranscriptionFallbackResolver.resolve(
+            for: .red,
+            workflowType: .emojiText,
+            autoFallbackToLocalOnOffline: true,
+            isLocalModelInstalled: true
+        )
+        XCTAssertEqual(decision.backend, .remote)
+        XCTAssertEqual(decision.soundKind, .networkUnavailable)
+    }
+
+    // MARK: Non-red status never triggers fallback or sound
+
+    func testGreenTranscriptionToggleOnModelInstalledNoSoundNoFallback() {
+        let decision = TranscriptionFallbackResolver.resolve(
+            for: .green,
+            workflowType: .transcription,
+            autoFallbackToLocalOnOffline: true,
+            isLocalModelInstalled: true
+        )
+        XCTAssertEqual(decision.backend, .remote)
+        XCTAssertNil(decision.soundKind)
+    }
+
+    func testYellowTranscriptionToggleOnModelInstalledNoSoundNoFallback() {
+        let decision = TranscriptionFallbackResolver.resolve(
+            for: .yellow,
+            workflowType: .transcription,
+            autoFallbackToLocalOnOffline: true,
+            isLocalModelInstalled: true
+        )
+        XCTAssertEqual(decision.backend, .remote)
+        XCTAssertNil(decision.soundKind)
+    }
+
+    // MARK: localTranscription is never eligible for fallback (already local)
+
+    func testRedLocalTranscriptionNeverFallsBackOrPlaysSound() {
+        let decision = TranscriptionFallbackResolver.resolve(
+            for: .red,
+            workflowType: .localTranscription,
+            autoFallbackToLocalOnOffline: true,
+            isLocalModelInstalled: true
+        )
+        XCTAssertEqual(decision.backend, .remote)
+        XCTAssertNil(decision.soundKind)
+    }
+}
