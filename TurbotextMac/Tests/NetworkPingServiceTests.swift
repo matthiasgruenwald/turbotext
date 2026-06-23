@@ -142,6 +142,19 @@ final class NetworkQualityCalculatorTests: XCTestCase {
         XCTAssertEqual(NetworkQualityCalculator.status(for: outcomes), .red)
     }
 
+    func testWindowAllRedThenTwoConsecutiveSuccessesIsGreen() {
+        var outcomes: [PingOutcome] = Array(repeating: .failure, count: 10)
+        outcomes.append(.success(latencyMs: 40))
+        outcomes.append(.success(latencyMs: 40))
+        XCTAssertEqual(NetworkQualityCalculator.status(for: outcomes), .green)
+    }
+
+    func testWindowAllRedThenOnlyOneSuccessIsNotYetGreen() {
+        var outcomes: [PingOutcome] = Array(repeating: .failure, count: 10)
+        outcomes.append(.success(latencyMs: 40))
+        XCTAssertEqual(NetworkQualityCalculator.status(for: outcomes), .red)
+    }
+
     func testHighLatencyAboveFiveHundredMsIsRed() {
         let outcomes: [PingOutcome] = Array(repeating: .success(latencyMs: 600), count: 10)
         XCTAssertEqual(NetworkQualityCalculator.status(for: outcomes), .red)

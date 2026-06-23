@@ -41,3 +41,5 @@ Architekturentscheidungen (ADRs) liegen in `docs/adr/`, nicht in dieser Datei.
 ## Netzwerk-Qualität
 
 **Netzwerk-Qualitätsindikator** — Ampel-Status (grün/gelb/rot) im Hauptmenü, basiert auf rollierendem Fenster der letzten 10 ICMP-Pings (alle 3s) gegen einen festen, generischen Host (z.B. 1.1.1.1). Grün: 0% Verlust, <150ms Latenz. Gelb: ≥15% Verlust ODER 150–500ms Latenz. Rot: >30% Verlust ODER keine Antwort. Hover zeigt exakte Latenz/Verlust-Zahlen sofort (kein Standard-Tooltip-Delay).
+
+**Asymmetrische Recovery** — Rot/Gelb-Erkennung (Verschlechterung) bleibt unverändert über das volle 10er-Fenster, um Flackern bei einzelnem Paketverlust zu vermeiden. Für die Erholung gibt es eine schnelle Sonderregel: sobald die letzten 2 Pings direkt hintereinander erfolgreich UND latenzarm waren (<150ms), springt der Status sofort auf grün — unabhängig von älteren Failures im Fenster. So dauert die Recovery nach einem kompletten Ausfall ~6s statt ~27s. `averageLatencyMs`/`packetLossPercent` (Hover-Anzeige) bleiben davon unberührt und werden weiterhin über das volle Fenster berechnet.

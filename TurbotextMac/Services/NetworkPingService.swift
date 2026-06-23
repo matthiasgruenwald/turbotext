@@ -43,6 +43,10 @@ enum NetworkQualityCalculator {
     static func status(for outcomes: [PingOutcome]) -> NetworkQualityStatus {
         guard !outcomes.isEmpty else { return .red }
 
+        if hasTwoConsecutiveLowLatencySuccesses(outcomes) {
+            return .green
+        }
+
         let lossPercent = packetLossPercent(for: outcomes)
         guard let avgLatencyMs = averageLatencyMs(for: outcomes) else {
             return .red
@@ -57,6 +61,14 @@ enum NetworkQualityCalculator {
         }
 
         return .green
+    }
+
+    private static func hasTwoConsecutiveLowLatencySuccesses(_ outcomes: [PingOutcome]) -> Bool {
+        guard outcomes.count >= 2 else { return false }
+        return outcomes.suffix(2).allSatisfy { outcome in
+            guard case .success(let latencyMs) = outcome else { return false }
+            return latencyMs < greenLatencyThresholdMs
+        }
     }
 
     static func averageLatencyMs(for outcomes: [PingOutcome]) -> Double? {
