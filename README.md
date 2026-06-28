@@ -2,15 +2,19 @@
 
 Turbotext is a fork of [turbotext-app](https://github.com/cmagnussen/turbotext-app) by cmagnussen — an experimental open-source macOS menubar app for turning speech into text.
 
-> Turbotext — Groq-powered transcription with configurable hotkeys & mic
+> Turbotext — Groq-powered transcription with offline fallback, configurable hotkeys & mic
 
-This fork adds Groq as a transcription backend (faster and cheaper than OpenAI Whisper), makes hotkeys configurable per workflow, allows selecting the input microphone, and enables hotkeys on external USB keyboards.
+This fork adds Groq as a transcription backend (faster and cheaper than OpenAI Whisper), makes hotkeys configurable per workflow, allows selecting the input microphone, automatically falls back to a local model when the network drops, and enables hotkeys on external USB keyboards.
 
 ## What's Different From The Original
 
 - **Groq transcription** — uses Groq's `whisper-large-v3-turbo` instead of OpenAI `whisper-1`. Significantly faster and cheaper. Bring your own Groq API key (free tier available).
-- **Configurable hotkeys** — each workflow (transcribe, rewrite, etc.) gets its own assignable hotkey. No more fixed key bindings.
-- **Microphone selection** — choose any connected input device, not just the system default.
+- **Network status traffic light** — menu bar icon shows green/yellow/red based on live latency and packet loss, with hover details.
+- **Auto-fallback to local model** — on network outage, transcription switches to the on-device WhisperKit model automatically, with an audible warning so you know you're offline.
+- **Dock mode** — optional standalone main window instead of a popover-only menu bar app; clicking the menu bar icon focuses the open window instead of spawning a second one.
+- **Microphone favorites** — maintain a prioritized list of preferred input devices; the app auto-selects the best available one.
+- **Configurable hotkeys** — each workflow (transcribe, rewrite, etc.) gets its own assignable hotkey, shown live in the menu. No more fixed key bindings.
+- **Sidebar settings** — settings are organized in a sidebar (not tabs), with Groq quota shown per workflow.
 - **External keyboard support** — hotkeys work on USB keyboards, not just the built-in Apple keyboard. Requires the Input Monitoring permission (see Permissions below).
 
 ## What It Does
@@ -19,6 +23,8 @@ This fork adds Groq as a transcription backend (faster and cheaper than OpenAI W
 - **Turbotext+**: record speech, transcribe it, then turn the rough draft into cleaner writing.
 - **Turbotext $%&!**: turn frustrated speech into a calmer message.
 - **Turbotext :)**: add fitting emojis to dictated text.
+
+Online mode (Groq) is the default. If no OpenAI key is set, rewriting workflows show a hint instead of failing silently. If the network goes down mid-use, the app falls back to the local model and plays a short warning sound on the next hotkey press.
 
 ## Important Preview Notes
 
@@ -36,14 +42,24 @@ You are welcome to use, fork, adapt, and share this project under the license te
 
 <table>
   <tr>
-    <td><img src="docs/screenshots/menubar-workflows.png" alt="Turbotext menubar with workflows" width="300"></td>
-    <td><img src="docs/screenshots/settings-mic-hotkeys.png" alt="Settings: microphone and hotkey configuration" width="300"></td>
+    <td><img src="docs/screenshots/menubar.png" alt="Turbotext menubar with dynamic hotkeys and Groq quota" width="300"></td>
+    <td><img src="docs/screenshots/menubar-network-status.png" alt="Menu bar network traffic light (green/red)" width="300"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/settings-workflows.png" alt="Settings: workflows sidebar" width="300"></td>
+    <td><img src="docs/screenshots/settings-transcription.png" alt="Settings: transcription (online/local, mic favorites)" width="300"></td>
   </tr>
   <tr>
     <td><img src="docs/screenshots/settings-api-keys.png" alt="Settings: Groq and OpenAI API keys" width="300"></td>
-    <td><img src="docs/screenshots/settings-hotkeys-detail.png" alt="Settings: hotkeys per workflow" width="300"></td>
+    <td><img src="docs/screenshots/settings-app-management.png" alt="Settings: app management" width="300"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/settings-permissions.png" alt="Settings: Accessibility and Input Monitoring permission status (placeholder)" width="300"></td>
+    <td></td>
   </tr>
 </table>
+
+<!-- TODO: settings-permissions.png pending — shows Accessibility + Input Monitoring grant status -->
 
 ## Requirements
 
@@ -95,6 +111,8 @@ Turbotext asks for:
 - **Microphone**: to record your voice.
 - **Accessibility**: to paste the result back into the app you were using.
 - **Input Monitoring**: required for hotkeys on external USB keyboards.
+
+Permission status for Accessibility and Input Monitoring is shown directly in Settings — no need to check System Settings manually.
 
 ### Input Monitoring (External Keyboards)
 
