@@ -99,40 +99,21 @@ enum TranscriptionService {
 
             let audioData = try Data(contentsOf: audioURL, options: [.mappedIfSafe])
 
-            var body = Data()
-            body.append("--\(boundary)\r\n")
-            body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.m4a\"\r\n")
-            body.append("Content-Type: audio/m4a\r\n\r\n")
-            body.append(audioData)
-            body.append("\r\n")
+            let prompt = customTerms.isEmpty
+                ? nil
+                : "Eigennamen und Begriffe: \(customTerms.joined(separator: ", "))"
+            let trimmedLanguage = language?.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            body.append("--\(boundary)\r\n")
-            body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
-            body.append(remoteModel)
-            body.append("\r\n")
-
-            body.append("--\(boundary)\r\n")
-            body.append("Content-Disposition: form-data; name=\"response_format\"\r\n\r\n")
-            body.append("text")
-            body.append("\r\n")
-
-            if !customTerms.isEmpty {
-                let prompt = "Eigennamen und Begriffe: \(customTerms.joined(separator: ", "))"
-                body.append("--\(boundary)\r\n")
-                body.append("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n")
-                body.append(prompt)
-                body.append("\r\n")
-            }
-
-            if let language, !language.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                body.append("--\(boundary)\r\n")
-                body.append("Content-Disposition: form-data; name=\"language\"\r\n\r\n")
-                body.append(language.trimmingCharacters(in: .whitespacesAndNewlines))
-                body.append("\r\n")
-            }
-
-            body.append("--\(boundary)--\r\n")
-            request.httpBody = body
+            request.httpBody = MultipartFormDataBuilder.build(
+                boundary: boundary,
+                audioData: audioData,
+                filename: "audio.m4a",
+                mimeType: "audio/m4a",
+                model: remoteModel,
+                responseFormat: "text",
+                prompt: prompt,
+                language: trimmedLanguage?.isEmpty == true ? nil : trimmedLanguage
+            )
 
             let (data, response) = try await session.data(for: request)
 
@@ -156,13 +137,5 @@ enum TranscriptionService {
 
     private static func openAIErrorMessage(from data: Data) -> String? {
         (try? JSONDecoder().decode(TranscriptionOpenAIErrorResponse.self, from: data))?.error?.message
-    }
-}
-
-private extension Data {
-    mutating func append(_ string: String) {
-        if let data = string.data(using: .utf8) {
-            append(data)
-        }
     }
 }
