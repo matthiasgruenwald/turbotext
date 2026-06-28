@@ -20,6 +20,20 @@ enum TranscriptionError: LocalizedError {
     }
 }
 
+/// Outcome of a transcription request, capturing whether the Groq-to-OpenAI
+/// fallback was triggered as part of this call.
+enum TranscriptionOutcome {
+    case success(String)
+    case fallbackActivated(String)
+
+    var text: String {
+        switch self {
+        case .success(let text), .fallbackActivated(let text):
+            return text
+        }
+    }
+}
+
 private struct TranscriptionOpenAIErrorResponse: Decodable {
     struct APIError: Decodable {
         let message: String?
@@ -40,41 +54,70 @@ enum TranscriptionService {
         return URLSession(configuration: configuration)
     }()
 
+    /// Seam for tests: replace with a fake to avoid real Groq network calls.
+    static var groqTranscribe: (URL, String, [String], String?) async throws -> (text: String, rateLimitInfo: GroqRateLimitInfo) = {
+        audioURL, apiKey, customTerms, language in
+        try await GroqTranscriptionService.transcribe(
+            audioURL: audioURL,
+            apiKey: apiKey,
+            customTerms: customTerms,
+            language: language
+        )
+    }
+
+    /// Seam for tests: replace with a fake to avoid real OpenAI network calls.
+    static var openAITranscribe: (URL, [String], String?) async throws -> String = {
+        audioURL, customTerms, language in
+        try await defaultOpenAITranscribe(audioURL: audioURL, customTerms: customTerms, language: language)
+    }
+
     static func transcribe(
         audioURL: URL,
         durationSeconds: TimeInterval,
         customTerms: [String] = [],
         language: String? = nil
-    ) async throws -> String {
+    ) async throws -> TranscriptionOutcome {
         let groqKey = KeychainService.load(key: .groqAPIKey)
-        let fallbackActive = await MainActor.run { GroqQuotaStore.shared.fallbackActive }
+        let fallbackWasActive = await MainActor.run { GroqQuotaStore.shared.fallbackActive }
 
-        if let groqKey, !fallbackActive {
+        if let groqKey, !fallbackWasActive {
             do {
-                let (text, info) = try await GroqTranscriptionService.transcribe(
-                    audioURL: audioURL,
-                    apiKey: groqKey,
-                    customTerms: customTerms,
-                    language: language
-                )
+                let (text, info) = try await groqTranscribe(audioURL, groqKey, customTerms, language)
                 await MainActor.run {
                     if let remaining = info.remainingAudioSeconds {
                         GroqQuotaStore.shared.update(remainingSeconds: remaining, resetAt: info.resetAt)
                     }
                     GroqQuotaStore.shared.recordUsage(seconds: Int(durationSeconds.rounded()))
                 }
-                return text
+                return .success(text)
             } catch GroqTranscriptionError.rateLimitExceeded(let resetAt) {
                 await MainActor.run { GroqQuotaStore.shared.activateFallback(resetAt: resetAt) }
-                // fall through to OpenAI
+                let text = try await openAITranscribe(audioURL, customTerms, language)
+                return .fallbackActivated(text)
             }
             // other Groq errors propagate as-is
         }
 
-        return try await openAITranscribe(audioURL: audioURL, customTerms: customTerms, language: language)
+        let text = try await openAITranscribe(audioURL, customTerms, language)
+        return fallbackWasActive ? .fallbackActivated(text) : .success(text)
     }
 
-    private static func openAITranscribe(
+    /// Proactive quota check, mirroring the network call made by `transcribe()`.
+    /// `TranscriptionService` is the sole writer of `GroqQuotaStore` state.
+    static func checkGroqQuotaIfNeeded(apiKey: String) async {
+        do {
+            let info = try await GroqTranscriptionService.checkQuota(apiKey: apiKey)
+            if let remaining = info.remainingAudioSeconds {
+                await MainActor.run { GroqQuotaStore.shared.update(remainingSeconds: remaining, resetAt: info.resetAt) }
+            }
+        } catch GroqTranscriptionError.rateLimitExceeded(let resetAt) {
+            await MainActor.run { GroqQuotaStore.shared.activateFallback(resetAt: resetAt) }
+        } catch {
+            // Best-effort check; a real transcription will fill the quota later.
+        }
+    }
+
+    private static func defaultOpenAITranscribe(
         audioURL: URL,
         customTerms: [String],
         language: String?

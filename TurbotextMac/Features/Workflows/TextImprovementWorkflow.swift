@@ -86,7 +86,7 @@ final class TextImprovementWorkflow: Workflow {
                     durationSeconds: recordingDuration,
                     customTerms: vocabularyHints,
                     language: language
-                )
+                ).text
                 let cleanedRawText = TranscriptionQualityService.cleanedTranscript(rawText)
                 guard !TranscriptionQualityService.isLikelyArtifact(cleanedRawText, recordingDuration: recordingDuration) else {
                     phase = .error("Keine Aufnahme erkannt.")

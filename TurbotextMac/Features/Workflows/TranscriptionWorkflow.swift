@@ -103,7 +103,7 @@ final class TranscriptionWorkflow: Workflow {
                         durationSeconds: recordingDuration,
                         customTerms: vocabularyHints,
                         language: requestLanguage
-                    )
+                    ).text
                 case .local:
                     text = try await LocalTranscriptionService.shared.transcribe(
                         audioURL: url,

@@ -161,16 +161,7 @@ final class AppState {
         isCheckingGroqQuota = true
         Task { @MainActor [weak self] in
             defer { self?.isCheckingGroqQuota = false }
-            do {
-                let info = try await GroqTranscriptionService.checkQuota(apiKey: apiKey)
-                if let remaining = info.remainingAudioSeconds {
-                    store.update(remainingSeconds: remaining, resetAt: info.resetAt)
-                }
-            } catch GroqTranscriptionError.rateLimitExceeded(let resetAt) {
-                store.activateFallback(resetAt: resetAt)
-            } catch {
-                // Best-effort check; a real transcription will fill the quota later.
-            }
+            await TranscriptionService.checkGroqQuotaIfNeeded(apiKey: apiKey)
         }
     }
 
