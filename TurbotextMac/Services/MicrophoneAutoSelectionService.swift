@@ -6,14 +6,26 @@ import Foundation
 /// Never touches the macOS-wide default input device — purely app-internal (see ADR-0003).
 @MainActor
 final class MicrophoneAutoSelectionService {
-    private static let selectedMicUIDKey = "selectedMicUID"
     private static let systemObject = AudioObjectID(kAudioObjectSystemObject)
 
     private let favoritesStore: MicrophoneFavoritesStore
+    private let selectedMicUIDKey: String
+    private let deviceProvider: () -> [AudioInputDevice]
     private var listenerBlock: AudioObjectPropertyListenerBlock?
 
-    init(favoritesStore: MicrophoneFavoritesStore) {
+    /// Fired every time `applySelection()` runs, so UI showing the active microphone
+    /// (a plain computed property, not itself backed by an @Observable store) can be
+    /// told to re-render.
+    var onSelectionApplied: (() -> Void)?
+
+    init(
+        favoritesStore: MicrophoneFavoritesStore,
+        selectedMicUIDKey: String = "selectedMicUID",
+        deviceProvider: @escaping () -> [AudioInputDevice] = MicrophoneService.availableInputDevices
+    ) {
         self.favoritesStore = favoritesStore
+        self.selectedMicUIDKey = selectedMicUIDKey
+        self.deviceProvider = deviceProvider
     }
 
     func start() {
@@ -35,10 +47,21 @@ final class MicrophoneAutoSelectionService {
     }
 
     func applySelection() {
-        guard !favoritesStore.useSystemDefault else { return }
-        let available = MicrophoneService.availableInputDevices()
-        guard let selected = favoritesStore.selectedDevice(from: available) else { return }
-        UserDefaults.standard.set(selected.uid, forKey: Self.selectedMicUIDKey)
+        defer { onSelectionApplied?() }
+        guard !favoritesStore.useSystemDefault else {
+            clearSelectedUID()
+            return
+        }
+        let available = deviceProvider()
+        guard let selected = favoritesStore.selectedDevice(from: available) else {
+            clearSelectedUID()
+            return
+        }
+        UserDefaults.standard.set(selected.uid, forKey: selectedMicUIDKey)
+    }
+
+    private func clearSelectedUID() {
+        UserDefaults.standard.removeObject(forKey: selectedMicUIDKey)
     }
 
     private func observeDeviceChanges() {
@@ -49,6 +72,12 @@ final class MicrophoneAutoSelectionService {
         )
         let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             DispatchQueue.main.async {
+                self?.applySelection()
+            }
+            // Re-apply after a short delay: newly plugged devices can appear in the
+            // device list before their name/UID properties are queryable, so the
+            // immediate pass above may miss them.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 self?.applySelection()
             }
         }

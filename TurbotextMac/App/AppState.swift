@@ -110,8 +110,13 @@ final class AppState {
         page = .settings
     }
 
+    /// Bumped whenever `MicrophoneAutoSelectionService` re-evaluates the active device,
+    /// so views reading `activeMicrophoneDisplayName` get invalidated on hardware changes.
+    private(set) var microphoneDeviceSignal = 0
+
     var activeMicrophoneDisplayName: String {
-        microphoneFavoritesStore.activeDeviceDisplayName(
+        _ = microphoneDeviceSignal
+        return microphoneFavoritesStore.activeDeviceDisplayName(
             availableDevices: MicrophoneService.availableInputDevices(),
             defaultDeviceID: MicrophoneService.defaultInputDeviceID()
         )
@@ -123,7 +128,8 @@ final class AppState {
         self.hotkeyService = HotkeyService(store: store)
         let micFavorites = MicrophoneFavoritesStore()
         self.microphoneFavoritesStore = micFavorites
-        self.microphoneAutoSelectionService = MicrophoneAutoSelectionService(favoritesStore: micFavorites)
+        let micAutoSelection = MicrophoneAutoSelectionService(favoritesStore: micFavorites)
+        self.microphoneAutoSelectionService = micAutoSelection
         self.networkPingService = NetworkPingService()
         self.appSettings = Self.loadAppSettings()
         self.transcriptionSettings = Self.loadTranscriptionSettings()
@@ -133,6 +139,9 @@ final class AppState {
         refreshAccessibilityPermission()
         autoSelectFastLocalModelIfNeeded()
         prewarmLocalTranscriptionIfNeeded()
+        microphoneAutoSelectionService.onSelectionApplied = { [weak self] in
+            self?.microphoneDeviceSignal += 1
+        }
         microphoneAutoSelectionService.start()
         networkPingService.start()
         checkGroqQuotaIfNeeded()

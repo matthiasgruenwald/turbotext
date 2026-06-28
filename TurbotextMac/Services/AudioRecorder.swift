@@ -33,9 +33,15 @@ final class AudioRecorder: NSObject {
 
         // App-internal device selection only: routes this recording to the preferred
         // input device without touching the macOS-wide default input (see ADR-0003).
-        if let preferredUID = preferredInputDeviceUID(),
-           let preferredDeviceID = MicrophoneService.availableInputDevices().first(where: { $0.uid == preferredUID })?.id {
-            setEngineInputDevice(preferredDeviceID)
+        // Falls back to the system default device when the preferred device is gone,
+        // so a stale device pinning from a previous recording never lingers on the engine.
+        let targetDeviceID = Self.resolveTargetDeviceID(
+            preferredUID: preferredInputDeviceUID(),
+            availableDevices: MicrophoneService.availableInputDevices(),
+            defaultDeviceID: MicrophoneService.defaultInputDeviceID()
+        )
+        if let targetDeviceID {
+            setEngineInputDevice(targetDeviceID)
         }
 
         let inputNode = engine.inputNode
@@ -123,6 +129,19 @@ final class AudioRecorder: NSObject {
         }
         guard peak > 0 else { return -160 }
         return 20 * log10(peak)
+    }
+
+    /// Pure resolution: prefers the available device matching `preferredUID`,
+    /// otherwise falls back to the system default input device.
+    static func resolveTargetDeviceID(
+        preferredUID: String?,
+        availableDevices: [AudioInputDevice],
+        defaultDeviceID: AudioDeviceID?
+    ) -> AudioDeviceID? {
+        if let preferredUID, let match = availableDevices.first(where: { $0.uid == preferredUID }) {
+            return match.id
+        }
+        return defaultDeviceID
     }
 
     private func preferredInputDeviceUID() -> String? {
