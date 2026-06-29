@@ -42,24 +42,22 @@ You are welcome to use, fork, adapt, and share this project under the license te
 
 <table>
   <tr>
+    <td><img src="docs/screenshots/menubar-permissions.png" alt="First-launch permission prompt (Accessibility and Input Monitoring)" width="300"></td>
     <td><img src="docs/screenshots/menubar.png" alt="Turbotext menubar with dynamic hotkeys and Groq quota" width="300"></td>
+  </tr>
+  <tr>
     <td><img src="docs/screenshots/menubar-network-status.png" alt="Menu bar network traffic light (green/red)" width="300"></td>
+    <td><img src="docs/screenshots/settings-transcription.png" alt="Settings: transcription (online/local, mic favorites)" width="300"></td>
   </tr>
   <tr>
     <td><img src="docs/screenshots/settings-workflows.png" alt="Settings: workflows sidebar" width="300"></td>
-    <td><img src="docs/screenshots/settings-transcription.png" alt="Settings: transcription (online/local, mic favorites)" width="300"></td>
+    <td><img src="docs/screenshots/settings-hotkeys.png" alt="Settings: Tastenkürzel" width="300"></td>
   </tr>
   <tr>
     <td><img src="docs/screenshots/settings-api-keys.png" alt="Settings: Groq and OpenAI API keys" width="300"></td>
     <td><img src="docs/screenshots/settings-app-management.png" alt="Settings: app management" width="300"></td>
   </tr>
-  <tr>
-    <td><img src="docs/screenshots/settings-permissions.png" alt="Settings: Accessibility and Input Monitoring permission status (placeholder)" width="300"></td>
-    <td></td>
-  </tr>
 </table>
-
-<!-- TODO: settings-permissions.png pending — shows Accessibility + Input Monitoring grant status -->
 
 ## Requirements
 
