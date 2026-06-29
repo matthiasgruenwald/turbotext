@@ -30,48 +30,10 @@ enum RewriteProviderMode: String, Codable, Equatable {
     case immerOpenAI
 }
 
-private struct OpenAIChatRequest: Encodable {
-    struct Message: Encodable {
-        let role: String
-        let content: String
-    }
-
-    let model: String
-    let messages: [Message]
-    let temperature: Double
-}
-
-private struct OpenAIChatResponse: Decodable {
-    struct Choice: Decodable {
-        struct Message: Decodable {
-            let content: String?
-        }
-
-        let message: Message?
-    }
-
-    let choices: [Choice]?
-}
-
-private struct OpenAIErrorResponse: Decodable {
-    struct APIError: Decodable {
-        let message: String?
-    }
-
-    let error: APIError?
-}
-
 enum LLMService {
-    private static let chatCompletionsURL = URL(string: "https://api.openai.com/v1/chat/completions")!
-
-    private static let session: URLSession = {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.waitsForConnectivity = false
-        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        configuration.timeoutIntervalForRequest = 45
-        configuration.timeoutIntervalForResource = 45
-        return URLSession(configuration: configuration)
-    }()
+    private static let client = OpenAICompatibleClient(
+        chatCompletionsURL: URL(string: "https://api.openai.com/v1/chat/completions")!
+    )
 
     /// Seam for tests/providers: replace with a fake or a different provider (e.g. Groq)
     /// to avoid real OpenAI network calls or to route the chat completion elsewhere.
@@ -166,43 +128,23 @@ enum LLMService {
             throw LLMError.notConfigured
         }
 
-        let payload = OpenAIChatRequest(
-            model: model.rawValue,
-            messages: [
-                .init(role: "system", content: systemPrompt),
-                .init(role: "user", content: text),
-            ],
-            temperature: temperature
-        )
-
-        var request = URLRequest(url: chatCompletionsURL)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 45
-        request.httpBody = try JSONEncoder().encode(payload)
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw LLMError.networkError("Keine gültige Antwort")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            throw LLMError.apiError(openAIErrorMessage(from: data) ?? "Status \(httpResponse.statusCode)")
-        }
-
-        let result = try JSONDecoder().decode(OpenAIChatResponse.self, from: data)
-        guard let content = result.choices?.first?.message?.content,
-              !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        do {
+            return try await client.complete(
+                apiKey: apiKey,
+                model: model.rawValue,
+                messages: [
+                    .init(role: "system", content: systemPrompt),
+                    .init(role: "user", content: text),
+                ],
+                temperature: temperature
+            )
+        } catch OpenAICompatibleError.networkError(let msg) {
+            throw LLMError.networkError(msg)
+        } catch OpenAICompatibleError.apiError(let msg) {
+            throw LLMError.apiError(msg)
+        } catch OpenAICompatibleError.noContent {
             throw LLMError.noContent
         }
-
-        return content.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private static func openAIErrorMessage(from data: Data) -> String? {
-        (try? JSONDecoder().decode(OpenAIErrorResponse.self, from: data))?.error?.message
     }
 
     private static func buildEmojiSystemPrompt(density: EmojiTextSettings.EmojiDensity) -> String {
