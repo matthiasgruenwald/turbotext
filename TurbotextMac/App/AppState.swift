@@ -52,6 +52,7 @@ final class AppState {
     private var activeLaunchSource: WorkflowLaunchSource = .manual
     private var lastPopoverPasteTarget: PasteTarget?
     private var isCheckingGroqQuota = false
+    private let settingsStore: SettingsStore
 
     // Persisted settings
     var appSettings: AppSettings {
@@ -129,11 +130,14 @@ final class AppState {
         let micAutoSelection = MicrophoneAutoSelectionService(favoritesStore: micFavorites)
         self.microphoneAutoSelectionService = micAutoSelection
         self.networkPingService = NetworkPingService()
-        self.appSettings = Self.loadAppSettings()
-        self.transcriptionSettings = Self.loadTranscriptionSettings()
-        self.textImprovementSettings = Self.loadTextImprovementSettings()
-        self.dampfAblassenSettings = Self.loadDampfAblassenSettings()
-        self.emojiTextSettings = Self.loadEmojiTextSettings()
+        let settingsStore = SettingsStore()
+        self.settingsStore = settingsStore
+        let loadedSettings = settingsStore.load()
+        self.appSettings = loadedSettings.app
+        self.transcriptionSettings = loadedSettings.transcription
+        self.textImprovementSettings = loadedSettings.textImprovement
+        self.dampfAblassenSettings = loadedSettings.dampfAblassen
+        self.emojiTextSettings = loadedSettings.emojiText
         let orchestrator = WorkflowOrchestrator(workflowFactory: { _, _ in nil })
         self.orchestrator = orchestrator
         orchestrator.workflowFactory = { [weak self] type, backendOverride in
@@ -468,90 +472,6 @@ final class AppState {
         return !value.isEmpty
     }
 
-    // MARK: - Settings Persistence
-
-    private static let settingsURL: URL = {
-        try? AppSupportPaths.ensureAppSupportDirectoryExists()
-        return AppSupportPaths.settingsURL
-    }()
-
-    private func saveSettings() {
-        let container = SettingsContainer(
-            app: appSettings,
-            transcription: transcriptionSettings,
-            textImprovement: textImprovementSettings,
-            dampfAblassen: dampfAblassenSettings,
-            emojiText: emojiTextSettings
-        )
-        if let data = try? JSONEncoder().encode(container) {
-            try? data.write(to: Self.settingsURL)
-        }
-    }
-
-    private static func loadAppSettings() -> AppSettings {
-        loadContainer()?.app ?? AppSettings()
-    }
-
-    private static func loadTranscriptionSettings() -> TranscriptionSettings {
-        loadContainer()?.transcription ?? TranscriptionSettings()
-    }
-
-    private static func loadTextImprovementSettings() -> TextImprovementSettings {
-        loadContainer()?.textImprovement ?? TextImprovementSettings()
-    }
-
-    private static func loadDampfAblassenSettings() -> DampfAblassenSettings {
-        loadContainer()?.dampfAblassen ?? DampfAblassenSettings()
-    }
-
-    private static func loadEmojiTextSettings() -> EmojiTextSettings {
-        loadContainer()?.emojiText ?? EmojiTextSettings()
-    }
-
-    private static func loadContainer() -> SettingsContainer? {
-        guard let data = try? Data(contentsOf: settingsURL) else { return nil }
-        return try? JSONDecoder().decode(SettingsContainer.self, from: data)
-    }
-
-    func refreshAccessibilityPermission() {
-        accessibilityPermissionGranted = AccessibilityPermissionService.currentStatus()
-        inputMonitoringPermissionGranted = InputMonitoringPermissionService.currentStatus()
-    }
-
-    func requestAccessibilityPermission() {
-        accessibilityPermissionGranted = AccessibilityPermissionService.requestPermissionPrompt()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            self?.refreshAccessibilityPermission()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-            self?.refreshAccessibilityPermission()
-        }
-    }
-
-    var shouldShowInputMonitoringHint: Bool {
-        InputMonitoringHintBanner.shouldShow(
-            inputMonitoringGranted: inputMonitoringPermissionGranted,
-            dismissed: appSettings.hasDismissedInputMonitoringHint
-        )
-    }
-
-    func dismissInputMonitoringHintPermanently() {
-        appSettings.hasDismissedInputMonitoringHint = true
-    }
-
-    func requestInputMonitoringPermission() {
-        inputMonitoringPermissionGranted = InputMonitoringPermissionService.requestPermissionPrompt()
-        InputMonitoringPermissionService.openSystemSettings()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            self?.refreshAccessibilityPermission()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-            self?.refreshAccessibilityPermission()
-        }
-    }
-
     private func autoSelectFastLocalModelIfNeeded() {
         guard !appSettings.hasAutoSelectedFastLocalModel,
               LocalTranscriptionService.shouldAutoSelectRecommendedFastModel(
@@ -599,12 +519,58 @@ final class AppState {
     }
 }
 
-private struct SettingsContainer: Codable {
-    var app: AppSettings?
-    var transcription: TranscriptionSettings
-    var textImprovement: TextImprovementSettings
-    var dampfAblassen: DampfAblassenSettings?
-    var emojiText: EmojiTextSettings?
+// MARK: - Settings Persistence
+
+private extension AppState {
+    func saveSettings() {
+        settingsStore.save(
+            app: appSettings,
+            transcription: transcriptionSettings,
+            textImprovement: textImprovementSettings,
+            dampfAblassen: dampfAblassenSettings,
+            emojiText: emojiTextSettings
+        )
+    }
+}
+
+// MARK: - Permissions
+
+extension AppState {
+    func refreshAccessibilityPermission() {
+        accessibilityPermissionGranted = AccessibilityPermissionService.currentStatus()
+        inputMonitoringPermissionGranted = InputMonitoringPermissionService.currentStatus()
+    }
+
+    func requestAccessibilityPermission() {
+        accessibilityPermissionGranted = AccessibilityPermissionService.requestPermissionPrompt()
+        scheduleAccessibilityPermissionRefresh()
+    }
+
+    var shouldShowInputMonitoringHint: Bool {
+        InputMonitoringHintBanner.shouldShow(
+            inputMonitoringGranted: inputMonitoringPermissionGranted,
+            dismissed: appSettings.hasDismissedInputMonitoringHint
+        )
+    }
+
+    func dismissInputMonitoringHintPermanently() {
+        appSettings.hasDismissedInputMonitoringHint = true
+    }
+
+    func requestInputMonitoringPermission() {
+        inputMonitoringPermissionGranted = InputMonitoringPermissionService.requestPermissionPrompt()
+        InputMonitoringPermissionService.openSystemSettings()
+        scheduleAccessibilityPermissionRefresh()
+    }
+
+    private func scheduleAccessibilityPermissionRefresh() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.refreshAccessibilityPermission()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            self?.refreshAccessibilityPermission()
+        }
+    }
 }
 
 // MARK: - Notification for Popover Dismissal
