@@ -70,9 +70,9 @@ final class WorkflowOrchestrator {
 
     init(
         workflowFactory: @escaping WorkflowFactory,
-        pasteAction: @escaping PasteAction = WorkflowOrchestrator.defaultPasteAction,
-        trustCheck: @escaping TrustCheck = AccessibilityPermissionService.isTrusted,
-        frontmostPidProvider: @escaping FrontmostPidProvider = WorkflowOrchestrator.defaultFrontmostPidProvider,
+        pasteAction: @escaping PasteAction = { WorkflowOrchestrator.defaultPasteAction() },
+        trustCheck: @escaping TrustCheck = { AccessibilityPermissionService.isTrusted(promptIfNeeded: $0) },
+        frontmostPidProvider: @escaping FrontmostPidProvider = { WorkflowOrchestrator.defaultFrontmostPidProvider() },
         writeToPasteboard: ((String) -> Void)? = nil
     ) {
         self.workflowFactory = workflowFactory
