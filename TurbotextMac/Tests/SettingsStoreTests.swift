@@ -26,7 +26,7 @@ final class SettingsStoreTests: XCTestCase {
 
         let loaded = store.load()
 
-        XCTAssertEqual(encoded(loaded.app), encoded(AppSettings()))
+        XCTAssertEqual(loaded.app, AppSettings())
         XCTAssertEqual(encoded(loaded.transcription), encoded(TranscriptionSettings()))
         XCTAssertEqual(encoded(loaded.textImprovement), encoded(TextImprovementSettings()))
         XCTAssertEqual(encoded(loaded.dampfAblassen), encoded(DampfAblassenSettings()))
@@ -62,11 +62,30 @@ final class SettingsStoreTests: XCTestCase {
 
         let loaded = store.load()
 
-        XCTAssertEqual(encoded(loaded.app), encoded(app))
+        XCTAssertEqual(loaded.app, app)
         XCTAssertEqual(encoded(loaded.transcription), encoded(transcription))
         XCTAssertEqual(encoded(loaded.textImprovement), encoded(textImprovement))
         XCTAssertEqual(encoded(loaded.dampfAblassen), encoded(dampfAblassen))
         XCTAssertEqual(encoded(loaded.emojiText), encoded(emojiText))
+    }
+
+    func testSaveThenLoadRoundTripsRewritingProviderMode() {
+        let store = SettingsStore(fileURL: fileURL)
+
+        var app = AppSettings()
+        app.rewritingProviderMode = .immerOpenAI
+
+        store.save(
+            app: app,
+            transcription: TranscriptionSettings(),
+            textImprovement: TextImprovementSettings(),
+            dampfAblassen: DampfAblassenSettings(),
+            emojiText: EmojiTextSettings()
+        )
+
+        let loaded = store.load()
+
+        XCTAssertEqual(loaded.app.rewritingProviderMode, .immerOpenAI)
     }
 
     func testLoadWithCorruptedFileReturnsDefaults() throws {
@@ -75,6 +94,6 @@ final class SettingsStoreTests: XCTestCase {
         let store = SettingsStore(fileURL: fileURL)
         let loaded = store.load()
 
-        XCTAssertEqual(encoded(loaded.app), encoded(AppSettings()))
+        XCTAssertEqual(loaded.app, AppSettings())
     }
 }

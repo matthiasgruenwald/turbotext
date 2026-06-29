@@ -25,7 +25,7 @@ enum RewriteModel: String {
     case rageMode = "gpt-4o"
 }
 
-enum RewriteProviderMode: Equatable {
+enum RewriteProviderMode: String, Codable, Equatable {
     case auto
     case immerOpenAI
 }
@@ -92,7 +92,7 @@ enum LLMService {
     }
 
     /// Where the provider mode (Auto / Immer OpenAI) comes from. Defaults to `.auto`;
-    /// the settings UI (#55) will inject the real value without touching this logic.
+    /// the settings UI injects the real value (`AppSettings.rewritingProviderMode`) at app launch.
     static var providerMode: () -> RewriteProviderMode = { .auto }
 
     /// Whether a Groq API key is configured. Seam so tests don't depend on Keychain state.

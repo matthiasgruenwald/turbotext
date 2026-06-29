@@ -38,6 +38,7 @@ struct CredentialsSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             groqKeySection
+            rewritingProviderModeSection
             Divider()
             openAIKeySection
 
@@ -115,6 +116,26 @@ struct CredentialsSettingsView: View {
             }
 
             Text("Optional. Schnellere Transkription über Groq, solange das Tages-Kontingent reicht. Danach automatisch OpenAI.")
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: Rewriting Provider Mode
+    private var rewritingProviderModeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(
+                "Immer OpenAI für Umformulierungen verwenden",
+                isOn: Binding(
+                    get: { appState.appSettings.rewritingProviderMode == .immerOpenAI },
+                    set: { appState.appSettings.rewritingProviderMode = $0 ? .immerOpenAI : .auto }
+                )
+            )
+            .toggleStyle(.switch)
+            .font(.system(size: 11.5))
+
+            Text("Gilt für Textverbesserung, Dampf ablassen und Emoji-Text. Aus: Groq wird bevorzugt, solange das Kontingent reicht. An: immer OpenAI, auch mit Groq-Key.")
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

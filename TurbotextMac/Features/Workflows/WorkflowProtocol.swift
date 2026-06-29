@@ -106,7 +106,7 @@ protocol Workflow: AnyObject, Observable {
 
 // MARK: - App Settings
 
-struct AppSettings: Codable {
+struct AppSettings: Codable, Equatable {
     var hotkeyMode: HotkeyMode = .hold
     var hasSeenOnboarding: Bool = false
     var secureLocalModeEnabled: Bool = false
@@ -115,6 +115,7 @@ struct AppSettings: Codable {
     var hasDismissedInputMonitoringHint: Bool = false
     var dockModeEnabled: Bool = true
     var autoFallbackToLocalOnOffline: Bool = false
+    var rewritingProviderMode: RewriteProviderMode = .auto
 
     init(
         hotkeyMode: HotkeyMode = .hold,
@@ -124,7 +125,8 @@ struct AppSettings: Codable {
         hasAutoSelectedFastLocalModel: Bool = false,
         hasDismissedInputMonitoringHint: Bool = false,
         dockModeEnabled: Bool = true,
-        autoFallbackToLocalOnOffline: Bool = false
+        autoFallbackToLocalOnOffline: Bool = false,
+        rewritingProviderMode: RewriteProviderMode = .auto
     ) {
         self.hotkeyMode = hotkeyMode
         self.hasSeenOnboarding = hasSeenOnboarding
@@ -134,6 +136,7 @@ struct AppSettings: Codable {
         self.hasDismissedInputMonitoringHint = hasDismissedInputMonitoringHint
         self.dockModeEnabled = dockModeEnabled
         self.autoFallbackToLocalOnOffline = autoFallbackToLocalOnOffline
+        self.rewritingProviderMode = rewritingProviderMode
     }
 
     enum CodingKeys: String, CodingKey {
@@ -145,6 +148,7 @@ struct AppSettings: Codable {
         case hasDismissedInputMonitoringHint
         case dockModeEnabled
         case autoFallbackToLocalOnOffline
+        case rewritingProviderMode
     }
 
     init(from decoder: Decoder) throws {
@@ -169,6 +173,10 @@ struct AppSettings: Codable {
             Bool.self,
             forKey: .autoFallbackToLocalOnOffline
         ) ?? false
+        rewritingProviderMode = try container.decodeIfPresent(
+            RewriteProviderMode.self,
+            forKey: .rewritingProviderMode
+        ) ?? .auto
     }
 }
 

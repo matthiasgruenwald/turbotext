@@ -171,6 +171,7 @@ final class AppState {
         microphoneAutoSelectionService.start()
         networkPingService.start()
         checkGroqQuotaIfNeeded()
+        LLMService.providerMode = { [weak self] in self?.appSettings.rewritingProviderMode ?? .auto }
     }
 
     func checkGroqQuotaIfNeeded() {
