@@ -1,0 +1,10 @@
+Turbotext — Third-Party Attribution
+====================================
+
+This project includes ideas/approaches inspired by third-party open-source work:
+
+- Groq chat-completions rewriting approach: inspired by QuickDictate-1
+  (https://github.com/KevM90/QuickDictate-1), licensed under the MIT License.
+  QuickDictate-1 is an independent fork of cmagnussen/blitztext-app (the same
+  upstream project this repository originates from); see
+  BlitztextMac/Services/GroqLLMService.swift in that repository.
