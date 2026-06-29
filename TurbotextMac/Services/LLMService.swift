@@ -25,6 +25,11 @@ enum RewriteModel: String {
     case rageMode = "gpt-4o"
 }
 
+enum RewriteProviderMode: Equatable {
+    case auto
+    case immerOpenAI
+}
+
 private struct OpenAIChatRequest: Encodable {
     struct Message: Encodable {
         let role: String
@@ -80,6 +85,21 @@ enum LLMService {
         )
     }
 
+    /// Seam for tests: replace to fake Groq instead of hitting the real network.
+    static var groqComplete: (String, String, Double) async throws -> String = {
+        text, systemPrompt, temperature in
+        try await GroqLLMService.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+    }
+
+    /// Where the provider mode (Auto / Immer OpenAI) comes from. Defaults to `.auto`;
+    /// the settings UI (#55) will inject the real value without touching this logic.
+    static var providerMode: () -> RewriteProviderMode = { .auto }
+
+    /// Whether a Groq API key is configured. Seam so tests don't depend on Keychain state.
+    static var hasGroqKey: () -> Bool = {
+        KeychainService.load(key: .groqAPIKey) != nil
+    }
+
     static func improve(
         text: String,
         settings: TextImprovementSettings,
@@ -125,7 +145,15 @@ enum LLMService {
         model: RewriteModel,
         temperature: Double
     ) async throws -> String {
-        try await providerComplete(text, systemPrompt, model, temperature)
+        guard providerMode() == .auto, hasGroqKey() else {
+            return try await providerComplete(text, systemPrompt, model, temperature)
+        }
+
+        do {
+            return try await groqComplete(text, systemPrompt, temperature)
+        } catch {
+            return try await providerComplete(text, systemPrompt, model, temperature)
+        }
     }
 
     private static func defaultOpenAIComplete(
