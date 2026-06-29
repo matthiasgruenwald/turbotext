@@ -30,106 +30,26 @@ enum RewriteProviderMode: String, Codable, Equatable {
     case immerOpenAI
 }
 
-enum LLMService {
+/// A backend capable of completing a chat-style rewrite request.
+protocol LLMProvider {
+    func complete(text: String, systemPrompt: String, temperature: Double) async throws -> String
+}
+
+/// OpenAI-backed provider. Bound to a specific `RewriteModel` at construction time,
+/// since different rewrite operations use different OpenAI models.
+struct OpenAIProvider: LLMProvider {
+    let model: RewriteModel
     private static let client = OpenAICompatibleClient(
         chatCompletionsURL: URL(string: "https://api.openai.com/v1/chat/completions")!
     )
 
-    /// Seam for tests/providers: replace with a fake or a different provider (e.g. Groq)
-    /// to avoid real OpenAI network calls or to route the chat completion elsewhere.
-    static var providerComplete: (String, String, RewriteModel, Double) async throws -> String = {
-        text, systemPrompt, model, temperature in
-        try await defaultOpenAIComplete(
-            text: text,
-            systemPrompt: systemPrompt,
-            model: model,
-            temperature: temperature
-        )
-    }
-
-    /// Seam for tests: replace to fake Groq instead of hitting the real network.
-    static var groqComplete: (String, String, Double) async throws -> String = {
-        text, systemPrompt, temperature in
-        try await GroqLLMService.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
-    }
-
-    /// Where the provider mode (Auto / Immer OpenAI) comes from. Defaults to `.auto`;
-    /// the settings UI injects the real value (`AppSettings.rewritingProviderMode`) at app launch.
-    static var providerMode: () -> RewriteProviderMode = { .auto }
-
-    /// Whether a Groq API key is configured. Seam so tests don't depend on Keychain state.
-    static var hasGroqKey: () -> Bool = {
-        KeychainService.load(key: .groqAPIKey) != nil
-    }
-
-    static func improve(
-        text: String,
-        settings: TextImprovementSettings,
-        model: RewriteModel = .fastEdit
-    ) async throws -> String {
-        try await complete(
-            text: text,
-            systemPrompt: buildSystemPrompt(settings: settings),
-            model: model,
-            temperature: 0.3
-        )
-    }
-
-    static func dampfAblassen(
-        text: String,
-        systemPrompt: String,
-        model: RewriteModel = .rageMode
-    ) async throws -> String {
-        try await complete(
-            text: text,
-            systemPrompt: systemPrompt,
-            model: model,
-            temperature: 0.4
-        )
-    }
-
-    static func addEmojis(
-        text: String,
-        settings: EmojiTextSettings,
-        model: RewriteModel = .fastEdit
-    ) async throws -> String {
-        try await complete(
-            text: text,
-            systemPrompt: buildEmojiSystemPrompt(density: settings.emojiDensity),
-            model: model,
-            temperature: 0.3
-        )
-    }
-
-    private static func complete(
-        text: String,
-        systemPrompt: String,
-        model: RewriteModel,
-        temperature: Double
-    ) async throws -> String {
-        guard providerMode() == .auto, hasGroqKey() else {
-            return try await providerComplete(text, systemPrompt, model, temperature)
-        }
-
-        do {
-            return try await groqComplete(text, systemPrompt, temperature)
-        } catch {
-            return try await providerComplete(text, systemPrompt, model, temperature)
-        }
-    }
-
-    private static func defaultOpenAIComplete(
-        text: String,
-        systemPrompt: String,
-        model: RewriteModel,
-        temperature: Double
-    ) async throws -> String {
+    func complete(text: String, systemPrompt: String, temperature: Double) async throws -> String {
         guard let apiKey = KeychainService.load(key: .openAIAPIKey) else {
             throw LLMError.notConfigured
         }
 
         do {
-            return try await client.complete(
+            return try await Self.client.complete(
                 apiKey: apiKey,
                 model: model.rawValue,
                 messages: [
@@ -145,6 +65,109 @@ enum LLMService {
         } catch OpenAICompatibleError.noContent {
             throw LLMError.noContent
         }
+    }
+}
+
+/// Groq-backed provider, used as the preferred backend in Auto mode.
+struct GroqProvider: LLMProvider {
+    func complete(text: String, systemPrompt: String, temperature: Double) async throws -> String {
+        try await GroqLLMService.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+    }
+}
+
+/// Implements the Auto-fallback routing: prefer Groq when mode is `.auto` and a Groq key
+/// exists, fall back to OpenAI if Groq fails, otherwise always use OpenAI.
+struct ProviderRouter {
+    let providerMode: RewriteProviderMode
+    let hasGroqKey: Bool
+
+    func complete(
+        text: String,
+        systemPrompt: String,
+        temperature: Double,
+        openAIProvider: LLMProvider,
+        groqProvider: LLMProvider
+    ) async throws -> String {
+        guard providerMode == .auto, hasGroqKey else {
+            return try await openAIProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+        }
+
+        do {
+            return try await groqProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+        } catch {
+            return try await openAIProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+        }
+    }
+}
+
+enum LLMService {
+    static func improve(
+        text: String,
+        settings: TextImprovementSettings,
+        model: RewriteModel = .fastEdit,
+        providerMode: RewriteProviderMode = .auto,
+        hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil
+    ) async throws -> String {
+        try await complete(
+            text: text,
+            systemPrompt: buildSystemPrompt(settings: settings),
+            model: model,
+            temperature: 0.3,
+            providerMode: providerMode,
+            hasGroqKey: hasGroqKey
+        )
+    }
+
+    static func dampfAblassen(
+        text: String,
+        systemPrompt: String,
+        model: RewriteModel = .rageMode,
+        providerMode: RewriteProviderMode = .auto,
+        hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil
+    ) async throws -> String {
+        try await complete(
+            text: text,
+            systemPrompt: systemPrompt,
+            model: model,
+            temperature: 0.4,
+            providerMode: providerMode,
+            hasGroqKey: hasGroqKey
+        )
+    }
+
+    static func addEmojis(
+        text: String,
+        settings: EmojiTextSettings,
+        model: RewriteModel = .fastEdit,
+        providerMode: RewriteProviderMode = .auto,
+        hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil
+    ) async throws -> String {
+        try await complete(
+            text: text,
+            systemPrompt: buildEmojiSystemPrompt(density: settings.emojiDensity),
+            model: model,
+            temperature: 0.3,
+            providerMode: providerMode,
+            hasGroqKey: hasGroqKey
+        )
+    }
+
+    private static func complete(
+        text: String,
+        systemPrompt: String,
+        model: RewriteModel,
+        temperature: Double,
+        providerMode: RewriteProviderMode,
+        hasGroqKey: Bool
+    ) async throws -> String {
+        let router = ProviderRouter(providerMode: providerMode, hasGroqKey: hasGroqKey)
+        return try await router.complete(
+            text: text,
+            systemPrompt: systemPrompt,
+            temperature: temperature,
+            openAIProvider: OpenAIProvider(model: model),
+            groqProvider: GroqProvider()
+        )
     }
 
     private static func buildEmojiSystemPrompt(density: EmojiTextSettings.EmojiDensity) -> String {

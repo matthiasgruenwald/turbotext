@@ -171,7 +171,6 @@ final class AppState {
         microphoneAutoSelectionService.start()
         networkPingService.start()
         checkGroqQuotaIfNeeded()
-        LLMService.providerMode = { [weak self] in self?.appSettings.rewritingProviderMode ?? .auto }
     }
 
     func checkGroqQuotaIfNeeded() {
@@ -323,19 +322,22 @@ final class AppState {
         case .textImprover:
             return TextImprovementWorkflow(
                 settings: textImprovementSettings,
-                language: transcriptionSettings.language
+                language: transcriptionSettings.language,
+                providerMode: appSettings.rewritingProviderMode
             )
         case .dampfAblassen:
             return DampfAblassenWorkflow(
                 settings: dampfAblassenSettings,
                 customTerms: textImprovementSettings.customTerms,
-                language: transcriptionSettings.language
+                language: transcriptionSettings.language,
+                providerMode: appSettings.rewritingProviderMode
             )
         case .emojiText:
             return EmojiTextWorkflow(
                 settings: emojiTextSettings,
                 customTerms: textImprovementSettings.customTerms,
-                language: transcriptionSettings.language
+                language: transcriptionSettings.language,
+                providerMode: appSettings.rewritingProviderMode
             )
         }
     }
