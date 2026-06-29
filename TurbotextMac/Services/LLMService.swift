@@ -68,6 +68,18 @@ enum LLMService {
         return URLSession(configuration: configuration)
     }()
 
+    /// Seam for tests/providers: replace with a fake or a different provider (e.g. Groq)
+    /// to avoid real OpenAI network calls or to route the chat completion elsewhere.
+    static var providerComplete: (String, String, RewriteModel, Double) async throws -> String = {
+        text, systemPrompt, model, temperature in
+        try await defaultOpenAIComplete(
+            text: text,
+            systemPrompt: systemPrompt,
+            model: model,
+            temperature: temperature
+        )
+    }
+
     static func improve(
         text: String,
         settings: TextImprovementSettings,
@@ -108,6 +120,15 @@ enum LLMService {
     }
 
     private static func complete(
+        text: String,
+        systemPrompt: String,
+        model: RewriteModel,
+        temperature: Double
+    ) async throws -> String {
+        try await providerComplete(text, systemPrompt, model, temperature)
+    }
+
+    private static func defaultOpenAIComplete(
         text: String,
         systemPrompt: String,
         model: RewriteModel,
