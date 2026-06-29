@@ -52,7 +52,7 @@ private struct GroqChatErrorResponse: Decodable {
 }
 
 enum GroqLLMService {
-    private static let model = "llama-3.3-70b-versatile"
+    private static let model = "openai/gpt-oss-120b"
     private static let chatCompletionsURL = URL(string: "https://api.groq.com/openai/v1/chat/completions")!
 
     private static let session: URLSession = {
