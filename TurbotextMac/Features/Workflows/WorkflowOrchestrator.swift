@@ -19,13 +19,13 @@ final class WorkflowOrchestrator {
 
     /// Performs the actual Cmd+V keystroke. Injected so tests can verify retry behavior
     /// without posting real CGEvents.
-    typealias PasteAction = () -> Void
+    typealias PasteAction = @MainActor () -> Void
 
     /// Returns whether accessibility automation is currently trusted, optionally prompting.
-    typealias TrustCheck = (_ promptIfNeeded: Bool) -> Bool
+    typealias TrustCheck = @MainActor (_ promptIfNeeded: Bool) -> Bool
 
     /// Returns the frontmost application's process identifier, if any.
-    typealias FrontmostPidProvider = () -> pid_t?
+    typealias FrontmostPidProvider = @MainActor () -> pid_t?
 
     var activeWorkflow: (any Workflow)?
     var menuBarStatus: MenuBarStatus = .idle {
