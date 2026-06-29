@@ -12,10 +12,11 @@ enum PopoverPage: Equatable {
 @Observable
 @MainActor
 final class AppState {
-    private static let pasteRetryInitialAttempts = 22
-    private static let concealedPasteboardType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+    let orchestrator: WorkflowOrchestrator
 
-    var activeWorkflow: (any Workflow)?
+    var activeWorkflow: (any Workflow)? {
+        orchestrator.activeWorkflow
+    }
     var page: PopoverPage = .main {
         didSet {
             guard oldValue != page else { return }
@@ -49,10 +50,7 @@ final class AppState {
     var onCloudIndicatorRefreshNeeded: (() -> Void)?
     var requestedSettingsSection: SettingsSection?
     private var activeLaunchSource: WorkflowLaunchSource = .manual
-    private var activePasteTarget: PasteTarget?
     private var lastPopoverPasteTarget: PasteTarget?
-    private var menuBarStatusResetTask: Task<Void, Never>?
-    private var workflowCleanupTask: Task<Void, Never>?
     private var isCheckingGroqQuota = false
 
     // Persisted settings
@@ -136,6 +134,30 @@ final class AppState {
         self.textImprovementSettings = Self.loadTextImprovementSettings()
         self.dampfAblassenSettings = Self.loadDampfAblassenSettings()
         self.emojiTextSettings = Self.loadEmojiTextSettings()
+        let orchestrator = WorkflowOrchestrator(workflowFactory: { _, _ in nil })
+        self.orchestrator = orchestrator
+        orchestrator.workflowFactory = { [weak self] type, backendOverride in
+            self?.makeWorkflow(type, backendOverride: backendOverride)
+        }
+        orchestrator.onPasteTargetActivationNeeded = { target in
+            target.application.activate(options: [])
+        }
+        orchestrator.onWorkflowOutput = { [weak self] _ in
+            self?.handleWorkflowOutputDelivered()
+        }
+        orchestrator.onWorkflowFinished = { [weak self] reason in
+            self?.handleWorkflowFinished(reason)
+        }
+        orchestrator.onMenuBarStatusChange = { [weak self] status in
+            self?.menuBarStatus = status
+        }
+        orchestrator.onAccessibilityPermissionChange = { [weak self] granted in
+            self?.accessibilityPermissionGranted = granted
+        }
+        orchestrator.onWillPaste = { [weak self] in
+            guard self?.isPopoverShown == true else { return }
+            NotificationCenter.default.post(name: .dismissPopover, object: nil)
+        }
         refreshAccessibilityPermission()
         autoSelectFastLocalModelIfNeeded()
         prewarmLocalTranscriptionIfNeeded()
@@ -262,67 +284,55 @@ final class AppState {
             return
         }
 
-        activeWorkflow?.stop()
-        menuBarStatusResetTask?.cancel()
-        workflowCleanupTask?.cancel()
         activeLaunchSource = source
-        activePasteTarget = capturePasteTarget(for: source)
+        orchestrator.start(
+            type,
+            source: source,
+            backendOverride: backendOverride,
+            pasteTarget: capturePasteTarget(for: source)
+        )
 
+        page = source.presentsWorkflowPage ? .workflow : .main
+    }
+
+    private func makeWorkflow(
+        _ type: WorkflowType,
+        backendOverride: TranscriptionBackend?
+    ) -> (any Workflow)? {
         switch type {
         case .transcription:
-            let workflow = TranscriptionWorkflow(
+            return TranscriptionWorkflow(
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
                 backend: backendOverride ?? (appSettings.secureLocalModeEnabled ? .local : .remote),
                 localModelName: selectedLocalModelName
             )
-            configureWorkflowHandlers(workflow)
-            activeWorkflow = workflow
-            workflow.start()
-
         case .localTranscription:
-            let workflow = TranscriptionWorkflow(
+            return TranscriptionWorkflow(
                 type: .localTranscription,
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
                 backend: .local,
                 localModelName: selectedLocalModelName
             )
-            configureWorkflowHandlers(workflow)
-            activeWorkflow = workflow
-            workflow.start()
-
         case .textImprover:
-            let workflow = TextImprovementWorkflow(
+            return TextImprovementWorkflow(
                 settings: textImprovementSettings,
                 language: transcriptionSettings.language
             )
-            configureWorkflowHandlers(workflow)
-            activeWorkflow = workflow
-            workflow.start()
-
         case .dampfAblassen:
-            let workflow = DampfAblassenWorkflow(
+            return DampfAblassenWorkflow(
                 settings: dampfAblassenSettings,
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language
             )
-            configureWorkflowHandlers(workflow)
-            activeWorkflow = workflow
-            workflow.start()
-
         case .emojiText:
-            let workflow = EmojiTextWorkflow(
+            return EmojiTextWorkflow(
                 settings: emojiTextSettings,
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language
             )
-            configureWorkflowHandlers(workflow)
-            activeWorkflow = workflow
-            workflow.start()
         }
-
-        page = source.presentsWorkflowPage ? .workflow : .main
     }
 
     func isWorkflowAvailable(_ type: WorkflowType) -> Bool {
@@ -339,18 +349,32 @@ final class AppState {
     }
 
     func stopCurrentWorkflow() {
-        activeWorkflow?.stop()
+        orchestrator.stop()
     }
 
     func resetCurrentWorkflow() {
-        activeWorkflow?.reset()
-        activeWorkflow = nil
-        activePasteTarget = nil
+        orchestrator.reset()
         activeLaunchSource = .manual
-        menuBarStatusResetTask?.cancel()
-        workflowCleanupTask?.cancel()
         menuBarStatus = .idle
         page = .main
+    }
+
+    private func handleWorkflowOutputDelivered() {
+        if activeLaunchSource == .hotkeyBackground {
+            page = .main
+        }
+    }
+
+    private func handleWorkflowFinished(_ reason: WorkflowOrchestrator.FinishReason) {
+        switch reason {
+        case .errorDuringBackgroundLaunch:
+            page = .main
+        case .outputCleanup:
+            activeLaunchSource = .manual
+            if !isPopoverShown {
+                page = .main
+            }
+        }
     }
 
     func enableSecureLocalMode() {
@@ -397,41 +421,14 @@ final class AppState {
     }
 
     func copyToClipboard(_ text: String) {
-        writeSensitiveTextToPasteboard(text)
-    }
-
-    // MARK: - Auto-Paste
-
-    /// Copies the text, restores focus when needed, then simulates Cmd+V.
-    /// The text intentionally remains on the clipboard as a fallback if paste is blocked.
-    private func pasteAtCursor(_ text: String, target: PasteTarget? = nil) {
-        writeSensitiveTextToPasteboard(text)
-
-        if isPopoverShown {
-            NotificationCenter.default.post(name: .dismissPopover, object: nil)
-        }
-
-        let trusted = AccessibilityPermissionService.isTrusted(promptIfNeeded: true)
-        accessibilityPermissionGranted = trusted
-        guard trusted else {
-            menuBarStatus = .error(activeWorkflow?.type)
-            return
-        }
-
-        attemptPasteTrusted(
-            target: target,
-            attemptsRemaining: Self.pasteRetryInitialAttempts
-        )
-    }
-
-    private func writeSensitiveTextToPasteboard(_ text: String) {
         let pasteboard = NSPasteboard.general
-
         pasteboard.clearContents()
         pasteboard.declareTypes([.string, Self.concealedPasteboardType], owner: nil)
         pasteboard.setString(text, forType: .string)
         pasteboard.setString("", forType: Self.concealedPasteboardType)
     }
+
+    private static let concealedPasteboardType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
 
     func prepareForPopoverPresentation() {
         refreshAccessibilityPermission()
@@ -579,84 +576,6 @@ final class AppState {
         }
     }
 
-    private func handleWorkflowOutput(_ text: String) {
-        pasteAtCursor(text, target: activePasteTarget)
-        if activeLaunchSource == .hotkeyBackground {
-            page = .main
-        }
-        scheduleWorkflowCleanup(after: 1.05)
-    }
-
-    private func configureWorkflowHandlers<T: Workflow>(_ workflow: T) {
-        workflow.onOutput = { [weak self] text in
-            self?.handleWorkflowOutput(text)
-        }
-        workflow.onPhaseChange = { [weak self, weak workflow] phase in
-            guard let self, let workflow else { return }
-            self.handleWorkflowPhaseChange(phase, workflow: workflow)
-        }
-    }
-
-    private func handleWorkflowPhaseChange(_ phase: WorkflowPhase, workflow: any Workflow) {
-        menuBarStatusResetTask?.cancel()
-
-        switch phase {
-        case .idle:
-            if activeWorkflow == nil {
-                menuBarStatus = .idle
-            }
-
-        case .running:
-            menuBarStatus = workflow.isRecording
-                ? .recording(workflow.type)
-                : .processing(workflow.type)
-
-        case .done:
-            menuBarStatus = .success(workflow.type)
-
-        case .error:
-            menuBarStatus = .error(workflow.type)
-            if activeLaunchSource == .hotkeyBackground {
-                activeWorkflow = nil
-                activePasteTarget = nil
-                page = .main
-            }
-            scheduleMenuBarStatusReset(after: 1.6)
-        }
-    }
-
-    private func scheduleWorkflowCleanup(after delay: TimeInterval) {
-        guard let workflow = activeWorkflow else { return }
-
-        workflowCleanupTask?.cancel()
-        let workflowID = ObjectIdentifier(workflow)
-
-        workflowCleanupTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
-            guard let self, let activeWorkflow = self.activeWorkflow else { return }
-            guard ObjectIdentifier(activeWorkflow) == workflowID else { return }
-
-            activeWorkflow.reset()
-            self.activeWorkflow = nil
-            self.activePasteTarget = nil
-            self.activeLaunchSource = .manual
-            if !self.isPopoverShown {
-                self.page = .main
-            }
-            self.menuBarStatus = .idle
-        }
-    }
-
-    private func scheduleMenuBarStatusReset(after delay: TimeInterval) {
-        menuBarStatusResetTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
-            guard let self else { return }
-            if self.activeWorkflow == nil || !(self.activeWorkflow?.phase.isActive ?? false) {
-                self.menuBarStatus = .idle
-            }
-        }
-    }
-
     private func capturePasteTarget(for source: WorkflowLaunchSource) -> PasteTarget? {
         switch source {
         case .manual:
@@ -664,55 +583,6 @@ final class AppState {
         case .hotkeyBackground:
             return captureCurrentFrontmostApp()
         }
-    }
-
-    private func attemptPasteTrusted(
-        target: PasteTarget?,
-        attemptsRemaining: Int
-    ) {
-        let frontmostPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
-
-        if let target {
-            if frontmostPid == target.processIdentifier {
-                performPaste()
-                return
-            }
-
-            target.application.activate(options: [])
-        } else {
-            return
-        }
-
-        guard attemptsRemaining > 0 else {
-            return
-        }
-
-        let delay: TimeInterval
-        switch attemptsRemaining {
-        case 16...:
-            delay = 0.015
-        case 8...15:
-            delay = 0.025
-        default:
-            delay = 0.04
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            self?.attemptPasteTrusted(
-                target: target,
-                attemptsRemaining: attemptsRemaining - 1
-            )
-        }
-    }
-
-    private func performPaste() {
-        let source = CGEventSource(stateID: .hidSystemState)
-        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true)
-        keyDown?.flags = .maskCommand
-        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false)
-        keyUp?.flags = .maskCommand
-        keyDown?.post(tap: .cghidEventTap)
-        keyUp?.post(tap: .cghidEventTap)
     }
 
     private func captureCurrentFrontmostApp() -> PasteTarget? {
@@ -741,10 +611,4 @@ private struct SettingsContainer: Codable {
 
 extension Notification.Name {
     static let dismissPopover = Notification.Name("dismissPopover")
-}
-
-private struct PasteTarget {
-    let bundleIdentifier: String?
-    let processIdentifier: pid_t
-    let application: NSRunningApplication
 }
