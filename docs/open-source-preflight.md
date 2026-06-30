@@ -5,6 +5,7 @@ Use this checklist before making the repository public.
 ## P0 Before Public
 
 - Run a local build with `./build.sh --debug`.
+- Verify Swift package resolution is locked with `xcodebuild -resolvePackageDependencies -project TurbotextMac/TurbotextMac.xcodeproj -scheme TurbotextMac -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile`.
 - Run a secret scan across the working tree and commit history.
 - Confirm there are no private URLs, hosted backend credentials, internal docs, or old project references.
 - Keep the repository private until another maintainer has reviewed the first public commit.
