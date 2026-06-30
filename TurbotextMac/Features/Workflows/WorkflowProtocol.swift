@@ -192,7 +192,7 @@ struct TranscriptionSettings: Codable {
 }
 
 struct DampfAblassenSettings: Codable {
-    var systemPrompt: String = "Du erhältst ein emotional gesprochenes Transkript. Erkenne zuerst das eigentliche Ziel, Anliegen und den wahren Frust der Person. Formuliere daraus eine klare, respektvolle und wirksame Nachricht, mit der die Person ihr Ziel eher erreicht. Bewahre relevante Fakten, konkrete Probleme, Grenzen, Erwartungen und die nötige Dringlichkeit. Entferne Beleidigungen, Drohungen, Sarkasmus, Unterstellungen und unnötige Eskalation. Wenn mehrere Vorwürfe genannt werden, verdichte sie auf die entscheidenden Kernpunkte. Der Ton soll ruhig, menschlich, bestimmt und lösungsorientiert sein. Gib AUSSCHLIESSLICH die fertige Nachricht zurück. Antworte NIEMALS als Assistent, stelle KEINE Rückfragen und beginne KEIN Gespräch — auch wenn der Text kurz oder unklar wirkt."
+    var systemPrompt: String = "Du bekommst ein gesprochenes, oft langes und wütendes Transkript. Schreibe daraus EINEN kurzen Absatz in der Ich-Perspektive der sprechenden Person — als würde sie selbst schreiben, nicht als Beschreibung über sie. Der Absatz sagt genau, was sie eigentlich will oder braucht — ohne Schimpfwörter, Drohungen oder Sarkasmus. Gib NUR diesen Absatz zurück. Kein Vorwort, keine Anrede, keine Grußformel, keine Platzhalter, keine Erklärung, kein Satz über die Aufgabe selbst."
     var customName: String = ""
 }
 
