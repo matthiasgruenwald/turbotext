@@ -5,6 +5,8 @@ import Observation
 @Observable
 @MainActor
 final class TextImprovementWorkflow: Workflow {
+    typealias Improver = (String, TextImprovementSettings, RewriteProviderMode) async throws -> String
+
     let type = WorkflowType.textImprover
     var phase: WorkflowPhase = .idle {
         didSet { onPhaseChange?(phase) }
@@ -12,47 +14,67 @@ final class TextImprovementWorkflow: Workflow {
     var onOutput: WorkflowOutputHandler?
     var onPhaseChange: WorkflowPhaseChangeHandler?
 
-    private let recorder = AudioRecorder()
+    private let pipeline: SpokenWorkflowPipeline
     private let settings: TextImprovementSettings
     private let language: String
     private let providerMode: RewriteProviderMode
+    private let transcriber: SpokenWorkflowPipeline.Transcriber
+    private let improver: Improver
     private var processingTask: Task<Void, Never>?
 
     init(
         settings: TextImprovementSettings,
         language: String = "de",
-        providerMode: RewriteProviderMode = .auto
+        providerMode: RewriteProviderMode = .auto,
+        pipeline: SpokenWorkflowPipeline? = nil,
+        transcriber: @escaping SpokenWorkflowPipeline.Transcriber = { audioURL, duration, terms, language in
+            try await TranscriptionService.transcribe(
+                audioURL: audioURL,
+                durationSeconds: duration,
+                customTerms: terms,
+                language: language
+            ).text
+        },
+        improver: @escaping Improver = { text, settings, providerMode in
+            try await LLMService.improve(
+                text: text,
+                settings: settings,
+                providerMode: providerMode
+            )
+        }
     ) {
         self.settings = settings
         self.language = language
         self.providerMode = providerMode
+        self.pipeline = pipeline ?? SpokenWorkflowPipeline()
+        self.transcriber = transcriber
+        self.improver = improver
     }
 
     // MARK: - Recording State
 
-    var isRecording: Bool { recorder.isRecording }
-    var audioLevel: Float { recorder.audioLevel }
+    var isRecording: Bool { pipeline.isRecording }
+    var audioLevel: Float { pipeline.audioLevel }
 
     // MARK: - Workflow Protocol
 
     func start() {
-        phase = .running("Aufnahme läuft ...")
-        recorder.startRecording()
-
-        if let error = recorder.errorMessage {
-            phase = .error(error)
+        switch pipeline.startRecording() {
+        case .success:
+            phase = .running("Aufnahme läuft ...")
+        case .failure(let error):
+            phase = .error(error.localizedDescription)
         }
     }
 
     func stop() {
-        if recorder.isRecording {
-            recorder.stopRecording()
-            guard !TranscriptionQualityService.shouldRejectRecording(duration: recorder.lastRecordingDuration) else {
-                recorder.discardRecording()
-                phase = .error("Keine Aufnahme erkannt.")
-                return
+        if pipeline.isRecording {
+            switch pipeline.stopRecording() {
+            case .success(let recording):
+                processRecording(recording)
+            case .failure(let error):
+                phase = .error(error.localizedDescription)
             }
-            processRecording()
         } else {
             processingTask?.cancel()
             phase = .idle
@@ -61,58 +83,33 @@ final class TextImprovementWorkflow: Workflow {
 
     func reset() {
         processingTask?.cancel()
-        if recorder.isRecording {
-            recorder.stopRecording()
-        }
-        recorder.discardRecording()
+        pipeline.resetRecording()
         phase = .idle
     }
 
     // MARK: - Two-Phase Processing: Whisper -> GPT
 
-    private func processRecording() {
-        guard let url = recorder.recordingURL else {
-            phase = .error("Keine Aufnahme vorhanden.")
-            return
-        }
-
+    private func processRecording(_ recording: SpokenWorkflowPipeline.Recording) {
         phase = .running("Wird transkribiert ...")
-        let recordingDuration = recorder.lastRecordingDuration
-        let vocabularyHints = recordingDuration >= 0.9 ? settings.customTerms : []
 
         processingTask = Task {
-            defer {
-                try? FileManager.default.removeItem(at: url)
-            }
-
             do {
-                // Phase 1: Whisper transcription
-                let rawText = try await TranscriptionService.transcribe(
-                    audioURL: url,
-                    durationSeconds: recordingDuration,
-                    customTerms: vocabularyHints,
-                    language: language
-                ).text
-                let cleanedRawText = TranscriptionQualityService.cleanedTranscript(rawText)
-                guard !TranscriptionQualityService.isLikelyArtifact(cleanedRawText, recordingDuration: recordingDuration) else {
-                    phase = .error("Keine Aufnahme erkannt.")
-                    return
-                }
-
-                if Task.isCancelled { return }
-
-                // Phase 2: GPT improvement
-                phase = .running("Text wird verbessert ...")
-
-                let improved = try await LLMService.improve(
-                    text: cleanedRawText,
-                    settings: settings,
-                    providerMode: providerMode
+                let rawText = try await pipeline.transcribeRecording(
+                    recording,
+                    customTerms: settings.customTerms,
+                    language: language,
+                    transcriber: transcriber
                 )
+                try Task.checkCancellation()
+
+                phase = .running("Text wird verbessert ...")
+                let improved = try await improver(rawText, settings, providerMode)
 
                 let cleanedImproved = TranscriptionQualityService.cleanedTranscript(improved)
                 phase = .done(cleanedImproved)
                 onOutput?(cleanedImproved)
+            } catch SpokenWorkflowPipeline.Error.noSpeech {
+                phase = .error("Keine Aufnahme erkannt.")
             } catch {
                 phase = .error(error.localizedDescription)
             }
