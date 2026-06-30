@@ -19,7 +19,7 @@ final class TranscriptionWorkflow: Workflow {
     var onOutput: WorkflowOutputHandler?
     var onPhaseChange: WorkflowPhaseChangeHandler?
 
-    private let recorder = AudioRecorder()
+    private let pipeline = SpokenWorkflowPipeline()
     private let customTerms: [String]
     private let language: String
     private let backend: TranscriptionBackend
@@ -41,23 +41,23 @@ final class TranscriptionWorkflow: Workflow {
     }
 
     func start() {
-        recorder.startRecording()
-        if let error = recorder.errorMessage {
-            phase = .error(error)
+        switch pipeline.startRecording() {
+        case .success:
+            phase = .running("Aufnahme läuft ...")
+        case .failure(let error):
+            phase = .error(error.localizedDescription)
             return
         }
-        phase = .running("Aufnahme läuft ...")
     }
 
     func stop() {
-        if recorder.isRecording {
-            recorder.stopRecording()
-            guard !TranscriptionQualityService.shouldRejectRecording(duration: recorder.lastRecordingDuration) else {
-                recorder.discardRecording()
-                phase = .error("Keine Aufnahme erkannt.")
-                return
+        if pipeline.isRecording {
+            switch pipeline.stopRecording() {
+            case .success(let recording):
+                transcribe(recording)
+            case .failure(let error):
+                phase = .error(error.localizedDescription)
             }
-            transcribe()
         } else {
             transcriptionTask?.cancel()
             phase = .idle
@@ -66,68 +66,57 @@ final class TranscriptionWorkflow: Workflow {
 
     func reset() {
         transcriptionTask?.cancel()
-        if recorder.isRecording {
-            recorder.stopRecording()
-        }
-        recorder.discardRecording()
+        pipeline.resetRecording()
         phase = .idle
     }
 
-    var isRecording: Bool { recorder.isRecording }
-    var audioLevel: Float { recorder.audioLevel }
+    var isRecording: Bool { pipeline.isRecording }
+    var audioLevel: Float { pipeline.audioLevel }
 
-    private func transcribe() {
-        guard let url = recorder.recordingURL else {
-            phase = .error("Keine Aufnahme vorhanden.")
-            return
-        }
-
+    private func transcribe(_ recording: SpokenWorkflowPipeline.Recording) {
         phase = .running(backend == .local ? "Wird lokal transkribiert ..." : "Wird transkribiert ...")
-        let recordingDuration = recorder.lastRecordingDuration
-        let vocabularyHints = recordingDuration >= 0.9 ? customTerms : []
         let requestLanguage = language
         let stopTime = Date()
 
         transcriptionTask = Task(priority: .userInitiated) {
-            defer {
-                try? FileManager.default.removeItem(at: url)
-            }
-
             let requestStart = Date()
             do {
-                let text: String
-                switch backend {
-                case .remote:
-                    text = try await TranscriptionService.transcribe(
-                        audioURL: url,
-                        durationSeconds: recordingDuration,
-                        customTerms: vocabularyHints,
-                        language: requestLanguage
-                    ).text
-                case .local:
-                    text = try await LocalTranscriptionService.shared.transcribe(
-                        audioURL: url,
-                        language: requestLanguage,
-                        modelName: localModelName
-                    )
-                }
+                let text = try await pipeline.transcribeRecording(
+                    recording,
+                    customTerms: customTerms,
+                    language: requestLanguage,
+                    transcriber: { audioURL, duration, terms, language in
+                        switch backend {
+                        case .remote:
+                            return try await TranscriptionService.transcribe(
+                                audioURL: audioURL,
+                                durationSeconds: duration,
+                                customTerms: terms,
+                                language: language
+                            ).text
+                        case .local:
+                            return try await LocalTranscriptionService.shared.transcribe(
+                                audioURL: audioURL,
+                                language: language,
+                                modelName: localModelName
+                            )
+                        }
+                    }
+                )
                 try Task.checkCancellation()
 
                 let responseReceivedAt = Date()
-                let cleaned = TranscriptionQualityService.cleanedTranscript(text)
-                guard !TranscriptionQualityService.isLikelyArtifact(cleaned, recordingDuration: recordingDuration) else {
-                    transcriptionLogger.info(
-                        "Transcription rejected short artifact after \(elapsedMilliseconds(since: stopTime)) ms"
-                    )
-                    phase = .error("Keine Aufnahme erkannt.")
-                    return
-                }
 
                 transcriptionLogger.info(
                     "Transcription ready in \(elapsedMilliseconds(since: stopTime, until: responseReceivedAt)) ms (request \(elapsedMilliseconds(since: requestStart, until: responseReceivedAt)) ms)"
                 )
-                phase = .done(cleaned)
-                onOutput?(cleaned)
+                phase = .done(text)
+                onOutput?(text)
+            } catch SpokenWorkflowPipeline.Error.noSpeech {
+                transcriptionLogger.info(
+                    "Transcription rejected short artifact after \(elapsedMilliseconds(since: stopTime)) ms"
+                )
+                phase = .error("Keine Aufnahme erkannt.")
             } catch {
                 transcriptionLogger.error(
                     "Transcription failed after \(elapsedMilliseconds(since: stopTime)) ms: \(error.localizedDescription, privacy: .private)"
