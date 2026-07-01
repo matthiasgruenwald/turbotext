@@ -259,20 +259,21 @@ struct MenuBarView: View {
     private var transcriptionModePanel: some View {
         let modelOptions = LocalTranscriptionService.modelOptions()
         let selectedModelInstalled = appState.selectedLocalModelIsInstalled
+        let modeStatus = appState.transcriptionModeStatus
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                Image(systemName: onlineModeIconName)
+                Image(systemName: modeStatus.panelIconName)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(onlineModeIconColor)
+                    .foregroundStyle(iconColor(for: modeStatus.panelIconTone))
                     .frame(width: 22, height: 22)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(appState.appSettings.secureLocalModeEnabled ? "Lokal · kein Server" : "Online · \(onlineModeTitle)")
+                    Text(modeStatus.panelTitle)
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(.primary)
 
-                    Text(modePanelSubtitle(selectedModelInstalled: selectedModelInstalled))
+                    Text(modeStatus.panelSubtitle)
                         .font(.system(size: 10.5))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -372,47 +373,15 @@ struct MenuBarView: View {
         )
     }
 
-    private var onlineModeIconName: String {
-        if appState.appSettings.secureLocalModeEnabled { return "lock.shield.fill" }
-        return GroqQuotaStore.shared.fallbackActive ? "eurosign.circle" : "network"
-    }
-
-    private var onlineModeIconColor: Color {
-        if appState.appSettings.secureLocalModeEnabled { return .green }
-        let hasGroqKey = KeychainService.load(key: .groqAPIKey) != nil
-        if hasGroqKey && !GroqQuotaStore.shared.fallbackActive { return .blue }
-        return .secondary
-    }
-
-    private var onlineModeTitle: String {
-        let store = GroqQuotaStore.shared
-        let hasGroqKey = KeychainService.load(key: .groqAPIKey) != nil
-        if hasGroqKey && !store.fallbackActive { return "Groq Whisper" }
-        return "OpenAI Whisper"
-    }
-
-    private func modePanelSubtitle(selectedModelInstalled: Bool) -> String {
-        if appState.appSettings.secureLocalModeEnabled {
-            if appState.isDownloadingLocalModel {
-                return appState.localModelDownloadStatusText ?? "Lokales Modell wird geladen."
-            }
-            if selectedModelInstalled {
-                return "Verarbeitung auf diesem Gerät mit \(appState.selectedLocalModelDisplayName)."
-            }
-            return "\(appState.selectedLocalModelDisplayName) ist noch nicht installiert."
+    private func iconColor(for tone: TranscriptionModeIconTone) -> Color {
+        switch tone {
+        case .local:
+            return .green
+        case .groq:
+            return .blue
+        case .fallback:
+            return .secondary
         }
-
-        let store = GroqQuotaStore.shared
-        let hasGroqKey = KeychainService.load(key: .groqAPIKey) != nil
-
-        if hasGroqKey {
-            if store.fallbackActive {
-                return "Über Server verarbeitet · Groq-Kontingent aufgebraucht, jetzt OpenAI Whisper."
-            }
-            return "Über Server verarbeitet · heute \(store.formattedUsedToday) Groq-Kontingent genutzt."
-        }
-
-        return "Über Server verarbeitet via OpenAI Whisper."
     }
 
     private var configuredHeader: some View {

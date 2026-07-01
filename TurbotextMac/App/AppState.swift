@@ -223,16 +223,23 @@ final class AppState {
         )
     }
 
+    var transcriptionModeStatus: TranscriptionModeStatus {
+        TranscriptionModeStatus(
+            secureLocalModeEnabled: appSettings.secureLocalModeEnabled,
+            selectedLocalModelInstalled: selectedLocalModelIsInstalled,
+            selectedLocalModelDisplayName: selectedLocalModelDisplayName,
+            isDownloadingLocalModel: isDownloadingLocalModel,
+            localModelDownloadStatusText: localModelDownloadStatusText,
+            hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil,
+            groqFallbackActive: GroqQuotaStore.shared.fallbackActive,
+            groqQuotaUsedToday: GroqQuotaStore.shared.formattedUsedToday
+        )
+    }
+
     func workflowSubtitle(for type: WorkflowType) -> String {
         switch type {
         case .transcription:
-            if appSettings.secureLocalModeEnabled {
-                let modelName = selectedLocalModelName
-                return LocalTranscriptionService.isModelInstalled(modelName)
-                    ? "Lokal: \(LocalTranscriptionModel.displayName(for: modelName))."
-                    : "Lokales WhisperKit-Modell fehlt."
-            }
-            return "Sprache rein. Landet in Zwischenablage."
+            return transcriptionModeStatus.transcriptionWorkflowSubtitle
         case .localTranscription:
             return "Nur lokal. Kein Server."
         case .textImprover, .dampfAblassen, .emojiText:
@@ -342,8 +349,8 @@ final class AppState {
         case .localTranscription:
             return selectedLocalModelIsInstalled
         case .transcription:
-            return appSettings.secureLocalModeEnabled
-                ? selectedLocalModelIsInstalled
+            return transcriptionModeStatus.secureLocalModeEnabled
+                ? transcriptionModeStatus.selectedLocalModelInstalled
                 : KeychainService.isConfigured
         case .textImprover, .dampfAblassen, .emojiText:
             return !appSettings.secureLocalModeEnabled && KeychainService.isConfigured

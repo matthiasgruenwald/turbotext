@@ -16,6 +16,8 @@ struct TranscriptionSettingsView: View {
     }
 
     var body: some View {
+        let modeStatus = appState.transcriptionModeStatus
+
         VStack(alignment: .leading, spacing: 20) {
 
             // MARK: Lokaler Modus
@@ -31,10 +33,10 @@ struct TranscriptionSettingsView: View {
                     }
 
                 HStack(spacing: 6) {
-                    Image(systemName: appState.selectedLocalModelIsInstalled ? "checkmark.circle.fill" : "arrow.down.circle.fill")
+                    Image(systemName: modeStatus.selectedLocalModelInstalled ? "checkmark.circle.fill" : "arrow.down.circle.fill")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(appState.selectedLocalModelIsInstalled ? .green : .blue)
-                    Text(appState.selectedLocalModelIsInstalled ? "\(installedLocalModels.count) lokales WhisperKit-Modell installiert." : "Das ausgewählte Modell wird beim Installieren lokal gespeichert.")
+                        .foregroundStyle(modeStatus.selectedLocalModelInstalled ? .green : .blue)
+                    Text(modeStatus.localInstallStatusText(installedModelCount: installedLocalModels.count))
                         .font(.system(size: 10.5))
                         .foregroundStyle(.secondary)
                     Spacer()

@@ -78,13 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     private func refreshMenuBarCloudIndicator() {
-        let hasGroqKey = KeychainService.load(key: .groqAPIKey) != nil
-        let indicator = MenuBarCloudIndicator.resolve(
-            secureLocalModeEnabled: appState.appSettings.secureLocalModeEnabled,
-            hasGroqKey: hasGroqKey,
-            fallbackActive: GroqQuotaStore.shared.fallbackActive
-        )
-        menuBarStatusController.setCloudIndicator(indicator)
+        menuBarStatusController.setCloudIndicator(appState.transcriptionModeStatus.menuBarCloudIndicator)
         menuBarStatusController.setPermissions(
             accessibilityGranted: appState.accessibilityPermissionGranted,
             inputMonitoringGranted: appState.inputMonitoringPermissionGranted

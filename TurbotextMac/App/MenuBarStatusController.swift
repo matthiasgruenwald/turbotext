@@ -14,12 +14,6 @@ enum MenuBarCloudIndicator: Equatable {
     case none
     case groqReady
     case openAIFallback
-
-    static func resolve(secureLocalModeEnabled: Bool, hasGroqKey: Bool, fallbackActive: Bool) -> MenuBarCloudIndicator {
-        if secureLocalModeEnabled { return .none }
-        if hasGroqKey && !fallbackActive { return .groqReady }
-        return .openAIFallback
-    }
 }
 
 /// Whether the menu bar icon should show a red X overlay for the current network status.
