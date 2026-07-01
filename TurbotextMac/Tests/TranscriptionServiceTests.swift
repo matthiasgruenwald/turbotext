@@ -10,7 +10,6 @@ final class TranscriptionServiceTests: XCTestCase {
         KeychainService.delete(key: .groqAPIKey)
         KeychainService.delete(key: .openAIAPIKey)
         resetQuotaStore()
-        restoreDefaultSeams()
         super.tearDown()
     }
 
@@ -20,31 +19,19 @@ final class TranscriptionServiceTests: XCTestCase {
         store.clearIfExpired()
     }
 
-    private func restoreDefaultSeams() {
-        TranscriptionService.groqTranscribe = { audioURL, apiKey, customTerms, language in
-            try await GroqTranscriptionService.transcribe(
-                audioURL: audioURL,
-                apiKey: apiKey,
-                customTerms: customTerms,
-                language: language
-            )
-        }
-        TranscriptionService.openAITranscribe = { audioURL, customTerms, language in
-            throw TranscriptionError.notConfigured
-        }
-    }
-
     func testNormalSuccessUsesGroqAndDoesNotActivateFallback() async throws {
-        try KeychainService.save(key: .groqAPIKey, value: "gsk_test_key")
-        TranscriptionService.groqTranscribe = { _, _, _, _ in
-            ("Hallo Welt", GroqRateLimitInfo(remainingAudioSeconds: 500, resetAt: nil))
-        }
-        TranscriptionService.openAITranscribe = { _, _, _ in
-            XCTFail("OpenAI should not be called on Groq success")
-            return ""
-        }
+        let router = CloudTranscriptionRouter(
+            groqKey: { "gsk_test_key" },
+            groqTranscribe: { _, _, _, _ in
+                ("Hallo Welt", GroqRateLimitInfo(remainingAudioSeconds: 500, resetAt: nil))
+            },
+            openAITranscribe: { _, _, _ in
+                XCTFail("OpenAI should not be called on Groq success")
+                return ""
+            }
+        )
 
-        let outcome = try await TranscriptionService.transcribe(
+        let outcome = try await router.transcribe(
             audioURL: dummyAudioURL,
             durationSeconds: 2
         )
@@ -58,16 +45,18 @@ final class TranscriptionServiceTests: XCTestCase {
     }
 
     func testGroq429ActivatesFallbackAndReturnsOpenAIText() async throws {
-        try KeychainService.save(key: .groqAPIKey, value: "gsk_test_key")
         let resetAt = Date().addingTimeInterval(3600)
-        TranscriptionService.groqTranscribe = { _, _, _, _ in
-            throw GroqTranscriptionError.rateLimitExceeded(resetAt: resetAt)
-        }
-        TranscriptionService.openAITranscribe = { _, _, _ in
-            "Fallback Text"
-        }
+        let router = CloudTranscriptionRouter(
+            groqKey: { "gsk_test_key" },
+            groqTranscribe: { _, _, _, _ in
+                throw GroqTranscriptionError.rateLimitExceeded(resetAt: resetAt)
+            },
+            openAITranscribe: { _, _, _ in
+                "Fallback Text"
+            }
+        )
 
-        let outcome = try await TranscriptionService.transcribe(
+        let outcome = try await router.transcribe(
             audioURL: dummyAudioURL,
             durationSeconds: 2
         )
@@ -81,17 +70,19 @@ final class TranscriptionServiceTests: XCTestCase {
     }
 
     func testFallbackAlreadyActiveGoesStraightToOpenAI() async throws {
-        try KeychainService.save(key: .groqAPIKey, value: "gsk_test_key")
         GroqQuotaStore.shared.activateFallback(resetAt: Date().addingTimeInterval(3600))
-        TranscriptionService.groqTranscribe = { _, _, _, _ in
-            XCTFail("Groq should not be called while fallback is active")
-            return ("", GroqRateLimitInfo(remainingAudioSeconds: nil, resetAt: nil))
-        }
-        TranscriptionService.openAITranscribe = { _, _, _ in
-            "Direct OpenAI Text"
-        }
+        let router = CloudTranscriptionRouter(
+            groqKey: { "gsk_test_key" },
+            groqTranscribe: { _, _, _, _ in
+                XCTFail("Groq should not be called while fallback is active")
+                return ("", GroqRateLimitInfo(remainingAudioSeconds: nil, resetAt: nil))
+            },
+            openAITranscribe: { _, _, _ in
+                "Direct OpenAI Text"
+            }
+        )
 
-        let outcome = try await TranscriptionService.transcribe(
+        let outcome = try await router.transcribe(
             audioURL: dummyAudioURL,
             durationSeconds: 2
         )
@@ -100,5 +91,34 @@ final class TranscriptionServiceTests: XCTestCase {
             return XCTFail("Expected .fallbackActivated, got \(outcome)")
         }
         XCTAssertEqual(text, "Direct OpenAI Text")
+    }
+
+    func testQuotaCheckUpdatesQuotaThroughRouter() async {
+        let resetAt = Date().addingTimeInterval(3600)
+        let router = CloudTranscriptionRouter(
+            groqQuotaCheck: { apiKey in
+                XCTAssertEqual(apiKey, "gsk_test_key")
+                return GroqRateLimitInfo(remainingAudioSeconds: 321, resetAt: resetAt)
+            }
+        )
+
+        await router.checkGroqQuotaIfNeeded(apiKey: "gsk_test_key")
+
+        XCTAssertEqual(GroqQuotaStore.shared.remainingAudioSeconds, 321)
+        XCTAssertEqual(GroqQuotaStore.shared.rateLimitResetAt, resetAt)
+    }
+
+    func testQuotaCheckActivatesFallbackThroughRouter() async {
+        let resetAt = Date().addingTimeInterval(3600)
+        let router = CloudTranscriptionRouter(
+            groqQuotaCheck: { _ in
+                throw GroqTranscriptionError.rateLimitExceeded(resetAt: resetAt)
+            }
+        )
+
+        await router.checkGroqQuotaIfNeeded(apiKey: "gsk_test_key")
+
+        XCTAssertTrue(GroqQuotaStore.shared.fallbackActive)
+        XCTAssertEqual(GroqQuotaStore.shared.rateLimitResetAt, resetAt)
     }
 }
