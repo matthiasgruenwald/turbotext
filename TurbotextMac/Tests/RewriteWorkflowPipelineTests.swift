@@ -91,6 +91,36 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
     }
 
+    func testDampfAblassenCancellationDuringProcessingStaysIdle() async throws {
+        let audioURL = try makeTemporaryAudioFile(prefix: "dampf-cancel")
+        let recorder = FakeRewriteRecorder(isRecording: true, duration: 1.0, recordingURL: audioURL)
+        let transcriptionStarted = expectation(description: "transcription started")
+        let finishTranscription = AsyncGate()
+
+        let workflow = DampfAblassenWorkflow(
+            settings: DampfAblassenSettings(systemPrompt: "Bitte sachlich."),
+            pipeline: SpokenWorkflowPipeline(recorder: recorder),
+            transcriber: { _, _, _, _ in
+                transcriptionStarted.fulfill()
+                await finishTranscription.wait()
+                return " Rohtext "
+            },
+            rewriter: { _, _, _ in
+                XCTFail("Cancelled workflow should not rewrite")
+                return "ignored"
+            }
+        )
+
+        workflow.stop()
+        await fulfillment(of: [transcriptionStarted], timeout: 1)
+        workflow.stop()
+        XCTAssertEqual(workflow.phase, .idle)
+
+        await finishTranscription.open()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(workflow.phase, .idle)
+    }
+
     private func makeTemporaryAudioFile(prefix: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(prefix)-workflow-\(UUID().uuidString).m4a")
@@ -122,5 +152,25 @@ private final class FakeRewriteRecorder: SpokenWorkflowRecording {
 
     func discardRecording() {
         recordingURL = nil
+    }
+}
+
+private actor AsyncGate {
+    private var isOpen = false
+    private var continuations: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        if isOpen {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            continuations.append(continuation)
+        }
+    }
+
+    func open() {
+        isOpen = true
+        continuations.forEach { $0.resume() }
+        continuations = []
     }
 }

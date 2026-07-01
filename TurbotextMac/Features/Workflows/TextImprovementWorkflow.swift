@@ -108,6 +108,8 @@ final class TextImprovementWorkflow: Workflow {
                 let cleanedImproved = TranscriptionQualityService.cleanedTranscript(improved)
                 phase = .done(cleanedImproved)
                 onOutput?(cleanedImproved)
+            } catch is CancellationError {
+                return
             } catch SpokenWorkflowPipeline.Error.noSpeech {
                 phase = .error("Keine Aufnahme erkannt.")
             } catch {

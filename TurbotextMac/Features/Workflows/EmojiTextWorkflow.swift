@@ -115,6 +115,8 @@ final class EmojiTextWorkflow: Workflow {
                 }
                 phase = .done(cleanedResult)
                 onOutput?(cleanedResult)
+            } catch is CancellationError {
+                return
             } catch SpokenWorkflowPipeline.Error.noSpeech {
                 phase = .error("Keine Aufnahme erkannt.")
             } catch {

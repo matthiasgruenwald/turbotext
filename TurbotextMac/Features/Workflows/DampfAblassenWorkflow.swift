@@ -115,6 +115,8 @@ final class DampfAblassenWorkflow: Workflow {
                 }
                 phase = .done(cleanedAnswer)
                 onOutput?(cleanedAnswer)
+            } catch is CancellationError {
+                return
             } catch SpokenWorkflowPipeline.Error.noSpeech {
                 phase = .error("Keine Aufnahme erkannt.")
             } catch {
