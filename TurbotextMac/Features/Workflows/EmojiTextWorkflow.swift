@@ -5,6 +5,8 @@ import Observation
 @Observable
 @MainActor
 final class EmojiTextWorkflow: Workflow {
+    typealias Rewriter = (String, EmojiTextSettings, RewriteProviderMode) async throws -> String
+
     let type = WorkflowType.emojiText
     var phase: WorkflowPhase = .idle {
         didSet { onPhaseChange?(phase) }
@@ -12,50 +14,70 @@ final class EmojiTextWorkflow: Workflow {
     var onOutput: WorkflowOutputHandler?
     var onPhaseChange: WorkflowPhaseChangeHandler?
 
-    private let recorder = AudioRecorder()
+    private let pipeline: SpokenWorkflowPipeline
     private let settings: EmojiTextSettings
     private let customTerms: [String]
     private let language: String
     private let providerMode: RewriteProviderMode
+    private let transcriber: SpokenWorkflowPipeline.Transcriber
+    private let rewriter: Rewriter
     private var processingTask: Task<Void, Never>?
 
     init(
         settings: EmojiTextSettings,
         customTerms: [String] = [],
         language: String = "de",
-        providerMode: RewriteProviderMode = .auto
+        providerMode: RewriteProviderMode = .auto,
+        pipeline: SpokenWorkflowPipeline? = nil,
+        transcriber: @escaping SpokenWorkflowPipeline.Transcriber = { audioURL, duration, terms, language in
+            try await TranscriptionService.transcribe(
+                audioURL: audioURL,
+                durationSeconds: duration,
+                customTerms: terms,
+                language: language
+            ).text
+        },
+        rewriter: @escaping Rewriter = { text, settings, providerMode in
+            try await LLMService.addEmojis(
+                text: text,
+                settings: settings,
+                providerMode: providerMode
+            )
+        }
     ) {
         self.settings = settings
         self.customTerms = customTerms
         self.language = language
         self.providerMode = providerMode
+        self.pipeline = pipeline ?? SpokenWorkflowPipeline()
+        self.transcriber = transcriber
+        self.rewriter = rewriter
     }
 
     // MARK: - Recording State
 
-    var isRecording: Bool { recorder.isRecording }
-    var audioLevel: Float { recorder.audioLevel }
+    var isRecording: Bool { pipeline.isRecording }
+    var audioLevel: Float { pipeline.audioLevel }
 
     // MARK: - Workflow Protocol
 
     func start() {
-        phase = .running("Aufnahme l\u{00E4}uft ...")
-        recorder.startRecording()
-
-        if let error = recorder.errorMessage {
-            phase = .error(error)
+        switch pipeline.startRecording() {
+        case .success:
+            phase = .running("Aufnahme läuft ...")
+        case .failure(let error):
+            phase = .error(error.localizedDescription)
         }
     }
 
     func stop() {
-        if recorder.isRecording {
-            recorder.stopRecording()
-            guard !TranscriptionQualityService.shouldRejectRecording(duration: recorder.lastRecordingDuration) else {
-                recorder.discardRecording()
-                phase = .error("Keine Aufnahme erkannt.")
-                return
+        if pipeline.isRecording {
+            switch pipeline.stopRecording() {
+            case .success(let recording):
+                processRecording(recording)
+            case .failure(let error):
+                phase = .error(error.localizedDescription)
             }
-            processRecording()
         } else {
             processingTask?.cancel()
             phase = .idle
@@ -64,54 +86,28 @@ final class EmojiTextWorkflow: Workflow {
 
     func reset() {
         processingTask?.cancel()
-        if recorder.isRecording {
-            recorder.stopRecording()
-        }
-        recorder.discardRecording()
+        pipeline.resetRecording()
         phase = .idle
     }
 
     // MARK: - Two-Phase Processing: Whisper -> Emoji
 
-    private func processRecording() {
-        guard let url = recorder.recordingURL else {
-            phase = .error("Keine Aufnahme vorhanden.")
-            return
-        }
-
+    private func processRecording(_ recording: SpokenWorkflowPipeline.Recording) {
         phase = .running("Wird transkribiert ...")
-        let recordingDuration = recorder.lastRecordingDuration
-        let vocabularyHints = recordingDuration >= 0.9 ? customTerms : []
 
         processingTask = Task {
-            defer {
-                try? FileManager.default.removeItem(at: url)
-            }
-
             do {
-                // Phase 1: Whisper transcription
-                let rawText = try await TranscriptionService.transcribe(
-                    audioURL: url,
-                    durationSeconds: recordingDuration,
-                    customTerms: vocabularyHints,
-                    language: language
-                ).text
-                let cleanedRawText = TranscriptionQualityService.cleanedTranscript(rawText)
-                guard !TranscriptionQualityService.isLikelyArtifact(cleanedRawText, recordingDuration: recordingDuration) else {
-                    phase = .error("Keine Aufnahme erkannt.")
-                    return
-                }
-
-                if Task.isCancelled { return }
-
-                // Phase 2: Add emojis
-                phase = .running("Emojis werden eingef\u{00FC}gt ...")
-
-                let result = try await LLMService.addEmojis(
-                    text: cleanedRawText,
-                    settings: settings,
-                    providerMode: providerMode
+                let rawText = try await pipeline.transcribeRecording(
+                    recording,
+                    customTerms: customTerms,
+                    language: language,
+                    transcriber: transcriber
                 )
+                try Task.checkCancellation()
+
+                phase = .running("Emojis werden eingefügt ...")
+
+                let result = try await rewriter(rawText, settings, providerMode)
                 let cleanedResult = TranscriptionQualityService.cleanedTranscript(result)
                 guard cleanedResult != "KEINE_AUFNAHME_ERKANNT" else {
                     phase = .error("Keine Aufnahme erkannt.")
@@ -119,6 +115,8 @@ final class EmojiTextWorkflow: Workflow {
                 }
                 phase = .done(cleanedResult)
                 onOutput?(cleanedResult)
+            } catch SpokenWorkflowPipeline.Error.noSpeech {
+                phase = .error("Keine Aufnahme erkannt.")
             } catch {
                 phase = .error(error.localizedDescription)
             }
