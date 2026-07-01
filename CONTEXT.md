@@ -2,6 +2,12 @@
 
 Architekturentscheidungen (ADRs) liegen in `docs/adr/`, nicht in dieser Datei.
 
+## Release-Status
+
+**Turbotext macOS Preview** — Öffentlicher Preview-Stand der macOS-App. Experimentell, quelloffen und für lokale Builds gedacht; kein gehosteter Dienst, keine signierte/notarisierte Release-App und kein Produktivitäts- oder Supportversprechen.
+
+**BYO API Keys** — Nutzer bringen eigene API-Schlüssel mit. Groq ist der Standardpfad für Online-Transkription; OpenAI ist optional für Rewrite-Workflows und als Transkriptions-Fallback.
+
 ## Transkriptions-Backend
 
 **CloudTranscriptionRouter** — Logik in `TranscriptionService`, die Groq-first mit OpenAI-Fallback kombiniert. Kein eigener Typ, aber konzeptuell der Router.

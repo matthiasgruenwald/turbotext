@@ -67,6 +67,6 @@ If the folder is nested differently, the app will not detect the model.
 ## Notes
 
 - First use can be slower because the model has to load and prewarm.
-- Local transcription avoids sending audio to OpenAI for the Turbotext workflow.
+- Local transcription avoids sending audio to Groq or OpenAI for the Turbotext workflow.
 - The app currently supports local transcription only, not local rewriting.
 - Models are downloaded on demand so the repository and app package stay small and auditable.

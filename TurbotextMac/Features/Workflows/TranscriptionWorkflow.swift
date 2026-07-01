@@ -112,6 +112,8 @@ final class TranscriptionWorkflow: Workflow {
                 )
                 phase = .done(text)
                 onOutput?(text)
+            } catch is CancellationError {
+                return
             } catch SpokenWorkflowPipeline.Error.noSpeech {
                 transcriptionLogger.info(
                     "Transcription rejected short artifact after \(elapsedMilliseconds(since: stopTime)) ms"

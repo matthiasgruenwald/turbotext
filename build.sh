@@ -91,7 +91,14 @@ cd "$PROJECT_DIR"
 
 ensure_xcodebuild_available
 
-if command -v xcodegen &> /dev/null; then
+if [ "${TURBOTEXT_SKIP_XCODEGEN:-false}" = "1" ] || [ "${TURBOTEXT_SKIP_XCODEGEN:-false}" = "true" ]; then
+    if [ -d "$PROJECT_FILE" ]; then
+        echo "⚠️  Überspringe XcodeGen – nutze vorhandenes Xcode-Projekt."
+    else
+        echo "❌ TURBOTEXT_SKIP_XCODEGEN ist gesetzt, aber $PROJECT_FILE fehlt."
+        exit 1
+    fi
+elif command -v xcodegen &> /dev/null; then
     echo "⚙️  Generiere Xcode-Projekt ..."
     xcodegen generate 2>&1
 elif [ -d "$PROJECT_FILE" ]; then
@@ -149,7 +156,7 @@ if [ "$INSTALL_APP" = true ]; then
     INSTALL_DEST="$APPS_DIR/Turbotext.app"
     if [ ! -w "$APPS_DIR" ]; then
         echo "❌ /Applications ist nicht beschreibbar."
-        echo "   Fuehre den Befehl mit passenden Rechten erneut aus oder ziehe die App manuell nach /Applications."
+        echo "   Führe den Befehl mit passenden Rechten erneut aus oder ziehe die App manuell nach /Applications."
         exit 1
     fi
     rm -rf "$INSTALL_DEST"
@@ -171,11 +178,11 @@ echo "Build-Typ: $BUILD_CONFIGURATION"
 echo "Architekturen: $UNIVERSAL_ARCHS"
 echo "Kompatibel: Apple Silicon + Intel (macOS 14+)"
 echo ""
-echo "Naechste Schritte:"
+echo "Nächste Schritte:"
 echo "1. App starten"
 echo "2. Mikrofon erlauben"
-echo "3. Fuer direktes Einfuegen zusaetzlich Bedienungshilfen erlauben"
-echo "4. In Turbotext deinen eigenen OpenAI API Key eintragen"
+echo "3. Für direktes Einfügen zusätzlich Bedienungshilfen erlauben"
+echo "4. In Turbotext deinen eigenen Groq API Key eintragen"
 echo "5. Loslegen und bei Bedarf im Code weiterbauen"
 echo ""
 

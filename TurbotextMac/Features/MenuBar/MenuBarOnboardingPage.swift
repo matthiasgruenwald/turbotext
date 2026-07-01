@@ -43,7 +43,7 @@ extension MenuBarView {
                         Text("Einmal einrichten, dann direkt loslegen.")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.primary)
-                        Text("Eigenen OpenAI API Key eintragen. Danach sprechen und einfügen.")
+                        Text("Eigenen Groq API Key eintragen. Danach sprechen und einfügen.")
                             .font(.system(size: 11.5))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -55,7 +55,7 @@ extension MenuBarView {
                         onboardingInstallCard
                     }
 
-                    onboardingStep(number: "1", title: "OpenAI Key speichern", detail: "Öffne die Einstellungen und trage deinen eigenen OpenAI API Key ein.")
+                    onboardingStep(number: "1", title: "Groq Key speichern", detail: "Öffne die Einstellungen und trage deinen eigenen Groq API Key ein.")
                     onboardingStep(number: "2", title: "Berechtigungen erlauben", detail: "Mikrofon und Bedienungshilfen für das Einfügen freigeben.")
                     onboardingStep(number: "3", title: "Workflow wählen", detail: "Turbotext oder einen der Verbesserer-Workflows direkt aus der Menüleiste starten.")
                     onboardingGroqStep
@@ -134,10 +134,10 @@ extension MenuBarView {
                     )
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Optional: Groq Key für mehr Tempo")
+                    Text("Groq Key für Online-Transkription")
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(.primary)
-                    Text("Kostenloses Tier auf console.groq.com. Ohne Groq Key läuft Turbotext über den erforderlichen OpenAI Key weiter.")
+                    Text("Kostenloses Tier auf console.groq.com. OpenAI bleibt optional für Verbesserer und Fallback.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -156,7 +156,7 @@ extension MenuBarView {
                     Text("Groq Key gespeichert")
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(.primary)
-                    Text("Optionales Schnell-Tier ist aktiv.")
+                    Text("Online-Transkription ist eingerichtet.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

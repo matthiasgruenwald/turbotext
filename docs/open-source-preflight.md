@@ -10,11 +10,15 @@ Use this checklist before making the repository public.
 - Confirm there are no private URLs, hosted backend credentials, internal docs, or old project references.
 - Keep the repository private until another maintainer has reviewed the first public commit.
 - Confirm the root `LICENSE`, `README.md`, `SECURITY.md`, `CONTRIBUTING.md`, and `SUPPORT.md` are present.
-- Make the preview status explicit: experimental, bring your own OpenAI API key, no hosted backend, no warranty.
+- Make the preview status explicit: experimental, bring your own Groq API key, optional OpenAI key for rewriting, no hosted backend, no warranty.
 - Enable GitHub private vulnerability reporting, secret scanning, and push protection before switching the repo public.
 - Enable Dependabot alerts.
 - Protect `main` with pull requests, at least one review, and required CI checks.
 - Keep GitHub Actions permissions read-only by default.
+- Require approval for workflows from first-time contributors.
+- Do not add repository secrets unless they are truly needed.
+- Keep Issues enabled for bugs and focused requests.
+- Enable Discussions only if you want a lower-friction place for questions.
 
 ## P1 Soon After Public
 

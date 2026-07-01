@@ -1,11 +1,12 @@
 # Support
 
-Turbotext App is an experimental preview. There is no service-level agreement, paid support channel, or guarantee that issues will be fixed.
+Turbotext macOS Preview is experimental software. There is no service-level agreement, paid support channel, or guarantee that issues will be fixed.
 
 ## Before Asking For Help
 
 - Make sure you can build the app with `./build.sh --debug`.
-- Check that your OpenAI API key is entered in the app settings.
+- Check that your Groq API key is entered in the app settings for online transcription.
+- Add an OpenAI API key only if you want rewrite workflows.
 - Confirm that macOS microphone permission is granted.
 - Grant Accessibility permission if you expect automatic paste into other apps.
 - Read [docs/privacy.md](docs/privacy.md) before testing with sensitive content.
@@ -16,6 +17,7 @@ Use GitHub Issues for reproducible bugs and focused feature ideas.
 
 Please do not post:
 
+- Groq API keys
 - OpenAI API keys
 - access tokens
 - private audio recordings

@@ -17,7 +17,8 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 ├── docs/adr/
 │   ├── 0001-groq-fallback-persistent.md
 │   ├── 0002-network-ping-generic-host.md
-│   └── 0003-microphone-selection-app-internal.md
+│   ├── 0003-microphone-selection-app-internal.md
+│   └── 0004-dock-mode-default-on.md
 └── TurbotextMac/
 ```
 

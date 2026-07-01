@@ -16,7 +16,7 @@ Use GitHub private vulnerability reporting for this repository. Maintainers shou
 
 If private vulnerability reporting is not available yet, open a minimal public issue titled `Security contact request` without technical details.
 
-Do not include OpenAI API keys, access tokens, private recordings, or confidential transcripts in a report.
+Do not include Groq/OpenAI API keys, access tokens, private recordings, or confidential transcripts in a report.
 
 Include:
 
@@ -27,8 +27,9 @@ Include:
 
 ## Security Notes
 
-- The app sends audio and text directly to OpenAI when you use the remote workflows.
-- Your OpenAI API key is stored in the user's macOS Keychain.
+- The app sends audio directly to Groq for default online transcription.
+- Rewrite workflows send transcribed or typed text directly to OpenAI when configured.
+- Your Groq and optional OpenAI API keys are stored in the user's macOS Keychain.
 - Temporary audio files may exist briefly during processing.
 - Accessibility permission allows the app to paste text into the current app.
 - The app currently runs **without** the macOS App Sandbox. This is a deliberate trade-off for the preview: the menubar workflow needs Accessibility-based paste into arbitrary frontmost apps, system-wide hotkeys, and Application Support paths for local WhisperKit models, all of which are awkward or impossible inside a strict sandbox. Hardened Runtime is enabled, and the entitlements are limited to microphone input and outbound network access. Reintroducing the sandbox is on the roadmap once these flows are reworked.
