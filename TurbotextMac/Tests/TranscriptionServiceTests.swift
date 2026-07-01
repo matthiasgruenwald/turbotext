@@ -96,13 +96,14 @@ final class TranscriptionServiceTests: XCTestCase {
     func testQuotaCheckUpdatesQuotaThroughRouter() async {
         let resetAt = Date().addingTimeInterval(3600)
         let router = CloudTranscriptionRouter(
+            groqKey: { "gsk_test_key" },
             groqQuotaCheck: { apiKey in
                 XCTAssertEqual(apiKey, "gsk_test_key")
                 return GroqRateLimitInfo(remainingAudioSeconds: 321, resetAt: resetAt)
             }
         )
 
-        await router.checkGroqQuotaIfNeeded(apiKey: "gsk_test_key")
+        await router.checkGroqQuotaIfNeeded(secureLocalModeEnabled: false)
 
         XCTAssertEqual(GroqQuotaStore.shared.remainingAudioSeconds, 321)
         XCTAssertEqual(GroqQuotaStore.shared.rateLimitResetAt, resetAt)
@@ -111,14 +112,30 @@ final class TranscriptionServiceTests: XCTestCase {
     func testQuotaCheckActivatesFallbackThroughRouter() async {
         let resetAt = Date().addingTimeInterval(3600)
         let router = CloudTranscriptionRouter(
+            groqKey: { "gsk_test_key" },
             groqQuotaCheck: { _ in
                 throw GroqTranscriptionError.rateLimitExceeded(resetAt: resetAt)
             }
         )
 
-        await router.checkGroqQuotaIfNeeded(apiKey: "gsk_test_key")
+        await router.checkGroqQuotaIfNeeded(secureLocalModeEnabled: false)
 
         XCTAssertTrue(GroqQuotaStore.shared.fallbackActive)
         XCTAssertEqual(GroqQuotaStore.shared.rateLimitResetAt, resetAt)
+    }
+
+    func testQuotaCheckSkipsWhenRouterHasNoGroqKey() async {
+        let router = CloudTranscriptionRouter(
+            groqKey: { nil },
+            groqQuotaCheck: { _ in
+                XCTFail("Quota check should not run without a Groq key")
+                return GroqRateLimitInfo(remainingAudioSeconds: 321, resetAt: nil)
+            }
+        )
+
+        await router.checkGroqQuotaIfNeeded(secureLocalModeEnabled: false)
+
+        XCTAssertNil(GroqQuotaStore.shared.remainingAudioSeconds)
+        XCTAssertFalse(GroqQuotaStore.shared.fallbackActive)
     }
 }

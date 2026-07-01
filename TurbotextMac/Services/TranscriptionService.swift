@@ -48,8 +48,4 @@ enum TranscriptionService {
             language: language
         )
     }
-
-    static func checkGroqQuotaIfNeeded(apiKey: String) async {
-        await router.checkGroqQuotaIfNeeded(apiKey: apiKey)
-    }
 }

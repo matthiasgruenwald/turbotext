@@ -66,7 +66,21 @@ struct CloudTranscriptionRouter {
         return fallbackWasActive ? .fallbackActivated(text) : .success(text)
     }
 
-    func checkGroqQuotaIfNeeded(apiKey: String) async {
+    func checkGroqQuotaIfNeeded(secureLocalModeEnabled: Bool) async {
+        guard let apiKey = groqKey() else { return }
+        let shouldCheck = await MainActor.run {
+            GroqQuotaCheckScheduler.shouldCheck(
+                hasGroqKey: true,
+                secureLocalModeEnabled: secureLocalModeEnabled,
+                remainingAudioSeconds: GroqQuotaStore.shared.remainingAudioSeconds,
+                fallbackActive: GroqQuotaStore.shared.fallbackActive
+            )
+        }
+        guard shouldCheck else { return }
+        await checkGroqQuota(apiKey: apiKey)
+    }
+
+    private func checkGroqQuota(apiKey: String) async {
         do {
             let info = try await groqQuotaCheck(apiKey)
             if let remaining = info.remainingAudioSeconds {

@@ -53,6 +53,7 @@ final class AppState {
     private var lastPopoverPasteTarget: PasteTarget?
     private var isCheckingGroqQuota = false
     private let settingsStore: SettingsStore
+    private let cloudTranscriptionRouter = CloudTranscriptionRouter()
 
     // Persisted settings
     var appSettings: AppSettings {
@@ -175,19 +176,13 @@ final class AppState {
 
     func checkGroqQuotaIfNeeded() {
         guard !isCheckingGroqQuota else { return }
-        guard let apiKey = KeychainService.load(key: .groqAPIKey) else { return }
-        let store = GroqQuotaStore.shared
-        guard GroqQuotaCheckScheduler.shouldCheck(
-            hasGroqKey: true,
-            secureLocalModeEnabled: appSettings.secureLocalModeEnabled,
-            remainingAudioSeconds: store.remainingAudioSeconds,
-            fallbackActive: store.fallbackActive
-        ) else { return }
-
         isCheckingGroqQuota = true
         Task { @MainActor [weak self] in
             defer { self?.isCheckingGroqQuota = false }
-            await TranscriptionService.checkGroqQuotaIfNeeded(apiKey: apiKey)
+            guard let self else { return }
+            await cloudTranscriptionRouter.checkGroqQuotaIfNeeded(
+                secureLocalModeEnabled: appSettings.secureLocalModeEnabled
+            )
         }
     }
 
