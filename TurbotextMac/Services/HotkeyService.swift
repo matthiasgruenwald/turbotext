@@ -28,6 +28,8 @@ enum HotkeyEvent {
     case cancel
 }
 
+/// Thin NSEvent-monitor adapter. Forwards raw flagsChanged/keyDown/keyUp events
+/// to `HotkeyEngine`, which owns all matching/hold-state/fallback-timer logic.
 @Observable
 @MainActor
 final class HotkeyService {
@@ -35,14 +37,18 @@ final class HotkeyService {
     private var flagsMonitorLocal: Any?
     private var keyDownMonitor: Any?
     private var keyUpMonitor: Any?
-    private var activeCombo: WorkflowType?
-    private var holdModeFallbackTimer: Timer?
+
+    private let engine: HotkeyEngine
 
     let store: ShortcutStore
-    var onHotkeyEvent: ((HotkeyEvent) -> Void)?
+    var onHotkeyEvent: ((HotkeyEvent) -> Void)? {
+        get { engine.onHotkeyEvent }
+        set { engine.onHotkeyEvent = newValue }
+    }
 
     init(store: ShortcutStore) {
         self.store = store
+        self.engine = HotkeyEngine(store: store)
     }
 
     func start() {
@@ -50,23 +56,22 @@ final class HotkeyService {
         // keyDown/keyUp monitors below to receive any events at all.
         _ = CGRequestListenEventAccess()
         flagsMonitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            Task { @MainActor in self?.handleFlags(event) }
+            Task { @MainActor in self?.engine.handleFlagsChanged(event.modifierFlags) }
         }
         flagsMonitorLocal = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            Task { @MainActor in self?.handleFlags(event) }
+            Task { @MainActor in self?.engine.handleFlagsChanged(event.modifierFlags) }
             return event
         }
         keyDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            Task { @MainActor in self?.handleKeyDown(event) }
+            Task { @MainActor in self?.engine.handleKeyDown(keyCode: event.keyCode, flags: event.modifierFlags) }
         }
         keyUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyUp) { [weak self] event in
-            Task { @MainActor in self?.handleKeyUp(event) }
+            Task { @MainActor in self?.engine.handleKeyUp(keyCode: event.keyCode, flags: event.modifierFlags) }
         }
     }
 
     func stop() {
-        holdModeFallbackTimer?.invalidate()
-        holdModeFallbackTimer = nil
+        engine.stop()
         [flagsMonitorGlobal, flagsMonitorLocal, keyDownMonitor, keyUpMonitor]
             .compactMap { $0 }
             .forEach { NSEvent.removeMonitor($0) }
@@ -74,70 +79,5 @@ final class HotkeyService {
         flagsMonitorLocal = nil
         keyDownMonitor = nil
         keyUpMonitor = nil
-    }
-
-    private func handleFlags(_ event: NSEvent) {
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-
-        if let type = store.workflow(matching: flags) {
-            if activeCombo == nil {
-                activeCombo = type
-                onHotkeyEvent?(.down(type))
-                startHoldModeFallback(for: type)
-            }
-            return
-        }
-
-        if let combo = activeCombo {
-            activeCombo = nil
-            holdModeFallbackTimer?.invalidate()
-            holdModeFallbackTimer = nil
-            onHotkeyEvent?(.up(combo))
-        }
-    }
-
-    // Backup for MacBook fn/globe key: flagsChanged may not fire reliably on release.
-    // Polls NSEvent.modifierFlags every 80 ms and fires .up when the shortcut is no longer held.
-    private func startHoldModeFallback(for type: WorkflowType) {
-        holdModeFallbackTimer?.invalidate()
-        let shortcuts = store.shortcuts(for: type)
-        let timer = Timer(timeInterval: 0.08, repeats: true) { [weak self] t in
-            Task { @MainActor [weak self] in
-                guard let self, self.activeCombo == type else { t.invalidate(); return }
-                let current = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
-                guard !shortcuts.contains(where: { $0.matches(flags: current) }) else { return }
-                t.invalidate()
-                self.holdModeFallbackTimer = nil
-                self.activeCombo = nil
-                self.onHotkeyEvent?(.up(type))
-            }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        holdModeFallbackTimer = timer
-    }
-
-    private func handleKeyDown(_ event: NSEvent) {
-        if event.keyCode == 53 {
-            activeCombo = nil
-            onHotkeyEvent?(.cancel)
-            return
-        }
-
-        guard activeCombo == nil else { return }
-
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if let type = store.workflow(matching: event.keyCode, flags: flags) {
-            activeCombo = type
-            onHotkeyEvent?(.down(type))
-        }
-    }
-
-    private func handleKeyUp(_ event: NSEvent) {
-        guard let combo = activeCombo else { return }
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if store.shortcuts(for: combo).contains(where: { $0.matches(keyCode: event.keyCode, flags: flags) }) {
-            activeCombo = nil
-            onHotkeyEvent?(.up(combo))
-        }
     }
 }
