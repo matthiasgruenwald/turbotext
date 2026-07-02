@@ -53,7 +53,8 @@ final class AppState {
     private var lastPopoverPasteTarget: PasteTarget?
     private var isCheckingGroqQuota = false
     private let settingsStore: SettingsStore
-    private let cloudTranscriptionRouter = CloudTranscriptionRouter()
+    private let quotaManager: QuotaManager
+    private let cloudTranscriptionRouter: CloudTranscriptionRouter
 
     // Persisted settings
     var appSettings: AppSettings {
@@ -122,7 +123,9 @@ final class AppState {
         )
     }
 
-    init() {
+    init(quotaManager: QuotaManager = GroqQuotaManager.shared) {
+        self.quotaManager = quotaManager
+        self.cloudTranscriptionRouter = CloudTranscriptionRouter(quotaManager: quotaManager)
         let store = ShortcutStore()
         self.shortcutStore = store
         self.hotkeyService = HotkeyService(store: store)
@@ -205,9 +208,9 @@ final class AppState {
     }
 
     var groqFallbackBannerContent: (title: String, detail: String)? {
-        guard !appSettings.secureLocalModeEnabled, GroqQuotaStore.shared.fallbackActive else { return nil }
+        guard !appSettings.secureLocalModeEnabled, quotaManager.fallbackActive else { return nil }
         var detail = "OpenAI Whisper aktiv."
-        if let resetAt = GroqQuotaStore.shared.rateLimitResetAt {
+        if let resetAt = quotaManager.rateLimitResetAt {
             let formatter = DateFormatter()
             formatter.dateFormat = "HH:mm"
             detail += " Groq zurück um \(formatter.string(from: resetAt))."
@@ -231,8 +234,8 @@ final class AppState {
             isDownloadingLocalModel: isDownloadingLocalModel,
             localModelDownloadStatusText: localModelDownloadStatusText,
             hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil,
-            groqFallbackActive: GroqQuotaStore.shared.fallbackActive,
-            groqQuotaUsedToday: GroqQuotaStore.shared.formattedUsedToday
+            groqFallbackActive: quotaManager.fallbackActive,
+            groqQuotaUsedToday: quotaManager.formattedUsedToday
         )
     }
 

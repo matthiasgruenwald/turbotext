@@ -53,7 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         appState.onCloudIndicatorRefreshNeeded = { [weak self] in
             self?.refreshMenuBarCloudIndicator()
         }
-        GroqQuotaStore.shared.onFallbackChanged = { [weak self] _ in
+        GroqQuotaManager.shared.onFallbackChanged = { [weak self] _ in
             self?.refreshMenuBarCloudIndicator()
         }
         appState.networkPingService.onStatusChanged = { [weak self] status in

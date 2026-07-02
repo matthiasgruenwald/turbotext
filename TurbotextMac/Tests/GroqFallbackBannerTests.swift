@@ -10,9 +10,9 @@ final class GroqFallbackBannerTests: XCTestCase {
     }
 
     private func resetQuotaStore() {
-        let store = GroqQuotaStore.shared
+        let store = GroqQuotaManager.shared
         store.activateFallback(resetAt: Date().addingTimeInterval(-10))
-        store.clearIfExpired()
+        store.checkIfExpired()
     }
 
     func testReturnsNilWhenFallbackInactive() {
@@ -21,7 +21,7 @@ final class GroqFallbackBannerTests: XCTestCase {
     }
 
     func testReturnsNilWhenSecureLocalModeActive() {
-        GroqQuotaStore.shared.activateFallback(resetAt: nil)
+        GroqQuotaManager.shared.activateFallback(resetAt: nil)
         let appState = AppState()
         appState.appSettings.secureLocalModeEnabled = true
         defer { appState.appSettings.secureLocalModeEnabled = false }
@@ -29,7 +29,7 @@ final class GroqFallbackBannerTests: XCTestCase {
     }
 
     func testReturnsContentWithoutResetTimeWhenUnknown() {
-        GroqQuotaStore.shared.activateFallback(resetAt: nil)
+        GroqQuotaManager.shared.activateFallback(resetAt: nil)
         let appState = AppState()
         let content = appState.groqFallbackBannerContent
         XCTAssertEqual(content?.title, "Groq-Kontingent aufgebraucht")
@@ -44,7 +44,7 @@ final class GroqFallbackBannerTests: XCTestCase {
         components.hour = 14
         components.minute = 30
         let resetAt = Calendar.current.date(from: components)!
-        GroqQuotaStore.shared.activateFallback(resetAt: resetAt)
+        GroqQuotaManager.shared.activateFallback(resetAt: resetAt)
 
         let appState = AppState()
         let content = appState.groqFallbackBannerContent

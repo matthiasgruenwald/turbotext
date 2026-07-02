@@ -3,8 +3,8 @@ import Observation
 
 @Observable
 @MainActor
-final class GroqQuotaStore {
-    static let shared = GroqQuotaStore()
+final class GroqQuotaManager: QuotaManager {
+    static let shared = GroqQuotaManager()
 
     private(set) var fallbackActive: Bool
     private(set) var remainingAudioSeconds: Int?
@@ -35,7 +35,7 @@ final class GroqQuotaStore {
         usedSecondsToday = defaults.string(forKey: Keys.usedDayKey) == Self.dayKey(for: Date())
             ? defaults.integer(forKey: Keys.usedSecondsToday)
             : 0
-        clearIfExpired()
+        checkIfExpired()
     }
 
     private static func dayKey(for date: Date) -> String {
@@ -45,7 +45,11 @@ final class GroqQuotaStore {
         return formatter.string(from: date)
     }
 
-    func recordUsage(seconds: Int, on date: Date = Date()) {
+    func recordUsage(seconds: Int) {
+        recordUsage(seconds: seconds, on: Date())
+    }
+
+    func recordUsage(seconds: Int, on date: Date) {
         guard seconds > 0 else { return }
         let todayKey = Self.dayKey(for: date)
         if defaults.string(forKey: Keys.usedDayKey) != todayKey {
@@ -62,7 +66,7 @@ final class GroqQuotaStore {
         defaults.removeObject(forKey: Keys.usedDayKey)
     }
 
-    func clearIfExpired() {
+    func checkIfExpired() {
         guard fallbackActive, let resetAt = rateLimitResetAt, Date() > resetAt else { return }
         clearFallback()
     }

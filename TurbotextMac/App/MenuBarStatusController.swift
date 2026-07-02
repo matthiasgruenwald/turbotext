@@ -59,6 +59,11 @@ final class MenuBarStatusController {
     private var accessibilityGranted = false
     private var inputMonitoringGranted = false
     private var networkStatus: NetworkQualityStatus = .green
+    private let quotaManager: QuotaManager
+
+    init(quotaManager: QuotaManager = GroqQuotaManager.shared) {
+        self.quotaManager = quotaManager
+    }
 
     func attach(to button: NSStatusBarButton) {
         self.button = button
@@ -145,7 +150,7 @@ final class MenuBarStatusController {
                 accessibilityGranted: accessibilityGranted,
                 inputMonitoringGranted: inputMonitoringGranted,
                 cloudIndicator: cloudIndicator,
-                groqQuotaUsedToday: GroqQuotaStore.shared.formattedUsedToday
+                groqQuotaUsedToday: quotaManager.formattedUsedToday
             )
         case .recording(let type):
             return "\(type.displayName): Aufnahme läuft"
