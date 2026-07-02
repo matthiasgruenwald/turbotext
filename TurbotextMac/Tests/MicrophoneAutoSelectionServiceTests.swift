@@ -18,49 +18,55 @@ final class MicrophoneAutoSelectionServiceTests: XCTestCase {
 
     func testSetsSelectedUIDWhenFavoriteAvailable() {
         let key = "test_selectedMicUID_\(UUID().uuidString)"
+        let persistence = InMemoryPersistence()
         let favorites = makeFavoritesStore()
         favorites.addFavorite(uid: "usb-mic")
         let service = MicrophoneAutoSelectionService(
             favoritesStore: favorites,
             selectedMicUIDKey: key,
-            deviceProvider: { [self.device("usb-mic")] }
+            deviceProvider: { [self.device("usb-mic")] },
+            defaults: persistence
         )
 
         service.applySelection()
 
-        XCTAssertEqual(UserDefaults.standard.string(forKey: key), "usb-mic")
+        XCTAssertEqual(persistence.string(forKey: key), "usb-mic")
     }
 
     func testClearsStaleSelectedUIDWhenFavoriteBecomesUnavailable() {
         let key = "test_selectedMicUID_\(UUID().uuidString)"
-        UserDefaults.standard.set("usb-mic", forKey: key)
+        let persistence = InMemoryPersistence()
+        persistence.set("usb-mic", forKey: key)
         let favorites = makeFavoritesStore()
         favorites.addFavorite(uid: "usb-mic")
         let service = MicrophoneAutoSelectionService(
             favoritesStore: favorites,
             selectedMicUIDKey: key,
-            deviceProvider: { [] }
+            deviceProvider: { [] },
+            defaults: persistence
         )
 
         service.applySelection()
 
-        XCTAssertNil(UserDefaults.standard.string(forKey: key))
+        XCTAssertNil(persistence.string(forKey: key))
     }
 
     func testClearsStaleSelectedUIDWhenUseSystemDefaultEnabled() {
         let key = "test_selectedMicUID_\(UUID().uuidString)"
-        UserDefaults.standard.set("usb-mic", forKey: key)
+        let persistence = InMemoryPersistence()
+        persistence.set("usb-mic", forKey: key)
         let favorites = makeFavoritesStore()
         favorites.addFavorite(uid: "usb-mic")
         favorites.useSystemDefault = true
         let service = MicrophoneAutoSelectionService(
             favoritesStore: favorites,
             selectedMicUIDKey: key,
-            deviceProvider: { [self.device("usb-mic")] }
+            deviceProvider: { [self.device("usb-mic")] },
+            defaults: persistence
         )
 
         service.applySelection()
 
-        XCTAssertNil(UserDefaults.standard.string(forKey: key))
+        XCTAssertNil(persistence.string(forKey: key))
     }
 }

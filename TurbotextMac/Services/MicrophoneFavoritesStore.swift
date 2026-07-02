@@ -6,23 +6,26 @@ import Observation
 final class MicrophoneFavoritesStore {
     private let favoritesKey: String
     private let useSystemDefaultKey: String
+    private let defaults: PersistenceProvider
 
     private(set) var favoriteUIDs: [String]
     var useSystemDefault: Bool {
         didSet {
             guard oldValue != useSystemDefault else { return }
-            UserDefaults.standard.set(useSystemDefault, forKey: useSystemDefaultKey)
+            defaults.set(useSystemDefault, forKey: useSystemDefaultKey)
         }
     }
 
     init(
         favoritesKey: String = "turbotext.microphoneFavorites",
-        useSystemDefaultKey: String = "turbotext.microphoneUseSystemDefault"
+        useSystemDefaultKey: String = "turbotext.microphoneUseSystemDefault",
+        defaults: PersistenceProvider = UserDefaultsPersistence.shared
     ) {
         self.favoritesKey = favoritesKey
         self.useSystemDefaultKey = useSystemDefaultKey
-        self.favoriteUIDs = Self.load(key: favoritesKey) ?? []
-        self.useSystemDefault = UserDefaults.standard.bool(forKey: useSystemDefaultKey)
+        self.defaults = defaults
+        self.favoriteUIDs = Self.load(key: favoritesKey, defaults: defaults) ?? []
+        self.useSystemDefault = defaults.bool(forKey: useSystemDefaultKey)
     }
 
     func addFavorite(uid: String) {
@@ -85,10 +88,10 @@ final class MicrophoneFavoritesStore {
     }
 
     private func persist() {
-        UserDefaults.standard.set(favoriteUIDs, forKey: favoritesKey)
+        defaults.set(favoriteUIDs, forKey: favoritesKey)
     }
 
-    private static func load(key: String) -> [String]? {
-        UserDefaults.standard.stringArray(forKey: key)
+    private static func load(key: String, defaults: PersistenceProvider) -> [String]? {
+        defaults.stringArray(forKey: key)
     }
 }

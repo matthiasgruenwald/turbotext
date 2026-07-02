@@ -13,6 +13,8 @@ final class GroqQuotaStore {
 
     var onFallbackChanged: ((Bool) -> Void)?
 
+    private let defaults: PersistenceProvider
+
     private enum Keys {
         static let fallbackActive = "groqFallbackActive"
         static let remainingSeconds = "groqRemainingAudioSeconds"
@@ -21,8 +23,8 @@ final class GroqQuotaStore {
         static let usedDayKey = "groqUsedDayKey"
     }
 
-    private init() {
-        let defaults = UserDefaults.standard
+    init(defaults: PersistenceProvider = UserDefaultsPersistence.shared) {
+        self.defaults = defaults
         fallbackActive = defaults.bool(forKey: Keys.fallbackActive)
         if let resetInterval = defaults.object(forKey: Keys.resetAt) as? Double {
             rateLimitResetAt = Date(timeIntervalSince1970: resetInterval)
@@ -45,7 +47,6 @@ final class GroqQuotaStore {
 
     func recordUsage(seconds: Int, on date: Date = Date()) {
         guard seconds > 0 else { return }
-        let defaults = UserDefaults.standard
         let todayKey = Self.dayKey(for: date)
         if defaults.string(forKey: Keys.usedDayKey) != todayKey {
             usedSecondsToday = 0
@@ -57,7 +58,6 @@ final class GroqQuotaStore {
 
     func resetUsedToday() {
         usedSecondsToday = 0
-        let defaults = UserDefaults.standard
         defaults.removeObject(forKey: Keys.usedSecondsToday)
         defaults.removeObject(forKey: Keys.usedDayKey)
     }
@@ -69,10 +69,10 @@ final class GroqQuotaStore {
 
     func update(remainingSeconds: Int, resetAt: Date?) {
         remainingAudioSeconds = remainingSeconds
-        UserDefaults.standard.set(remainingSeconds, forKey: Keys.remainingSeconds)
+        defaults.set(remainingSeconds, forKey: Keys.remainingSeconds)
         if let resetAt {
             rateLimitResetAt = resetAt
-            UserDefaults.standard.set(resetAt.timeIntervalSince1970, forKey: Keys.resetAt)
+            defaults.set(resetAt.timeIntervalSince1970, forKey: Keys.resetAt)
         }
     }
 
@@ -81,10 +81,10 @@ final class GroqQuotaStore {
         remainingAudioSeconds = 0
         if let resetAt {
             rateLimitResetAt = resetAt
-            UserDefaults.standard.set(resetAt.timeIntervalSince1970, forKey: Keys.resetAt)
+            defaults.set(resetAt.timeIntervalSince1970, forKey: Keys.resetAt)
         }
-        UserDefaults.standard.set(true, forKey: Keys.fallbackActive)
-        UserDefaults.standard.set(0, forKey: Keys.remainingSeconds)
+        defaults.set(true, forKey: Keys.fallbackActive)
+        defaults.set(0, forKey: Keys.remainingSeconds)
         onFallbackChanged?(true)
     }
 
@@ -92,7 +92,6 @@ final class GroqQuotaStore {
         fallbackActive = false
         remainingAudioSeconds = nil
         rateLimitResetAt = nil
-        let defaults = UserDefaults.standard
         defaults.removeObject(forKey: Keys.fallbackActive)
         defaults.removeObject(forKey: Keys.remainingSeconds)
         defaults.removeObject(forKey: Keys.resetAt)

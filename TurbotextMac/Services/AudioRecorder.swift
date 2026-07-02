@@ -17,6 +17,12 @@ final class AudioRecorder: NSObject {
     private var recordingStartedAt: Date?
     private var levelTimer: Timer?
     private var meteredPeakLevel: Float = -160
+    private let defaults: PersistenceProvider
+
+    init(defaults: PersistenceProvider = UserDefaultsPersistence.shared) {
+        self.defaults = defaults
+        super.init()
+    }
 
     private func makeRecordingURL() -> URL {
         FileManager.default.temporaryDirectory
@@ -144,8 +150,10 @@ final class AudioRecorder: NSObject {
         return defaultDeviceID
     }
 
+    /// Reads the shared `selectedMicUID` key owned and written by `MicrophoneAutoSelectionService`.
+    /// `AudioRecorder` never writes this key itself.
     private func preferredInputDeviceUID() -> String? {
-        UserDefaults.standard.string(forKey: "selectedMicUID").flatMap { $0.isEmpty ? nil : $0 }
+        defaults.string(forKey: "selectedMicUID").flatMap { $0.isEmpty ? nil : $0 }
     }
 
     private func setEngineInputDevice(_ deviceID: AudioDeviceID) {

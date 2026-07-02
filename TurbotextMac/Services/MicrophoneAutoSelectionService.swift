@@ -11,6 +11,7 @@ final class MicrophoneAutoSelectionService {
     private let favoritesStore: MicrophoneFavoritesStore
     private let selectedMicUIDKey: String
     private let deviceProvider: () -> [AudioInputDevice]
+    private let defaults: PersistenceProvider
     private var listenerBlock: AudioObjectPropertyListenerBlock?
 
     /// Fired every time `applySelection()` runs, so UI showing the active microphone
@@ -21,11 +22,13 @@ final class MicrophoneAutoSelectionService {
     init(
         favoritesStore: MicrophoneFavoritesStore,
         selectedMicUIDKey: String = "selectedMicUID",
-        deviceProvider: @escaping () -> [AudioInputDevice] = MicrophoneService.availableInputDevices
+        deviceProvider: @escaping () -> [AudioInputDevice] = MicrophoneService.availableInputDevices,
+        defaults: PersistenceProvider = UserDefaultsPersistence.shared
     ) {
         self.favoritesStore = favoritesStore
         self.selectedMicUIDKey = selectedMicUIDKey
         self.deviceProvider = deviceProvider
+        self.defaults = defaults
     }
 
     func start() {
@@ -57,11 +60,11 @@ final class MicrophoneAutoSelectionService {
             clearSelectedUID()
             return
         }
-        UserDefaults.standard.set(selected.uid, forKey: selectedMicUIDKey)
+        defaults.set(selected.uid, forKey: selectedMicUIDKey)
     }
 
     private func clearSelectedUID() {
-        UserDefaults.standard.removeObject(forKey: selectedMicUIDKey)
+        defaults.removeObject(forKey: selectedMicUIDKey)
     }
 
     private func observeDeviceChanges() {

@@ -78,11 +78,13 @@ extension Shortcut {
 @Observable
 final class ShortcutStore {
     private let userDefaultsKey: String
+    private let defaults: PersistenceProvider
     private(set) var shortcuts: [WorkflowType: [Shortcut]]
 
-    init(userDefaultsKey: String = "turbotext.shortcutStore") {
+    init(userDefaultsKey: String = "turbotext.shortcutStore", defaults: PersistenceProvider = UserDefaultsPersistence.shared) {
         self.userDefaultsKey = userDefaultsKey
-        self.shortcuts = Self.load(key: userDefaultsKey) ?? Self.makeDefaults()
+        self.defaults = defaults
+        self.shortcuts = Self.load(key: userDefaultsKey, defaults: defaults) ?? Self.makeDefaults()
     }
 
     func shortcuts(for type: WorkflowType) -> [Shortcut] {
@@ -117,11 +119,11 @@ final class ShortcutStore {
 
     private func persist() {
         guard let data = try? JSONEncoder().encode(shortcuts) else { return }
-        UserDefaults.standard.set(data, forKey: userDefaultsKey)
+        defaults.set(data, forKey: userDefaultsKey)
     }
 
-    private static func load(key: String) -> [WorkflowType: [Shortcut]]? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+    private static func load(key: String, defaults: PersistenceProvider) -> [WorkflowType: [Shortcut]]? {
+        guard let data = defaults.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode([WorkflowType: [Shortcut]].self, from: data)
     }
 
