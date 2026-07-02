@@ -48,11 +48,61 @@ final class TextImprovementWorkflowTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
     }
 
+    /// Regression test: cancelling while the improve step (not the transcription step)
+    /// is in flight must leave `phase` at `.idle`, not get overwritten by a late-arriving
+    /// `.done` once the in-flight improver call eventually returns.
+    func testCancellationDuringImprovingStaysIdle() async throws {
+        let audioURL = try makeTemporaryAudioFile()
+        let recorder = FakeTextImprovementRecorder(isRecording: true, duration: 1.0, recordingURL: audioURL)
+        let improveStarted = expectation(description: "improve started")
+        let finishImprove = AsyncGate()
+
+        let workflow = TextImprovementWorkflow(
+            settings: TextImprovementSettings(),
+            pipeline: SpokenWorkflowPipeline(recorder: recorder),
+            transcriber: { _, _, _, _ in " Rohtext " },
+            improver: { _, _, _ in
+                improveStarted.fulfill()
+                await finishImprove.wait()
+                return "Verbesserter Text"
+            }
+        )
+
+        workflow.stop()
+        await fulfillment(of: [improveStarted], timeout: 1)
+        workflow.stop()
+        XCTAssertEqual(workflow.phase, .idle)
+
+        await finishImprove.open()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(workflow.phase, .idle, "phase must stay .idle, not be overwritten by the late-arriving improve result")
+    }
+
     private func makeTemporaryAudioFile() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("text-improvement-workflow-\(UUID().uuidString).m4a")
         try Data("audio".utf8).write(to: url)
         return url
+    }
+}
+
+private actor AsyncGate {
+    private var isOpen = false
+    private var continuations: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        if isOpen {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            continuations.append(continuation)
+        }
+    }
+
+    func open() {
+        isOpen = true
+        continuations.forEach { $0.resume() }
+        continuations = []
     }
 }
 

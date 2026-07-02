@@ -121,6 +121,66 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
         XCTAssertEqual(workflow.phase, .idle)
     }
 
+    /// Regression test: cancelling while the rewrite step (not the transcription step)
+    /// is in flight must leave `phase` at `.idle`. Previously, the workflow only checked
+    /// `Task.checkCancellation()` once, right after transcription; if `stop()` cancelled
+    /// the task while an in-flight rewrite call was still running, the task would ignore
+    /// the cancellation and overwrite the freshly-reset `.idle` phase with `.done` once
+    /// the rewrite call eventually returned.
+    func testDampfAblassenCancellationDuringRewriteStaysIdle() async throws {
+        let audioURL = try makeTemporaryAudioFile(prefix: "dampf-cancel-rewrite")
+        let recorder = FakeRewriteRecorder(isRecording: true, duration: 1.0, recordingURL: audioURL)
+        let rewriteStarted = expectation(description: "rewrite started")
+        let finishRewrite = AsyncGate()
+
+        let workflow = DampfAblassenWorkflow(
+            settings: DampfAblassenSettings(systemPrompt: "Bitte sachlich."),
+            pipeline: SpokenWorkflowPipeline(recorder: recorder),
+            transcriber: { _, _, _, _ in " Rohtext " },
+            rewriter: { _, _, _ in
+                rewriteStarted.fulfill()
+                await finishRewrite.wait()
+                return "Sachlicher Text"
+            }
+        )
+
+        workflow.stop()
+        await fulfillment(of: [rewriteStarted], timeout: 1)
+        workflow.stop()
+        XCTAssertEqual(workflow.phase, .idle)
+
+        await finishRewrite.open()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(workflow.phase, .idle, "phase must stay .idle, not be overwritten by the late-arriving rewrite result")
+    }
+
+    func testEmojiCancellationDuringRewriteStaysIdle() async throws {
+        let audioURL = try makeTemporaryAudioFile(prefix: "emoji-cancel-rewrite")
+        let recorder = FakeRewriteRecorder(isRecording: true, duration: 1.0, recordingURL: audioURL)
+        let rewriteStarted = expectation(description: "rewrite started")
+        let finishRewrite = AsyncGate()
+
+        let workflow = EmojiTextWorkflow(
+            settings: EmojiTextSettings(),
+            pipeline: SpokenWorkflowPipeline(recorder: recorder),
+            transcriber: { _, _, _, _ in " Rohtext " },
+            rewriter: { _, _, _ in
+                rewriteStarted.fulfill()
+                await finishRewrite.wait()
+                return "Text mit Emoji 🙂"
+            }
+        )
+
+        workflow.stop()
+        await fulfillment(of: [rewriteStarted], timeout: 1)
+        workflow.stop()
+        XCTAssertEqual(workflow.phase, .idle)
+
+        await finishRewrite.open()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(workflow.phase, .idle, "phase must stay .idle, not be overwritten by the late-arriving rewrite result")
+    }
+
     private func makeTemporaryAudioFile(prefix: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(prefix)-workflow-\(UUID().uuidString).m4a")

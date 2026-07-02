@@ -19,11 +19,12 @@ final class TranscriptionWorkflow: Workflow {
     var onOutput: WorkflowOutputHandler?
     var onPhaseChange: WorkflowPhaseChangeHandler?
 
-    private let pipeline = SpokenWorkflowPipeline()
+    private let pipeline: SpokenWorkflowPipeline
     private let customTerms: [String]
     private let language: String
     private let backend: TranscriptionBackend
     private let localModelName: String
+    private let transcriber: SpokenWorkflowPipeline.Transcriber
     private var transcriptionTask: Task<Void, Never>?
 
     init(
@@ -31,13 +32,33 @@ final class TranscriptionWorkflow: Workflow {
         customTerms: [String] = [],
         language: String = "de",
         backend: TranscriptionBackend = .remote,
-        localModelName: String = LocalTranscriptionService.recommendedFastModelName
+        localModelName: String = LocalTranscriptionService.recommendedFastModelName,
+        pipeline: SpokenWorkflowPipeline? = nil,
+        transcriber: SpokenWorkflowPipeline.Transcriber? = nil
     ) {
         self.type = type
         self.customTerms = customTerms
         self.language = language
         self.backend = backend
         self.localModelName = localModelName
+        self.pipeline = pipeline ?? SpokenWorkflowPipeline()
+        self.transcriber = transcriber ?? { audioURL, duration, terms, language in
+            switch backend {
+            case .remote:
+                return try await TranscriptionService.transcribe(
+                    audioURL: audioURL,
+                    durationSeconds: duration,
+                    customTerms: terms,
+                    language: language
+                ).text
+            case .local:
+                return try await LocalTranscriptionService.shared.transcribe(
+                    audioURL: audioURL,
+                    language: language,
+                    modelName: localModelName
+                )
+            }
+        }
     }
 
     func start() {
@@ -85,23 +106,7 @@ final class TranscriptionWorkflow: Workflow {
                     recording,
                     customTerms: customTerms,
                     language: requestLanguage,
-                    transcriber: { audioURL, duration, terms, language in
-                        switch backend {
-                        case .remote:
-                            return try await TranscriptionService.transcribe(
-                                audioURL: audioURL,
-                                durationSeconds: duration,
-                                customTerms: terms,
-                                language: language
-                            ).text
-                        case .local:
-                            return try await LocalTranscriptionService.shared.transcribe(
-                                audioURL: audioURL,
-                                language: language,
-                                modelName: localModelName
-                            )
-                        }
-                    }
+                    transcriber: transcriber
                 )
                 try Task.checkCancellation()
 

@@ -12,6 +12,7 @@ private final class FakeWorkflow: Workflow {
     var onOutput: WorkflowOutputHandler?
     var onPhaseChange: WorkflowPhaseChangeHandler?
     var isRecording = false
+    var audioLevel: Float = 0
 
     var startCallCount = 0
     var stopCallCount = 0
