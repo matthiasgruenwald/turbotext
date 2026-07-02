@@ -12,11 +12,15 @@ enum PopoverPage: Equatable {
 @Observable
 @MainActor
 final class AppState {
-    let orchestrator: WorkflowOrchestrator
+    let settingsState: SettingsState
+    let workflowLifecycle: WorkflowLifecycleManager
+    let quotaAndFallback: QuotaAndFallbackState
+    let microphoneState: MicrophoneState
 
-    var activeWorkflow: (any Workflow)? {
-        orchestrator.activeWorkflow
-    }
+    var orchestrator: WorkflowOrchestrator { workflowLifecycle.orchestrator }
+    var activeWorkflow: (any Workflow)? { workflowLifecycle.activeWorkflow }
+    var currentPhase: WorkflowPhase { workflowLifecycle.currentPhase }
+
     var page: PopoverPage = .main {
         didSet {
             guard oldValue != page else { return }
@@ -49,44 +53,38 @@ final class AppState {
     var onPreferredContentSizeChange: ((CGSize) -> Void)?
     var onCloudIndicatorRefreshNeeded: (() -> Void)?
     var requestedSettingsSection: SettingsSection?
-    private var activeLaunchSource: WorkflowLaunchSource = .manual
     private var lastPopoverPasteTarget: PasteTarget?
     private var isCheckingGroqQuota = false
-    private let settingsStore: SettingsStore
-    private let quotaManager: QuotaManager
     private let cloudTranscriptionRouter: CloudTranscriptionRouter
 
-    // Persisted settings
+    // Persisted settings (delegated to `settingsState`)
     var appSettings: AppSettings {
-        didSet {
-            saveSettings()
-            prewarmLocalTranscriptionIfNeeded()
-            onCloudIndicatorRefreshNeeded?()
-            if oldValue.dockModeEnabled != appSettings.dockModeEnabled {
-                DockModeService.apply(dockModeEnabled: appSettings.dockModeEnabled)
-            }
-        }
+        get { settingsState.appSettings }
+        set { settingsState.appSettings = newValue }
     }
     var transcriptionSettings: TranscriptionSettings {
-        didSet { saveSettings() }
+        get { settingsState.transcriptionSettings }
+        set { settingsState.transcriptionSettings = newValue }
     }
     var textImprovementSettings: TextImprovementSettings {
-        didSet { saveSettings() }
+        get { settingsState.textImprovementSettings }
+        set { settingsState.textImprovementSettings = newValue }
     }
     var dampfAblassenSettings: DampfAblassenSettings {
-        didSet { saveSettings() }
+        get { settingsState.dampfAblassenSettings }
+        set { settingsState.dampfAblassenSettings = newValue }
     }
     var emojiTextSettings: EmojiTextSettings {
-        didSet { saveSettings() }
+        get { settingsState.emojiTextSettings }
+        set { settingsState.emojiTextSettings = newValue }
     }
 
     // Hotkeys
     let shortcutStore: ShortcutStore
     let hotkeyService: HotkeyService
 
-    // Microphone favorites
-    let microphoneFavoritesStore: MicrophoneFavoritesStore
-    private let microphoneAutoSelectionService: MicrophoneAutoSelectionService
+    // Microphone favorites (delegated to `microphoneState`)
+    var microphoneFavoritesStore: MicrophoneFavoritesStore { microphoneState.favoritesStore }
 
     // Network status
     let networkPingService: NetworkPingService
@@ -102,77 +100,68 @@ final class AppState {
         GroqOnboardingState.resolve(hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil)
     }
 
-    var currentPhase: WorkflowPhase {
-        activeWorkflow?.phase ?? .idle
-    }
-
     func openMicrophoneSettings() {
         requestedSettingsSection = .transcription
         page = .settings
     }
 
-    /// Bumped whenever `MicrophoneAutoSelectionService` re-evaluates the active device,
-    /// so views reading `activeMicrophoneDisplayName` get invalidated on hardware changes.
-    private(set) var microphoneDeviceSignal = 0
-
     var activeMicrophoneDisplayName: String {
-        _ = microphoneDeviceSignal
-        return microphoneFavoritesStore.activeDeviceDisplayName(
-            availableDevices: MicrophoneService.availableInputDevices(),
-            defaultDeviceID: MicrophoneService.defaultInputDeviceID()
-        )
+        microphoneState.activeDeviceDisplayName
     }
 
     init(quotaManager: QuotaManager = GroqQuotaManager.shared) {
-        self.quotaManager = quotaManager
+        self.quotaAndFallback = QuotaAndFallbackState(quotaManager: quotaManager)
         self.cloudTranscriptionRouter = CloudTranscriptionRouter(quotaManager: quotaManager)
         let store = ShortcutStore()
         self.shortcutStore = store
         self.hotkeyService = HotkeyService(store: store)
-        let micFavorites = MicrophoneFavoritesStore()
-        self.microphoneFavoritesStore = micFavorites
-        let micAutoSelection = MicrophoneAutoSelectionService(favoritesStore: micFavorites)
-        self.microphoneAutoSelectionService = micAutoSelection
+        self.microphoneState = MicrophoneState()
         self.networkPingService = NetworkPingService()
-        let settingsStore = SettingsStore()
-        self.settingsStore = settingsStore
-        let loadedSettings = settingsStore.load()
-        self.appSettings = loadedSettings.app
-        self.transcriptionSettings = loadedSettings.transcription
-        self.textImprovementSettings = loadedSettings.textImprovement
-        self.dampfAblassenSettings = loadedSettings.dampfAblassen
-        self.emojiTextSettings = loadedSettings.emojiText
-        let orchestrator = WorkflowOrchestrator(workflowFactory: { _, _ in nil })
-        self.orchestrator = orchestrator
-        orchestrator.workflowFactory = { [weak self] type, backendOverride in
+        self.settingsState = SettingsState()
+
+        let lifecycle = WorkflowLifecycleManager(workflowFactory: { _, _ in nil })
+        self.workflowLifecycle = lifecycle
+
+        lifecycle.workflowFactory = { [weak self] type, backendOverride in
             self?.makeWorkflow(type, backendOverride: backendOverride)
         }
-        orchestrator.onPasteTargetActivationNeeded = { target in
+        lifecycle.onPasteTargetActivationNeeded = { target in
             target.application.activate(options: [])
         }
-        orchestrator.onWorkflowOutput = { [weak self] _ in
-            self?.handleWorkflowOutputDelivered()
+        lifecycle.onWorkflowOutput = { [weak self] _ in
+            self?.onCloudIndicatorRefreshNeeded?()
         }
-        orchestrator.onWorkflowFinished = { [weak self] reason in
-            self?.handleWorkflowFinished(reason)
+        lifecycle.onPageChangeNeeded = { [weak self] page in
+            self?.page = page
         }
-        orchestrator.onMenuBarStatusChange = { [weak self] status in
+        lifecycle.onWorkflowFinishedCleanup = { [weak self] in
+            guard let self, !self.isPopoverShown else { return }
+            self.page = .main
+        }
+        lifecycle.onMenuBarStatusChange = { [weak self] status in
             self?.menuBarStatus = status
         }
-        orchestrator.onAccessibilityPermissionChange = { [weak self] granted in
+        lifecycle.onAccessibilityPermissionChange = { [weak self] granted in
             self?.accessibilityPermissionGranted = granted
         }
-        orchestrator.onWillPaste = { [weak self] in
+        lifecycle.onWillPaste = { [weak self] in
             guard self?.isPopoverShown == true else { return }
             NotificationCenter.default.post(name: .dismissPopover, object: nil)
         }
+
+        settingsState.onAppSettingsChanged = { [weak self] oldValue, newValue in
+            guard let self else { return }
+            self.prewarmLocalTranscriptionIfNeeded()
+            self.onCloudIndicatorRefreshNeeded?()
+            if oldValue.dockModeEnabled != newValue.dockModeEnabled {
+                DockModeService.apply(dockModeEnabled: newValue.dockModeEnabled)
+            }
+        }
+
         refreshAccessibilityPermission()
         autoSelectFastLocalModelIfNeeded()
         prewarmLocalTranscriptionIfNeeded()
-        microphoneAutoSelectionService.onSelectionApplied = { [weak self] in
-            self?.microphoneDeviceSignal += 1
-        }
-        microphoneAutoSelectionService.start()
+        microphoneState.start()
         networkPingService.start()
         checkGroqQuotaIfNeeded()
     }
@@ -208,14 +197,7 @@ final class AppState {
     }
 
     var groqFallbackBannerContent: (title: String, detail: String)? {
-        guard !appSettings.secureLocalModeEnabled, quotaManager.fallbackActive else { return nil }
-        var detail = "OpenAI Whisper aktiv."
-        if let resetAt = quotaManager.rateLimitResetAt {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
-            detail += " Groq zurück um \(formatter.string(from: resetAt))."
-        }
-        return (title: "Groq-Kontingent aufgebraucht", detail: detail)
+        quotaAndFallback.fallbackBannerContent(secureLocalModeEnabled: appSettings.secureLocalModeEnabled)
     }
 
     var onlineKeyHintBannerContent: (title: String, detail: String)? {
@@ -234,8 +216,8 @@ final class AppState {
             isDownloadingLocalModel: isDownloadingLocalModel,
             localModelDownloadStatusText: localModelDownloadStatusText,
             hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil,
-            groqFallbackActive: quotaManager.fallbackActive,
-            groqQuotaUsedToday: quotaManager.formattedUsedToday
+            groqFallbackActive: quotaAndFallback.fallbackActive,
+            groqQuotaUsedToday: quotaAndFallback.formattedUsedToday
         )
     }
 
@@ -286,22 +268,13 @@ final class AppState {
         source: WorkflowLaunchSource = .manual,
         backendOverride: TranscriptionBackend? = nil
     ) {
-        guard isWorkflowAvailable(type) else {
-            if source == .manual {
-                page = .settings
-            }
-            return
-        }
-
-        activeLaunchSource = source
-        orchestrator.start(
+        workflowLifecycle.start(
             type,
             source: source,
+            isAvailable: isWorkflowAvailable(type),
             backendOverride: backendOverride,
             pasteTarget: capturePasteTarget(for: source)
         )
-
-        page = source.presentsWorkflowPage ? .workflow : .main
     }
 
     private func makeWorkflow(
@@ -361,32 +334,12 @@ final class AppState {
     }
 
     func stopCurrentWorkflow() {
-        orchestrator.stop()
+        workflowLifecycle.stop()
     }
 
     func resetCurrentWorkflow() {
-        orchestrator.reset()
-        activeLaunchSource = .manual
+        workflowLifecycle.reset()
         menuBarStatus = .idle
-        page = .main
-    }
-
-    private func handleWorkflowOutputDelivered() {
-        if activeLaunchSource == .hotkeyBackground {
-            page = .main
-        }
-    }
-
-    private func handleWorkflowFinished(_ reason: WorkflowOrchestrator.FinishReason) {
-        switch reason {
-        case .errorDuringBackgroundLaunch:
-            page = .main
-        case .outputCleanup:
-            activeLaunchSource = .manual
-            if !isPopoverShown {
-                page = .main
-            }
-        }
     }
 
     func enableSecureLocalMode() {
@@ -523,20 +476,6 @@ final class AppState {
             bundleIdentifier: app.bundleIdentifier,
             processIdentifier: app.processIdentifier,
             application: app
-        )
-    }
-}
-
-// MARK: - Settings Persistence
-
-private extension AppState {
-    func saveSettings() {
-        settingsStore.save(
-            app: appSettings,
-            transcription: transcriptionSettings,
-            textImprovement: textImprovementSettings,
-            dampfAblassen: dampfAblassenSettings,
-            emojiText: emojiTextSettings
         )
     }
 }
