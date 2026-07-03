@@ -43,6 +43,10 @@ final class AppState {
     }
     var onPreferredContentSizeChange: ((CGSize) -> Void)?
     var onCloudIndicatorRefreshNeeded: (() -> Void)?
+    /// Fired whenever `appSettings` actually changes, so the app layer can wire
+    /// settings-change side-effect observers (e.g. `PrewarmObserver`, `DockModeObserver`)
+    /// without `AppState` itself orchestrating them.
+    var onAppSettingsChanged: ((AppSettings, AppSettings) -> Void)?
     var requestedSettingsSection: SettingsSection?
     private var lastPopoverPasteTarget: PasteTarget?
     private var isCheckingGroqQuota = false
@@ -149,16 +153,12 @@ final class AppState {
 
         settingsState.onAppSettingsChanged = { [weak self] oldValue, newValue in
             guard let self else { return }
-            self.prewarmLocalTranscriptionIfNeeded()
             self.onCloudIndicatorRefreshNeeded?()
-            if oldValue.dockModeEnabled != newValue.dockModeEnabled {
-                DockModeService.apply(dockModeEnabled: newValue.dockModeEnabled)
-            }
+            self.onAppSettingsChanged?(oldValue, newValue)
         }
 
         refreshAccessibilityPermission()
         autoSelectFastLocalModelIfNeeded()
-        prewarmLocalTranscriptionIfNeeded()
         microphoneState.start()
         networkPingService.start()
         checkGroqQuotaIfNeeded()
@@ -417,7 +417,9 @@ final class AppState {
         localModelState.autoSelectFastModelIfNeeded()
     }
 
-    private func prewarmLocalTranscriptionIfNeeded() {
+    /// Exposed so `PrewarmObserver` (wired by `AppDelegate`) can trigger prewarm without
+    /// `AppState` orchestrating the settings-change side effect itself.
+    func prewarmLocalTranscriptionIfNeeded() {
         localModelState.prewarmIfNeeded()
     }
 

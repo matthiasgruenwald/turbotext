@@ -17,9 +17,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var popover: NSPopover!
     private var menuBarStatusCoordinator: MenuBarStatusCoordinator!
     private var mainWindowController: MainWindowController!
+    private var prewarmObserver: PrewarmObserver!
+    private var dockModeObserver: DockModeObserver!
     let appState = AppState()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        prewarmObserver = PrewarmObserver(prewarm: { [weak appState] in
+            appState?.prewarmLocalTranscriptionIfNeeded()
+        })
+        dockModeObserver = DockModeObserver(apply: { dockModeEnabled in
+            DockModeService.apply(dockModeEnabled: dockModeEnabled)
+        })
+        appState.onAppSettingsChanged = { [weak prewarmObserver, weak dockModeObserver] old, new in
+            prewarmObserver?.handleSettingsChange(old: old, new: new)
+            dockModeObserver?.handleSettingsChange(old: old, new: new)
+        }
+
         menuBarStatusCoordinator = MenuBarStatusCoordinator(
             orchestrator: appState.workflowLifecycle.orchestrator,
             fallbackManager: appState.fallbackManager,
@@ -50,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         })
 
         DockModeService.apply(dockModeEnabled: appState.appSettings.dockModeEnabled)
+        appState.prewarmLocalTranscriptionIfNeeded()
 
         // Hotkey events
         appState.hotkeyService.onHotkeyEvent = { [weak self] event in
