@@ -20,39 +20,29 @@ final class WorkflowLifecycleManager {
     }
 
     var onPageChangeNeeded: ((PopoverPage) -> Void)?
-    var onMenuBarStatusChange: ((MenuBarStatus) -> Void)?
-    var onAccessibilityPermissionChange: ((Bool) -> Void)?
-    var onPasteTargetActivationNeeded: ((PasteTarget) -> Void)?
-    var onWorkflowOutput: ((String) -> Void)?
     var onWillPaste: (() -> Void)?
 
-    private var activeLaunchSource: WorkflowLaunchSource = .manual
+    /// Reports whether the popover is currently shown, so `.outputCleanup` can decide
+    /// whether it's safe to route back to `.main`. Defaults to `false` (never shown)
+    /// until the host wires this up.
+    var isPopoverShown: () -> Bool = { false }
 
-    init(orchestrator: WorkflowOrchestrator) {
+    init(orchestrator: WorkflowOrchestrator, isPopoverShown: @escaping () -> Bool = { false }) {
         self.orchestrator = orchestrator
+        self.isPopoverShown = isPopoverShown
         wireOrchestratorCallbacks()
     }
 
-    convenience init(workflowFactory: @escaping WorkflowOrchestrator.WorkflowFactory) {
-        self.init(orchestrator: WorkflowOrchestrator(workflowFactory: workflowFactory))
+    convenience init(
+        workflowFactory: @escaping WorkflowOrchestrator.WorkflowFactory,
+        isPopoverShown: @escaping () -> Bool = { false }
+    ) {
+        self.init(orchestrator: WorkflowOrchestrator(workflowFactory: workflowFactory), isPopoverShown: isPopoverShown)
     }
 
     private func wireOrchestratorCallbacks() {
-        orchestrator.onPasteTargetActivationNeeded = { [weak self] target in
-            self?.onPasteTargetActivationNeeded?(target)
-        }
-        orchestrator.onWorkflowOutput = { [weak self] text in
-            self?.handleWorkflowOutputDelivered()
-            self?.onWorkflowOutput?(text)
-        }
         orchestrator.onWorkflowFinished = { [weak self] reason in
             self?.handleWorkflowFinished(reason)
-        }
-        orchestrator.onMenuBarStatusChange = { [weak self] status in
-            self?.onMenuBarStatusChange?(status)
-        }
-        orchestrator.onAccessibilityPermissionChange = { [weak self] granted in
-            self?.onAccessibilityPermissionChange?(granted)
         }
         orchestrator.onWillPaste = { [weak self] in
             self?.onWillPaste?()
@@ -78,7 +68,6 @@ final class WorkflowLifecycleManager {
             return
         }
 
-        activeLaunchSource = source
         orchestrator.start(
             type,
             source: source,
@@ -95,27 +84,20 @@ final class WorkflowLifecycleManager {
 
     func reset() {
         orchestrator.reset()
-        activeLaunchSource = .manual
         onPageChangeNeeded?(.main)
-    }
-
-    private func handleWorkflowOutputDelivered() {
-        if activeLaunchSource == .hotkeyBackground {
-            onPageChangeNeeded?(.main)
-        }
     }
 
     private func handleWorkflowFinished(_ reason: WorkflowOrchestrator.FinishReason) {
         switch reason {
         case .errorDuringBackgroundLaunch:
             onPageChangeNeeded?(.main)
+        case .outputDelivered(let source):
+            if source == .hotkeyBackground {
+                onPageChangeNeeded?(.main)
+            }
         case .outputCleanup:
-            activeLaunchSource = .manual
-            onWorkflowFinishedCleanup?()
+            guard !isPopoverShown() else { return }
+            onPageChangeNeeded?(.main)
         }
     }
-
-    /// Fired on `.outputCleanup` finish; the host decides whether to route to `.main`
-    /// (it depends on `isPopoverShown`, which this manager does not own).
-    var onWorkflowFinishedCleanup: (() -> Void)?
 }

@@ -41,11 +41,13 @@ final class WorkflowOrchestrator {
         }
     }
 
-    enum FinishReason {
-        /// A hotkey-background workflow errored out; the host should unconditionally return to `.main`.
+    enum FinishReason: Equatable {
+        /// A hotkey-background workflow errored out.
         case errorDuringBackgroundLaunch
-        /// Output was delivered and the workflow finished its post-output cleanup window;
-        /// the host should return to `.main` unless a popover is currently shown.
+        /// Output was just delivered (paste attempted); the workflow itself is still
+        /// live until its post-output cleanup window elapses.
+        case outputDelivered(source: WorkflowLaunchSource)
+        /// The workflow finished its post-output cleanup window and was reset.
         case outputCleanup
     }
 
@@ -63,7 +65,7 @@ final class WorkflowOrchestrator {
     private let frontmostPidProvider: FrontmostPidProvider
     private let writeToPasteboard: (String) -> Void
 
-    private var activeLaunchSource: WorkflowLaunchSource = .manual
+    private(set) var activeLaunchSource: WorkflowLaunchSource = .manual
     private var activePasteTarget: PasteTarget?
     private var menuBarStatusResetTask: Task<Void, Never>?
     private var workflowCleanupTask: Task<Void, Never>?
@@ -129,6 +131,7 @@ final class WorkflowOrchestrator {
     private func handleWorkflowOutput(_ text: String) {
         pasteAtCursor(text, target: activePasteTarget)
         onWorkflowOutput?(text)
+        onWorkflowFinished?(.outputDelivered(source: activeLaunchSource))
         scheduleWorkflowCleanup(after: 1.05)
     }
 

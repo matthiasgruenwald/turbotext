@@ -121,27 +121,24 @@ final class AppState {
 
         let lifecycle = WorkflowLifecycleManager(workflowFactory: { _, _ in nil })
         self.workflowLifecycle = lifecycle
+        lifecycle.isPopoverShown = { [weak self] in self?.isPopoverShown ?? false }
 
         lifecycle.workflowFactory = { [weak self] type, backendOverride in
             self?.makeWorkflow(type, backendOverride: backendOverride)
         }
-        lifecycle.onPasteTargetActivationNeeded = { target in
+        lifecycle.orchestrator.onPasteTargetActivationNeeded = { target in
             target.application.activate(options: [])
         }
-        lifecycle.onWorkflowOutput = { [weak self] _ in
+        lifecycle.orchestrator.onWorkflowOutput = { [weak self] _ in
             self?.onCloudIndicatorRefreshNeeded?()
         }
         lifecycle.onPageChangeNeeded = { [weak self] page in
             self?.page = page
         }
-        lifecycle.onWorkflowFinishedCleanup = { [weak self] in
-            guard let self, !self.isPopoverShown else { return }
-            self.page = .main
-        }
-        lifecycle.onMenuBarStatusChange = { [weak self] status in
+        lifecycle.orchestrator.onMenuBarStatusChange = { [weak self] status in
             self?.menuBarStatus = status
         }
-        lifecycle.onAccessibilityPermissionChange = { [weak self] granted in
+        lifecycle.orchestrator.onAccessibilityPermissionChange = { [weak self] granted in
             self?.accessibilityPermissionGranted = granted
         }
         lifecycle.onWillPaste = { [weak self] in
