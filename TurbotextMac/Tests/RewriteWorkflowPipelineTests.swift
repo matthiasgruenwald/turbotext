@@ -13,7 +13,7 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
         var output: String?
         let outputReady = expectation(description: "dampf output")
 
-        let workflow = DampfAblassenWorkflow(
+        let workflow = SpokenRewriteWorkflow.dampfAblassen(
             settings: DampfAblassenSettings(systemPrompt: "Bitte sachlich."),
             customTerms: ["Turbotext"],
             language: "de",
@@ -57,7 +57,7 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
         var output: String?
         let outputReady = expectation(description: "emoji output")
 
-        let workflow = EmojiTextWorkflow(
+        let workflow = SpokenRewriteWorkflow.emojiText(
             settings: EmojiTextSettings(),
             customTerms: ["Turbotext"],
             language: "de",
@@ -97,7 +97,7 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
         let transcriptionStarted = expectation(description: "transcription started")
         let finishTranscription = AsyncGate()
 
-        let workflow = DampfAblassenWorkflow(
+        let workflow = SpokenRewriteWorkflow.dampfAblassen(
             settings: DampfAblassenSettings(systemPrompt: "Bitte sachlich."),
             pipeline: SpokenWorkflowPipeline(recorder: recorder),
             transcriber: { _, _, _, _ in
@@ -133,7 +133,7 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
         let rewriteStarted = expectation(description: "rewrite started")
         let finishRewrite = AsyncGate()
 
-        let workflow = DampfAblassenWorkflow(
+        let workflow = SpokenRewriteWorkflow.dampfAblassen(
             settings: DampfAblassenSettings(systemPrompt: "Bitte sachlich."),
             pipeline: SpokenWorkflowPipeline(recorder: recorder),
             transcriber: { _, _, _, _ in " Rohtext " },
@@ -160,7 +160,7 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
         let rewriteStarted = expectation(description: "rewrite started")
         let finishRewrite = AsyncGate()
 
-        let workflow = EmojiTextWorkflow(
+        let workflow = SpokenRewriteWorkflow.emojiText(
             settings: EmojiTextSettings(),
             pipeline: SpokenWorkflowPipeline(recorder: recorder),
             transcriber: { _, _, _, _ in " Rohtext " },

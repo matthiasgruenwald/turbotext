@@ -15,7 +15,7 @@ final class TextImprovementWorkflowTests: XCTestCase {
         var output: String?
         let outputReady = expectation(description: "improved output")
 
-        let workflow = TextImprovementWorkflow(
+        let workflow = SpokenRewriteWorkflow.textImprovement(
             settings: settings,
             language: "de",
             providerMode: .immerOpenAI,
@@ -57,7 +57,7 @@ final class TextImprovementWorkflowTests: XCTestCase {
         let improveStarted = expectation(description: "improve started")
         let finishImprove = AsyncGate()
 
-        let workflow = TextImprovementWorkflow(
+        let workflow = SpokenRewriteWorkflow.textImprovement(
             settings: TextImprovementSettings(),
             pipeline: SpokenWorkflowPipeline(recorder: recorder),
             transcriber: { _, _, _, _ in " Rohtext " },

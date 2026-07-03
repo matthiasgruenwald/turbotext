@@ -2,11 +2,11 @@ import Foundation
 import Observation
 
 /// Shared lifecycle for the "record -> transcribe -> rewrite" workflows
-/// (`TextImprovementWorkflow`, `DampfAblassenWorkflow`, `EmojiTextWorkflow`).
+/// (Turbotext+, DampfAblassen, EmojiText — see the factory methods below).
 ///
 /// Implements `start`/`stop`/`reset`, cancellation, error handling, and phase
-/// transitions exactly once. Subclasses only supply the rewrite step via
-/// `rewrite(_:)` and, optionally, a sentinel value the rewriter returns to signal
+/// transitions exactly once. Callers supply the rewrite step via the `rewrite`
+/// closure and, optionally, a sentinel value the rewriter returns to signal
 /// "no usable speech" instead of throwing.
 ///
 /// `cleanedTranscript()` is applied twice by design: once inside
@@ -17,7 +17,7 @@ import Observation
 /// since it has no rewrite step.
 @Observable
 @MainActor
-class SpokenRewriteWorkflow: Workflow {
+final class SpokenRewriteWorkflow: Workflow {
     let type: WorkflowType
     var phase: WorkflowPhase = .idle {
         didSet { onPhaseChange?(phase) }
@@ -31,6 +31,7 @@ class SpokenRewriteWorkflow: Workflow {
     private let transcriber: SpokenWorkflowPipeline.Transcriber
     private let rewritingMessage: String
     private let noSpeechSentinel: String?
+    private let rewrite: (String) async throws -> String
     private var processingTask: Task<Void, Never>?
 
     init(
@@ -40,7 +41,8 @@ class SpokenRewriteWorkflow: Workflow {
         rewritingMessage: String,
         noSpeechSentinel: String? = nil,
         pipeline: SpokenWorkflowPipeline? = nil,
-        transcriber: @escaping SpokenWorkflowPipeline.Transcriber
+        transcriber: @escaping SpokenWorkflowPipeline.Transcriber,
+        rewrite: @escaping (String) async throws -> String
     ) {
         self.type = type
         self.customTerms = customTerms
@@ -49,11 +51,7 @@ class SpokenRewriteWorkflow: Workflow {
         self.noSpeechSentinel = noSpeechSentinel
         self.pipeline = pipeline ?? SpokenWorkflowPipeline()
         self.transcriber = transcriber
-    }
-
-    /// Override point: turn the raw (already-cleaned) transcript into the final text.
-    func rewrite(_ transcript: String) async throws -> String {
-        fatalError("subclasses must override rewrite(_:)")
+        self.rewrite = rewrite
     }
 
     // MARK: - Recording State
@@ -128,5 +126,98 @@ class SpokenRewriteWorkflow: Workflow {
                 phase = .error(error.localizedDescription)
             }
         }
+    }
+}
+
+// MARK: - Factory Methods
+
+extension SpokenRewriteWorkflow {
+    typealias Improver = (String, TextImprovementSettings, RewriteProviderMode) async throws -> String
+    typealias DampfAblassenRewriter = (String, DampfAblassenSettings, RewriteProviderMode) async throws -> String
+    typealias EmojiTextRewriter = (String, EmojiTextSettings, RewriteProviderMode) async throws -> String
+
+    static func textImprovement(
+        settings: TextImprovementSettings,
+        language: String = "de",
+        providerMode: RewriteProviderMode = .auto,
+        pipeline: SpokenWorkflowPipeline? = nil,
+        transcriber: @escaping SpokenWorkflowPipeline.Transcriber,
+        improver: @escaping Improver = { text, settings, providerMode in
+            try await LLMService.improve(
+                text: text,
+                settings: settings,
+                providerMode: providerMode
+            )
+        }
+    ) -> SpokenRewriteWorkflow {
+        SpokenRewriteWorkflow(
+            type: .textImprover,
+            customTerms: settings.customTerms,
+            language: language,
+            rewritingMessage: "Text wird verbessert ...",
+            pipeline: pipeline,
+            transcriber: transcriber,
+            rewrite: { transcript in
+                try await improver(transcript, settings, providerMode)
+            }
+        )
+    }
+
+    static func dampfAblassen(
+        settings: DampfAblassenSettings,
+        customTerms: [String] = [],
+        language: String = "de",
+        providerMode: RewriteProviderMode = .auto,
+        pipeline: SpokenWorkflowPipeline? = nil,
+        transcriber: @escaping SpokenWorkflowPipeline.Transcriber,
+        rewriter: @escaping DampfAblassenRewriter = { text, settings, providerMode in
+            try await LLMService.dampfAblassen(
+                text: text,
+                systemPrompt: settings.systemPrompt,
+                providerMode: providerMode
+            )
+        }
+    ) -> SpokenRewriteWorkflow {
+        SpokenRewriteWorkflow(
+            type: .dampfAblassen,
+            customTerms: customTerms,
+            language: language,
+            rewritingMessage: "Wird umformuliert ...",
+            noSpeechSentinel: "KEINE_AUFNAHME_ERKANNT",
+            pipeline: pipeline,
+            transcriber: transcriber,
+            rewrite: { transcript in
+                try await rewriter(transcript, settings, providerMode)
+            }
+        )
+    }
+
+    static func emojiText(
+        settings: EmojiTextSettings,
+        customTerms: [String] = [],
+        language: String = "de",
+        providerMode: RewriteProviderMode = .auto,
+        pipeline: SpokenWorkflowPipeline? = nil,
+        transcriber: @escaping SpokenWorkflowPipeline.Transcriber,
+        rewriter: @escaping EmojiTextRewriter = { text, settings, providerMode in
+            try await LLMService.addEmojis(
+                text: text,
+                settings: settings,
+                providerMode: providerMode
+            )
+        }
+    ) -> SpokenRewriteWorkflow {
+        SpokenRewriteWorkflow(
+            type: .emojiText,
+            customTerms: customTerms,
+            language: language,
+            rewritingMessage: "Emojis werden eingefügt ...",
+            noSpeechSentinel: "KEINE_AUFNAHME_ERKANNT",
+            pipeline: pipeline,
+            transcriber: transcriber,
+            rewrite: { transcript in
+                try await rewriter(transcript, settings, providerMode)
+            }
+        )
     }
 }

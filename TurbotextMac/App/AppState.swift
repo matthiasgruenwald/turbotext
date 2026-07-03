@@ -296,14 +296,14 @@ final class AppState {
                 transcriber: transcriber(for: .local)
             )
         case .textImprover:
-            return TextImprovementWorkflow(
+            return SpokenRewriteWorkflow.textImprovement(
                 settings: textImprovementSettings,
                 language: transcriptionSettings.language,
                 providerMode: appSettings.rewritingProviderMode,
                 transcriber: transcriber(for: .remote)
             )
         case .dampfAblassen:
-            return DampfAblassenWorkflow(
+            return SpokenRewriteWorkflow.dampfAblassen(
                 settings: dampfAblassenSettings,
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
@@ -311,7 +311,7 @@ final class AppState {
                 transcriber: transcriber(for: .remote)
             )
         case .emojiText:
-            return EmojiTextWorkflow(
+            return SpokenRewriteWorkflow.emojiText(
                 settings: emojiTextSettings,
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,

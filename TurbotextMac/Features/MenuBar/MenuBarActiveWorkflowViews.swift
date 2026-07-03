@@ -73,7 +73,7 @@ struct TranscriptionActiveView: View {
 // MARK: - Text Improver Active View
 
 struct TextImproverActiveView: View {
-    @Bindable var workflow: TextImprovementWorkflow
+    @Bindable var workflow: SpokenRewriteWorkflow
 
     var body: some View {
         VStack(spacing: 0) {
@@ -146,7 +146,7 @@ struct TextImproverActiveView: View {
 // MARK: - Rage Mode Active View
 
 struct DampfAblassenActiveView: View {
-    @Bindable var workflow: DampfAblassenWorkflow
+    @Bindable var workflow: SpokenRewriteWorkflow
 
     var body: some View {
         VStack(spacing: 0) {
@@ -219,7 +219,7 @@ struct DampfAblassenActiveView: View {
 // MARK: - Emoji Text Active View
 
 struct EmojiTextActiveView: View {
-    @Bindable var workflow: EmojiTextWorkflow
+    @Bindable var workflow: SpokenRewriteWorkflow
 
     var body: some View {
         VStack(spacing: 0) {

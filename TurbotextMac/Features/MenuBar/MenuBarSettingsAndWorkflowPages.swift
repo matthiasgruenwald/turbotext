@@ -104,15 +104,15 @@ extension MenuBarView {
                         TranscriptionActiveView(workflow: w)
                     }
                 case .textImprover:
-                    if let w = workflow as? TextImprovementWorkflow {
+                    if let w = workflow as? SpokenRewriteWorkflow {
                         TextImproverActiveView(workflow: w)
                     }
                 case .dampfAblassen:
-                    if let w = workflow as? DampfAblassenWorkflow {
+                    if let w = workflow as? SpokenRewriteWorkflow {
                         DampfAblassenActiveView(workflow: w)
                     }
                 case .emojiText:
-                    if let w = workflow as? EmojiTextWorkflow {
+                    if let w = workflow as? SpokenRewriteWorkflow {
                         EmojiTextActiveView(workflow: w)
                     }
                 }
