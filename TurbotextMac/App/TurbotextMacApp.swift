@@ -66,8 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         appState.prewarmLocalTranscriptionIfNeeded()
 
         // Hotkey events
-        appState.hotkeyService.onHotkeyEvent = { [weak self] event in
-            self?.handleHotkeyEvent(event)
+        appState.hotkeyCaptureService.onTrigger = { [weak self] trigger in
+            self?.handleHotkeyTrigger(trigger)
         }
         appState.onPreferredContentSizeChange = { [weak self] size in
             self?.popover.contentSize = size
@@ -77,7 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         }
         appState.refreshAccessibilityPermission()
         refreshMenuBarCloudIndicator()
-        appState.hotkeyService.start()
+        appState.hotkeyCaptureService.start()
 
         // Listen for popover dismiss requests (from auto-paste)
         NotificationCenter.default.addObserver(
@@ -105,13 +105,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         popover.performClose(nil)
     }
 
-    private func handleHotkeyEvent(_ event: HotkeyEvent) {
-        switch event {
-        case .down(let type):
+    private func handleHotkeyTrigger(_ trigger: HotkeyTrigger) {
+        switch trigger {
+        case .activate(let type):
             handleHotkeyDown(type)
-        case .up(let type):
+        case .deactivate(let type):
             handleHotkeyUp(type)
-        case .cancel:
+        case .cancelActive:
             handleHotkeyCancel()
         }
     }

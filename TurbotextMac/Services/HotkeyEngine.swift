@@ -1,5 +1,13 @@
 import AppKit
 
+/// Internal trigger produced by `HotkeyEngine`'s matching logic. Not exposed to
+/// `HotkeyCaptureService` callers — see `HotkeyTrigger` for the public interface.
+enum HotkeyEvent {
+    case down(WorkflowType)
+    case up(WorkflowType)
+    case cancel
+}
+
 // MARK: - Timer scheduling seam (testability only, no custom scheduling framework)
 
 /// Cancellation handle returned by `HotkeyEngineTimerScheduling.scheduleRepeating`.
@@ -22,7 +30,7 @@ protocol HotkeyEngineTimerScheduling {
     func scheduleRepeating(interval: TimeInterval, _ block: @escaping () -> Void) -> HotkeyEngineTimerToken
 }
 
-/// Real-world scheduler backed by `Timer`, used by `HotkeyService` in production.
+/// Real-world scheduler backed by `Timer`, used by `HotkeyCaptureService` in production.
 final class RunLoopTimerScheduler: HotkeyEngineTimerScheduling {
     func scheduleRepeating(interval: TimeInterval, _ block: @escaping () -> Void) -> HotkeyEngineTimerToken {
         let timer = Timer(timeInterval: interval, repeats: true) { _ in block() }

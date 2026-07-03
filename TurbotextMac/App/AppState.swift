@@ -76,7 +76,7 @@ final class AppState {
 
     // Hotkeys
     let shortcutStore: ShortcutStore
-    let hotkeyService: HotkeyService
+    let hotkeyCaptureService: HotkeyCaptureService
 
     // Microphone favorites (delegated to `microphoneState`)
     var microphoneFavoritesStore: MicrophoneFavoritesStore { microphoneState.favoritesStore }
@@ -113,7 +113,7 @@ final class AppState {
         self.cloudTranscriptionRouter = CloudTranscriptionRouter(quotaManager: quotaManager, fallbackManager: fallbackManager)
         let store = ShortcutStore()
         self.shortcutStore = store
-        self.hotkeyService = HotkeyService(store: store)
+        self.hotkeyCaptureService = HotkeyCaptureService(store: store)
         self.microphoneState = MicrophoneState()
         self.networkPingService = NetworkPingService()
         let settings = SettingsState()
