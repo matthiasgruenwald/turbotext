@@ -15,6 +15,7 @@ final class AppState {
     private let settingsState: SettingsState
     let workflowLifecycle: WorkflowLifecycleManager
     let quotaManager: QuotaManager
+    let fallbackManager: GroqFallbackManager
     let microphoneState: MicrophoneState
     private let localModelState: LocalModelState
 
@@ -99,9 +100,13 @@ final class AppState {
         microphoneState.activeDeviceDisplayName
     }
 
-    init(quotaManager: QuotaManager = GroqQuotaManager.shared) {
+    init(
+        quotaManager: QuotaManager = GroqQuotaManager.shared,
+        fallbackManager: GroqFallbackManager = GroqFallbackManager.shared
+    ) {
         self.quotaManager = quotaManager
-        self.cloudTranscriptionRouter = CloudTranscriptionRouter(quotaManager: quotaManager)
+        self.fallbackManager = fallbackManager
+        self.cloudTranscriptionRouter = CloudTranscriptionRouter(quotaManager: quotaManager, fallbackManager: fallbackManager)
         let store = ShortcutStore()
         self.shortcutStore = store
         self.hotkeyService = HotkeyService(store: store)
@@ -191,8 +196,8 @@ final class AppState {
 
     var groqFallbackBannerContent: (title: String, detail: String)? {
         GroqFallbackBanner.content(
-            fallbackActive: quotaManager.fallbackActive,
-            resetAt: quotaManager.rateLimitResetAt,
+            fallbackActive: fallbackManager.isActive,
+            resetAt: fallbackManager.rateLimitResetAt,
             secureLocalModeEnabled: appSettings.secureLocalModeEnabled
         )
     }
@@ -213,7 +218,7 @@ final class AppState {
             isDownloadingLocalModel: isDownloadingLocalModel,
             localModelDownloadStatusText: localModelDownloadStatusText,
             hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil,
-            groqFallbackActive: quotaManager.fallbackActive,
+            groqFallbackActive: fallbackManager.isActive,
             groqQuotaUsedToday: quotaManager.formattedUsedToday
         )
     }

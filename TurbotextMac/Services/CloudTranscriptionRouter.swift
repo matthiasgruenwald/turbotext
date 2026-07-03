@@ -44,19 +44,22 @@ struct CloudTranscriptionRouter {
     private let openAITranscribe: OpenAITranscribe
     private let groqQuotaCheck: GroqQuotaCheck
     private let quotaManager: QuotaManager
+    private let fallbackManager: GroqFallbackManager
 
     init(
         groqKey: @escaping GroqKeyLoader = { KeychainService.load(key: .groqAPIKey) },
         groqTranscribe: @escaping GroqTranscribe = GroqTranscriptionService.transcribe,
         openAITranscribe: @escaping OpenAITranscribe = OpenAITranscriptionService.transcribe,
         groqQuotaCheck: @escaping GroqQuotaCheck = GroqTranscriptionService.checkQuota,
-        quotaManager: QuotaManager = GroqQuotaManager.shared
+        quotaManager: QuotaManager = GroqQuotaManager.shared,
+        fallbackManager: GroqFallbackManager = GroqFallbackManager.shared
     ) {
         self.groqKey = groqKey
         self.groqTranscribe = groqTranscribe
         self.openAITranscribe = openAITranscribe
         self.groqQuotaCheck = groqQuotaCheck
         self.quotaManager = quotaManager
+        self.fallbackManager = fallbackManager
     }
 
     func transcribe(
@@ -65,7 +68,7 @@ struct CloudTranscriptionRouter {
         customTerms: [String] = [],
         language: String? = nil
     ) async throws -> TranscriptionOutcome {
-        let fallbackWasActive = quotaManager.fallbackActive
+        let fallbackWasActive = fallbackManager.isActive
 
         if let groqKey = groqKey(), !fallbackWasActive {
             do {
@@ -73,7 +76,7 @@ struct CloudTranscriptionRouter {
                 updateQuota(info: info, durationSeconds: durationSeconds)
                 return .success(text)
             } catch GroqTranscriptionError.rateLimitExceeded(let resetAt) {
-                quotaManager.activateFallback(resetAt: resetAt)
+                fallbackManager.reportRateLimitExceeded(resetAt: resetAt)
                 let text = try await openAITranscribe(audioURL, customTerms, language)
                 return .fallbackActivated(text)
             }
@@ -89,7 +92,7 @@ struct CloudTranscriptionRouter {
             hasGroqKey: true,
             secureLocalModeEnabled: secureLocalModeEnabled,
             remainingAudioSeconds: quotaManager.remainingAudioSeconds,
-            fallbackActive: quotaManager.fallbackActive
+            fallbackActive: fallbackManager.isActive
         )
         guard shouldCheck else { return }
         await checkGroqQuota(apiKey: apiKey)
@@ -102,7 +105,7 @@ struct CloudTranscriptionRouter {
                 quotaManager.update(remainingSeconds: remaining, resetAt: info.resetAt)
             }
         } catch GroqTranscriptionError.rateLimitExceeded(let resetAt) {
-            quotaManager.activateFallback(resetAt: resetAt)
+            fallbackManager.reportRateLimitExceeded(resetAt: resetAt)
         } catch {
         }
     }

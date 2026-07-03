@@ -6,17 +6,13 @@ import Observation
 final class GroqQuotaManager: QuotaManager {
     static let shared = GroqQuotaManager()
 
-    private(set) var fallbackActive: Bool
     private(set) var remainingAudioSeconds: Int?
     private(set) var rateLimitResetAt: Date?
     private(set) var usedSecondsToday: Int
 
-    var onFallbackChanged: ((Bool) -> Void)?
-
     private let defaults: PersistenceProvider
 
     private enum Keys {
-        static let fallbackActive = "groqFallbackActive"
         static let remainingSeconds = "groqRemainingAudioSeconds"
         static let resetAt = "groqRateLimitResetAt"
         static let usedSecondsToday = "groqUsedSecondsToday"
@@ -25,17 +21,15 @@ final class GroqQuotaManager: QuotaManager {
 
     init(defaults: PersistenceProvider = UserDefaultsPersistence.shared) {
         self.defaults = defaults
-        fallbackActive = defaults.bool(forKey: Keys.fallbackActive)
-        if let resetInterval = defaults.object(forKey: Keys.resetAt) as? Double {
-            rateLimitResetAt = Date(timeIntervalSince1970: resetInterval)
-        }
         if defaults.object(forKey: Keys.remainingSeconds) != nil {
             remainingAudioSeconds = defaults.integer(forKey: Keys.remainingSeconds)
+        }
+        if let resetInterval = defaults.object(forKey: Keys.resetAt) as? Double {
+            rateLimitResetAt = Date(timeIntervalSince1970: resetInterval)
         }
         usedSecondsToday = defaults.string(forKey: Keys.usedDayKey) == Self.dayKey(for: Date())
             ? defaults.integer(forKey: Keys.usedSecondsToday)
             : 0
-        checkIfExpired()
     }
 
     private static func dayKey(for date: Date) -> String {
@@ -66,9 +60,11 @@ final class GroqQuotaManager: QuotaManager {
         defaults.removeObject(forKey: Keys.usedDayKey)
     }
 
-    func checkIfExpired() {
-        guard fallbackActive, let resetAt = rateLimitResetAt, Date() > resetAt else { return }
-        clearFallback()
+    func resetRemainingAudioSeconds() {
+        remainingAudioSeconds = nil
+        rateLimitResetAt = nil
+        defaults.removeObject(forKey: Keys.remainingSeconds)
+        defaults.removeObject(forKey: Keys.resetAt)
     }
 
     func update(remainingSeconds: Int, resetAt: Date?) {
@@ -78,28 +74,6 @@ final class GroqQuotaManager: QuotaManager {
             rateLimitResetAt = resetAt
             defaults.set(resetAt.timeIntervalSince1970, forKey: Keys.resetAt)
         }
-    }
-
-    func activateFallback(resetAt: Date?) {
-        fallbackActive = true
-        remainingAudioSeconds = 0
-        if let resetAt {
-            rateLimitResetAt = resetAt
-            defaults.set(resetAt.timeIntervalSince1970, forKey: Keys.resetAt)
-        }
-        defaults.set(true, forKey: Keys.fallbackActive)
-        defaults.set(0, forKey: Keys.remainingSeconds)
-        onFallbackChanged?(true)
-    }
-
-    private func clearFallback() {
-        fallbackActive = false
-        remainingAudioSeconds = nil
-        rateLimitResetAt = nil
-        defaults.removeObject(forKey: Keys.fallbackActive)
-        defaults.removeObject(forKey: Keys.remainingSeconds)
-        defaults.removeObject(forKey: Keys.resetAt)
-        onFallbackChanged?(false)
     }
 
     var formattedUsedToday: String {

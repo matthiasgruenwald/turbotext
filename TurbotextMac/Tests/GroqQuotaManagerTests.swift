@@ -4,17 +4,6 @@ import XCTest
 @MainActor
 final class GroqQuotaManagerTests: XCTestCase {
 
-    override func tearDown() {
-        resetQuotaStore()
-        super.tearDown()
-    }
-
-    private func resetQuotaStore() {
-        let store = GroqQuotaManager.shared
-        store.activateFallback(resetAt: Date().addingTimeInterval(-10))
-        store.checkIfExpired()
-    }
-
     func testUpdateWithResetAtSetsBothValues() {
         let resetAt = Date().addingTimeInterval(3600)
         GroqQuotaManager.shared.update(remainingSeconds: 120, resetAt: resetAt)

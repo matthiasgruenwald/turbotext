@@ -5,25 +5,15 @@ import Observation
 @MainActor
 @Observable
 private final class FakeQuotaManager: QuotaManager {
-    private(set) var fallbackActive = false
     private(set) var rateLimitResetAt: Date?
     private(set) var remainingAudioSeconds: Int?
     private(set) var recordedUsageSeconds: [Int] = []
-    private(set) var activateFallbackCallCount = 0
     private(set) var updateCallCount = 0
 
     var formattedUsedToday: String { "0 Sek." }
-    var onFallbackChanged: ((Bool) -> Void)?
 
     func recordUsage(seconds: Int) {
         recordedUsageSeconds.append(seconds)
-    }
-
-    func activateFallback(resetAt: Date?) {
-        activateFallbackCallCount += 1
-        fallbackActive = true
-        rateLimitResetAt = resetAt
-        remainingAudioSeconds = 0
     }
 
     func update(remainingSeconds: Int, resetAt: Date?) {
@@ -33,8 +23,6 @@ private final class FakeQuotaManager: QuotaManager {
             rateLimitResetAt = resetAt
         }
     }
-
-    func checkIfExpired() {}
 }
 
 @MainActor
@@ -42,8 +30,9 @@ final class CloudTranscriptionRouterQuotaManagerTests: XCTestCase {
 
     private let dummyAudioURL = URL(fileURLWithPath: "/tmp/cloud-transcription-router-quota-manager-tests-dummy.m4a")
 
-    func testGroq429ActivatesFallbackOnInjectedQuotaManager() async throws {
+    func testGroq429ActivatesFallbackOnInjectedFallbackManager() async throws {
         let fakeQuotaManager = FakeQuotaManager()
+        let fallbackManager = GroqFallbackManager(defaults: InMemoryPersistence())
         let resetAt = Date().addingTimeInterval(3600)
         let router = CloudTranscriptionRouter(
             groqKey: { "gsk_test_key" },
@@ -51,7 +40,8 @@ final class CloudTranscriptionRouterQuotaManagerTests: XCTestCase {
                 throw GroqTranscriptionError.rateLimitExceeded(resetAt: resetAt)
             },
             openAITranscribe: { _, _, _ in "Fallback Text" },
-            quotaManager: fakeQuotaManager
+            quotaManager: fakeQuotaManager,
+            fallbackManager: fallbackManager
         )
 
         let outcome = try await router.transcribe(audioURL: dummyAudioURL, durationSeconds: 2)
@@ -60,13 +50,13 @@ final class CloudTranscriptionRouterQuotaManagerTests: XCTestCase {
             return XCTFail("Expected .fallbackActivated, got \(outcome)")
         }
         XCTAssertEqual(text, "Fallback Text")
-        XCTAssertEqual(fakeQuotaManager.activateFallbackCallCount, 1)
-        XCTAssertTrue(fakeQuotaManager.fallbackActive)
-        XCTAssertEqual(fakeQuotaManager.rateLimitResetAt, resetAt)
+        XCTAssertTrue(fallbackManager.isActive)
+        XCTAssertEqual(fallbackManager.rateLimitResetAt, resetAt)
     }
 
     func testSuccessUpdatesQuotaOnInjectedQuotaManager() async throws {
         let fakeQuotaManager = FakeQuotaManager()
+        let fallbackManager = GroqFallbackManager(defaults: InMemoryPersistence())
         let router = CloudTranscriptionRouter(
             groqKey: { "gsk_test_key" },
             groqTranscribe: { _, _, _, _ in
@@ -76,7 +66,8 @@ final class CloudTranscriptionRouterQuotaManagerTests: XCTestCase {
                 XCTFail("OpenAI should not be called on Groq success")
                 return ""
             },
-            quotaManager: fakeQuotaManager
+            quotaManager: fakeQuotaManager,
+            fallbackManager: fallbackManager
         )
 
         let outcome = try await router.transcribe(audioURL: dummyAudioURL, durationSeconds: 2)
@@ -88,6 +79,6 @@ final class CloudTranscriptionRouterQuotaManagerTests: XCTestCase {
         XCTAssertEqual(fakeQuotaManager.updateCallCount, 1)
         XCTAssertEqual(fakeQuotaManager.remainingAudioSeconds, 500)
         XCTAssertEqual(fakeQuotaManager.recordedUsageSeconds, [2])
-        XCTAssertFalse(fakeQuotaManager.fallbackActive)
+        XCTAssertFalse(fallbackManager.isActive)
     }
 }

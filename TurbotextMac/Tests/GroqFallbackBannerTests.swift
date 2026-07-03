@@ -37,13 +37,13 @@ final class GroqFallbackBannerTests: XCTestCase {
 final class GroqFallbackBannerAppStateIntegrationTests: XCTestCase {
 
     override func tearDown() {
-        resetQuotaStore()
+        resetFallbackStore()
         super.tearDown()
     }
 
-    private func resetQuotaStore() {
-        let store = GroqQuotaManager.shared
-        store.activateFallback(resetAt: Date().addingTimeInterval(-10))
+    private func resetFallbackStore() {
+        let store = GroqFallbackManager.shared
+        store.reportRateLimitExceeded(resetAt: Date().addingTimeInterval(-10))
         store.checkIfExpired()
     }
 
@@ -53,7 +53,7 @@ final class GroqFallbackBannerAppStateIntegrationTests: XCTestCase {
     }
 
     func testAppStateReturnsNilWhenSecureLocalModeActive() {
-        GroqQuotaManager.shared.activateFallback(resetAt: nil)
+        GroqFallbackManager.shared.reportRateLimitExceeded(resetAt: nil)
         let appState = AppState()
         appState.appSettings.secureLocalModeEnabled = true
         defer { appState.appSettings.secureLocalModeEnabled = false }
@@ -61,7 +61,7 @@ final class GroqFallbackBannerAppStateIntegrationTests: XCTestCase {
     }
 
     func testAppStateReturnsContentWhenFallbackActive() {
-        GroqQuotaManager.shared.activateFallback(resetAt: nil)
+        GroqFallbackManager.shared.reportRateLimitExceeded(resetAt: nil)
         let appState = AppState()
         let content = appState.groqFallbackBannerContent
         XCTAssertEqual(content?.title, "Groq-Kontingent aufgebraucht")

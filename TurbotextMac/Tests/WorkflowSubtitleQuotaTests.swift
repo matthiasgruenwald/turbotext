@@ -11,10 +11,10 @@ final class WorkflowSubtitleQuotaTests: XCTestCase {
     }
 
     private func resetQuotaStore() {
-        let store = GroqQuotaManager.shared
-        store.activateFallback(resetAt: Date().addingTimeInterval(-10))
-        store.checkIfExpired()
-        store.resetUsedToday()
+        let fallbackStore = GroqFallbackManager.shared
+        fallbackStore.reportRateLimitExceeded(resetAt: Date().addingTimeInterval(-10))
+        fallbackStore.checkIfExpired()
+        GroqQuotaManager.shared.resetUsedToday()
     }
 
     func testOnlineSubtitleMentionsClipboardRegardlessOfGroqKey() throws {
@@ -31,7 +31,7 @@ final class WorkflowSubtitleQuotaTests: XCTestCase {
 
     func testOnlineSubtitleMentionsClipboardWithFallbackActive() throws {
         try KeychainService.save(key: .groqAPIKey, value: "gsk_test_key_1234567890")
-        GroqQuotaManager.shared.activateFallback(resetAt: Date().addingTimeInterval(3600))
+        GroqFallbackManager.shared.reportRateLimitExceeded(resetAt: Date().addingTimeInterval(3600))
         let appState = AppState()
         XCTAssertEqual(appState.workflowSubtitle(for: .transcription), "Sprache rein. Landet in Zwischenablage.")
     }

@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         appState.onCloudIndicatorRefreshNeeded = { [weak self] in
             self?.refreshMenuBarCloudIndicator()
         }
-        appState.quotaManager.onFallbackChanged = { [weak self] _ in
+        appState.fallbackManager.onStateChanged = { [weak self] _ in
             self?.refreshMenuBarCloudIndicator()
         }
         appState.networkPingService.onStatusChanged = { [weak self] status in
