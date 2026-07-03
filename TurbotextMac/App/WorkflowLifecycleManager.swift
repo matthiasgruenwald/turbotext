@@ -12,9 +12,6 @@ final class WorkflowLifecycleManager {
     var activeWorkflow: (any Workflow)? {
         orchestrator.activeWorkflow
     }
-    var menuBarStatus: MenuBarStatus {
-        orchestrator.menuBarStatus
-    }
     var currentPhase: WorkflowPhase {
         activeWorkflow?.phase ?? .idle
     }

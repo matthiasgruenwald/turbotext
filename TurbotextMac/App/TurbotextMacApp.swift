@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         appState.hotkeyService.onHotkeyEvent = { [weak self] event in
             self?.handleHotkeyEvent(event)
         }
-        appState.onMenuBarStatusChange = { [weak self] status in
+        appState.workflowLifecycle.orchestrator.onMenuBarStatusChange = { [weak self] status in
             self?.menuBarStatusController.update(to: status)
         }
         appState.onPreferredContentSizeChange = { [weak self] size in

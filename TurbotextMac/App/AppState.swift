@@ -28,12 +28,6 @@ final class AppState {
         }
     }
     var isPopoverShown = false
-    var menuBarStatus: MenuBarStatus = .idle {
-        didSet {
-            guard oldValue != menuBarStatus else { return }
-            onMenuBarStatusChange?(menuBarStatus)
-        }
-    }
     var accessibilityPermissionGranted = false {
         didSet {
             guard oldValue != accessibilityPermissionGranted else { return }
@@ -46,7 +40,6 @@ final class AppState {
             onCloudIndicatorRefreshNeeded?()
         }
     }
-    var onMenuBarStatusChange: ((MenuBarStatus) -> Void)?
     var onPreferredContentSizeChange: ((CGSize) -> Void)?
     var onCloudIndicatorRefreshNeeded: (() -> Void)?
     var requestedSettingsSection: SettingsSection?
@@ -140,9 +133,6 @@ final class AppState {
         }
         lifecycle.onPageChangeNeeded = { [weak self] page in
             self?.page = page
-        }
-        lifecycle.orchestrator.onMenuBarStatusChange = { [weak self] status in
-            self?.menuBarStatus = status
         }
         lifecycle.orchestrator.onAccessibilityPermissionChange = { [weak self] granted in
             self?.accessibilityPermissionGranted = granted
@@ -357,7 +347,6 @@ final class AppState {
 
     func resetCurrentWorkflow() {
         workflowLifecycle.reset()
-        menuBarStatus = .idle
     }
 
     func enableSecureLocalMode() {
