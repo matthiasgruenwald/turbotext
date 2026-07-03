@@ -15,16 +15,26 @@ struct TurbotextMacApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
-    private var menuBarStatusController: MenuBarStatusController!
+    private var menuBarStatusCoordinator: MenuBarStatusCoordinator!
     private var mainWindowController: MainWindowController!
     let appState = AppState()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        menuBarStatusController = MenuBarStatusController(quotaManager: appState.quotaManager)
+        menuBarStatusCoordinator = MenuBarStatusCoordinator(
+            orchestrator: appState.workflowLifecycle.orchestrator,
+            fallbackManager: appState.fallbackManager,
+            networkPingService: appState.networkPingService,
+            cloudIndicatorProvider: { [weak appState] in
+                appState?.transcriptionModeStatus.menuBarCloudIndicator ?? .none
+            },
+            groqQuotaUsedTodayProvider: { [weak appState] in
+                appState?.quotaManager.formattedUsedToday
+            }
+        )
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusItem.button {
-            menuBarStatusController.attach(to: button)
+            menuBarStatusCoordinator.attach(to: button)
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -45,22 +55,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         appState.hotkeyService.onHotkeyEvent = { [weak self] event in
             self?.handleHotkeyEvent(event)
         }
-        appState.workflowLifecycle.orchestrator.onMenuBarStatusChange = { [weak self] status in
-            self?.menuBarStatusController.update(to: status)
-        }
         appState.onPreferredContentSizeChange = { [weak self] size in
             self?.popover.contentSize = size
         }
         appState.onCloudIndicatorRefreshNeeded = { [weak self] in
             self?.refreshMenuBarCloudIndicator()
         }
-        appState.fallbackManager.onStateChanged = { [weak self] _ in
-            self?.refreshMenuBarCloudIndicator()
-        }
-        appState.networkPingService.onStatusChanged = { [weak self] status in
-            self?.menuBarStatusController.setNetworkStatus(status)
-        }
-        menuBarStatusController.setNetworkStatus(appState.networkPingService.status)
         appState.refreshAccessibilityPermission()
         refreshMenuBarCloudIndicator()
         appState.hotkeyService.start()
@@ -79,8 +79,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     private func refreshMenuBarCloudIndicator() {
-        menuBarStatusController.setCloudIndicator(appState.transcriptionModeStatus.menuBarCloudIndicator)
-        menuBarStatusController.setPermissions(
+        menuBarStatusCoordinator.refreshCloudIndicator()
+        menuBarStatusCoordinator.updatePermissions(
             accessibilityGranted: appState.accessibilityPermissionGranted,
             inputMonitoringGranted: appState.inputMonitoringPermissionGranted
         )
