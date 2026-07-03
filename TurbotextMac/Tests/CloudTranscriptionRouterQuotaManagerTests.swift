@@ -1,7 +1,9 @@
 import XCTest
+import Observation
 @testable import Turbotext
 
 @MainActor
+@Observable
 private final class FakeQuotaManager: QuotaManager {
     private(set) var fallbackActive = false
     private(set) var rateLimitResetAt: Date?

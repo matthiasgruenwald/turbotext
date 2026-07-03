@@ -59,7 +59,9 @@ final class WorkflowOrchestrator {
     /// Called before each paste attempt so the host can dismiss a visible popover, if any.
     var onWillPaste: (() -> Void)?
 
-    var workflowFactory: WorkflowFactory
+    /// `nil` means "not yet configured" — `start()` becomes a no-op until the host wires
+    /// in the real factory. Avoids constructing this with a dummy always-nil closure.
+    var workflowFactory: WorkflowFactory?
     private let pasteAction: PasteAction
     private let trustCheck: TrustCheck
     private let frontmostPidProvider: FrontmostPidProvider
@@ -71,7 +73,7 @@ final class WorkflowOrchestrator {
     private var workflowCleanupTask: Task<Void, Never>?
 
     init(
-        workflowFactory: @escaping WorkflowFactory,
+        workflowFactory: WorkflowFactory? = nil,
         pasteAction: @escaping PasteAction = { WorkflowOrchestrator.defaultPasteAction() },
         trustCheck: @escaping TrustCheck = { AccessibilityPermissionService.isTrusted(promptIfNeeded: $0) },
         frontmostPidProvider: @escaping FrontmostPidProvider = { WorkflowOrchestrator.defaultFrontmostPidProvider() },
@@ -92,7 +94,7 @@ final class WorkflowOrchestrator {
         backendOverride: TranscriptionBackend? = nil,
         pasteTarget: PasteTarget?
     ) {
-        guard let workflow = workflowFactory(type, backendOverride) else { return }
+        guard let workflow = workflowFactory?(type, backendOverride) else { return }
 
         activeWorkflow?.stop()
         menuBarStatusResetTask?.cancel()

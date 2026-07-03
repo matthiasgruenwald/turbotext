@@ -102,11 +102,6 @@ final class GroqQuotaManager: QuotaManager {
         onFallbackChanged?(false)
     }
 
-    var formattedRemaining: String? {
-        guard let seconds = remainingAudioSeconds else { return nil }
-        return Self.formatSeconds(seconds)
-    }
-
     var formattedUsedToday: String {
         Self.formatSeconds(usedSecondsToday)
     }

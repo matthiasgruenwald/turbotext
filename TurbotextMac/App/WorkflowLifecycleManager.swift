@@ -34,7 +34,7 @@ final class WorkflowLifecycleManager {
     }
 
     convenience init(
-        workflowFactory: @escaping WorkflowOrchestrator.WorkflowFactory,
+        workflowFactory: WorkflowOrchestrator.WorkflowFactory? = nil,
         isPopoverShown: @escaping () -> Bool = { false }
     ) {
         self.init(orchestrator: WorkflowOrchestrator(workflowFactory: workflowFactory), isPopoverShown: isPopoverShown)
@@ -49,7 +49,7 @@ final class WorkflowLifecycleManager {
         }
     }
 
-    var workflowFactory: WorkflowOrchestrator.WorkflowFactory {
+    var workflowFactory: WorkflowOrchestrator.WorkflowFactory? {
         get { orchestrator.workflowFactory }
         set { orchestrator.workflowFactory = newValue }
     }

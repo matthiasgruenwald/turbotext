@@ -17,7 +17,6 @@ final class AppState {
     let quotaManager: QuotaManager
     let microphoneState: MicrophoneState
 
-    var orchestrator: WorkflowOrchestrator { workflowLifecycle.orchestrator }
     var activeWorkflow: (any Workflow)? { workflowLifecycle.activeWorkflow }
     var currentPhase: WorkflowPhase { workflowLifecycle.currentPhase }
 
@@ -119,7 +118,7 @@ final class AppState {
         self.networkPingService = NetworkPingService()
         self.settingsState = SettingsState()
 
-        let lifecycle = WorkflowLifecycleManager(workflowFactory: { _, _ in nil })
+        let lifecycle = WorkflowLifecycleManager()
         self.workflowLifecycle = lifecycle
         lifecycle.isPopoverShown = { [weak self] in self?.isPopoverShown ?? false }
 
