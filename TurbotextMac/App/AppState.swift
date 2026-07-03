@@ -12,10 +12,11 @@ enum PopoverPage: Equatable {
 @Observable
 @MainActor
 final class AppState {
-    let settingsState: SettingsState
+    private let settingsState: SettingsState
     let workflowLifecycle: WorkflowLifecycleManager
     let quotaManager: QuotaManager
     let microphoneState: MicrophoneState
+    private let localModelState: LocalModelState
 
     var activeWorkflow: (any Workflow)? { workflowLifecycle.activeWorkflow }
     var currentPhase: WorkflowPhase { workflowLifecycle.currentPhase }
@@ -45,9 +46,6 @@ final class AppState {
             onCloudIndicatorRefreshNeeded?()
         }
     }
-    var localModelDownloadProgress: Double?
-    var localModelDownloadStatusText: String?
-    var localModelDownloadErrorText: String?
     var onMenuBarStatusChange: ((MenuBarStatus) -> Void)?
     var onPreferredContentSizeChange: ((CGSize) -> Void)?
     var onCloudIndicatorRefreshNeeded: (() -> Void)?
@@ -116,7 +114,16 @@ final class AppState {
         self.hotkeyService = HotkeyService(store: store)
         self.microphoneState = MicrophoneState()
         self.networkPingService = NetworkPingService()
-        self.settingsState = SettingsState()
+        let settings = SettingsState()
+        self.settingsState = settings
+        self.localModelState = LocalModelState(
+            getSelectedModelName: { settings.appSettings.selectedLocalTranscriptionModelName },
+            setSelectedModelName: { settings.appSettings.selectedLocalTranscriptionModelName = $0 },
+            getSecureLocalModeEnabled: { settings.appSettings.secureLocalModeEnabled },
+            setSecureLocalModeEnabled: { settings.appSettings.secureLocalModeEnabled = $0 },
+            getHasAutoSelectedFastLocalModel: { settings.appSettings.hasAutoSelectedFastLocalModel },
+            setHasAutoSelectedFastLocalModel: { settings.appSettings.hasAutoSelectedFastLocalModel = $0 }
+        )
 
         let lifecycle = WorkflowLifecycleManager()
         self.workflowLifecycle = lifecycle
@@ -235,31 +242,15 @@ final class AppState {
         }
     }
 
-    var resolvedLocalModelName: String {
-        LocalTranscriptionService.resolvedModelName(appSettings.selectedLocalTranscriptionModelName)
-    }
-
-    var selectedLocalModelDisplayName: String {
-        LocalTranscriptionModel.displayName(for: selectedLocalModelName)
-    }
-
-    var selectedLocalModelName: String {
-        LocalTranscriptionService.normalizedModelName(appSettings.selectedLocalTranscriptionModelName)
-    }
-
-    var selectedLocalModelIsInstalled: Bool {
-        LocalTranscriptionService.isModelInstalled(selectedLocalModelName)
-    }
-
-    var isDownloadingLocalModel: Bool {
-        localModelDownloadProgress != nil
-    }
-
-    var localModelDownloadButtonTitle: String {
-        selectedLocalModelIsInstalled
-            ? "\(LocalTranscriptionModel.displayName(for: selectedLocalModelName)) ist installiert"
-            : "\(LocalTranscriptionModel.displayName(for: selectedLocalModelName)) installieren"
-    }
+    var resolvedLocalModelName: String { localModelState.resolvedLocalModelName }
+    var selectedLocalModelDisplayName: String { localModelState.selectedModelDisplayName }
+    var selectedLocalModelName: String { localModelState.selectedModelName }
+    var selectedLocalModelIsInstalled: Bool { localModelState.selectedModelIsInstalled }
+    var isDownloadingLocalModel: Bool { localModelState.isDownloading }
+    var localModelDownloadButtonTitle: String { localModelState.downloadButtonTitle }
+    var localModelDownloadProgress: Double? { localModelState.downloadProgress }
+    var localModelDownloadStatusText: String? { localModelState.downloadStatusText }
+    var localModelDownloadErrorText: String? { localModelState.downloadErrorText }
 
     // MARK: - Workflow Management
 
@@ -377,39 +368,7 @@ final class AppState {
     }
 
     func installSelectedLocalModel() {
-        guard !isDownloadingLocalModel else { return }
-
-        let modelName = selectedLocalModelName
-        localModelDownloadProgress = 0
-        localModelDownloadStatusText = "Download startet..."
-        localModelDownloadErrorText = nil
-
-        Task {
-            do {
-                let installedURL = try await LocalTranscriptionService.shared.downloadAndInstall(
-                    modelName: modelName
-                ) { [weak self] progress in
-                    Task { @MainActor [weak self] in
-                        guard let self else { return }
-                        let clampedProgress = min(max(progress, 0), 1)
-                        self.localModelDownloadProgress = clampedProgress
-                        self.localModelDownloadStatusText = "Download \(Int(clampedProgress * 100)) %"
-                    }
-                }
-
-                appSettings.selectedLocalTranscriptionModelName = installedURL.lastPathComponent
-                appSettings.secureLocalModeEnabled = true
-                localModelDownloadProgress = nil
-                localModelDownloadStatusText = "\(LocalTranscriptionModel.displayName(for: modelName)) ist installiert."
-                localModelDownloadErrorText = nil
-
-                try? await LocalTranscriptionService.shared.prepare(modelName: modelName)
-            } catch {
-                localModelDownloadProgress = nil
-                localModelDownloadStatusText = nil
-                localModelDownloadErrorText = error.localizedDescription
-            }
-        }
+        localModelState.installSelectedModel()
     }
 
     func copyToClipboard(_ text: String) {
@@ -461,27 +420,11 @@ final class AppState {
     }
 
     private func autoSelectFastLocalModelIfNeeded() {
-        guard !appSettings.hasAutoSelectedFastLocalModel,
-              LocalTranscriptionService.shouldAutoSelectRecommendedFastModel(
-                currentModelName: appSettings.selectedLocalTranscriptionModelName
-              ) else {
-            return
-        }
-
-        appSettings.selectedLocalTranscriptionModelName = LocalTranscriptionService.recommendedFastModelName
-        appSettings.hasAutoSelectedFastLocalModel = true
+        localModelState.autoSelectFastModelIfNeeded()
     }
 
     private func prewarmLocalTranscriptionIfNeeded() {
-        guard appSettings.secureLocalModeEnabled,
-              LocalTranscriptionService.isModelInstalled(resolvedLocalModelName) else {
-            return
-        }
-
-        let modelName = resolvedLocalModelName
-        Task.detached(priority: .utility) {
-            try? await LocalTranscriptionService.shared.prepare(modelName: modelName)
-        }
+        localModelState.prewarmIfNeeded()
     }
 
     private func capturePasteTarget(for source: WorkflowLaunchSource) -> PasteTarget? {
