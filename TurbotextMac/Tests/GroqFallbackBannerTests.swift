@@ -1,8 +1,40 @@
 import XCTest
 @testable import Turbotext
 
-@MainActor
 final class GroqFallbackBannerTests: XCTestCase {
+
+    func testContentNilWhenFallbackInactive() {
+        XCTAssertNil(GroqFallbackBanner.content(fallbackActive: false, resetAt: nil, secureLocalModeEnabled: false))
+    }
+
+    func testContentNilWhenSecureLocalModeActive() {
+        XCTAssertNil(GroqFallbackBanner.content(fallbackActive: true, resetAt: nil, secureLocalModeEnabled: true))
+    }
+
+    func testContentWithoutResetTimeWhenUnknown() {
+        let content = GroqFallbackBanner.content(fallbackActive: true, resetAt: nil, secureLocalModeEnabled: false)
+        XCTAssertEqual(content?.title, "Groq-Kontingent aufgebraucht")
+        XCTAssertEqual(content?.detail, "OpenAI Whisper aktiv.")
+    }
+
+    func testContentWithFormattedResetTime() {
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 6
+        components.day = 20
+        components.hour = 14
+        components.minute = 30
+        let resetAt = Calendar.current.date(from: components)!
+
+        let content = GroqFallbackBanner.content(fallbackActive: true, resetAt: resetAt, secureLocalModeEnabled: false)
+
+        XCTAssertEqual(content?.title, "Groq-Kontingent aufgebraucht")
+        XCTAssertEqual(content?.detail, "OpenAI Whisper aktiv. Groq zurück um 14:30.")
+    }
+}
+
+@MainActor
+final class GroqFallbackBannerAppStateIntegrationTests: XCTestCase {
 
     override func tearDown() {
         resetQuotaStore()
@@ -15,12 +47,12 @@ final class GroqFallbackBannerTests: XCTestCase {
         store.checkIfExpired()
     }
 
-    func testReturnsNilWhenFallbackInactive() {
+    func testAppStateReturnsNilWhenFallbackInactive() {
         let appState = AppState()
         XCTAssertNil(appState.groqFallbackBannerContent)
     }
 
-    func testReturnsNilWhenSecureLocalModeActive() {
+    func testAppStateReturnsNilWhenSecureLocalModeActive() {
         GroqQuotaManager.shared.activateFallback(resetAt: nil)
         let appState = AppState()
         appState.appSettings.secureLocalModeEnabled = true
@@ -28,27 +60,11 @@ final class GroqFallbackBannerTests: XCTestCase {
         XCTAssertNil(appState.groqFallbackBannerContent)
     }
 
-    func testReturnsContentWithoutResetTimeWhenUnknown() {
+    func testAppStateReturnsContentWhenFallbackActive() {
         GroqQuotaManager.shared.activateFallback(resetAt: nil)
         let appState = AppState()
         let content = appState.groqFallbackBannerContent
         XCTAssertEqual(content?.title, "Groq-Kontingent aufgebraucht")
         XCTAssertEqual(content?.detail, "OpenAI Whisper aktiv.")
-    }
-
-    func testReturnsContentWithFormattedResetTime() {
-        var components = DateComponents()
-        components.year = 2026
-        components.month = 6
-        components.day = 20
-        components.hour = 14
-        components.minute = 30
-        let resetAt = Calendar.current.date(from: components)!
-        GroqQuotaManager.shared.activateFallback(resetAt: resetAt)
-
-        let appState = AppState()
-        let content = appState.groqFallbackBannerContent
-        XCTAssertEqual(content?.title, "Groq-Kontingent aufgebraucht")
-        XCTAssertEqual(content?.detail, "OpenAI Whisper aktiv. Groq zurück um 14:30.")
     }
 }

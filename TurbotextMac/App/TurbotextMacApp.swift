@@ -20,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     let appState = AppState()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        menuBarStatusController = MenuBarStatusController(quotaManager: appState.quotaAndFallback.quotaManager)
+        menuBarStatusController = MenuBarStatusController(quotaManager: appState.quotaManager)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusItem.button {
@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         appState.onCloudIndicatorRefreshNeeded = { [weak self] in
             self?.refreshMenuBarCloudIndicator()
         }
-        appState.quotaAndFallback.quotaManager.onFallbackChanged = { [weak self] _ in
+        appState.quotaManager.onFallbackChanged = { [weak self] _ in
             self?.refreshMenuBarCloudIndicator()
         }
         appState.networkPingService.onStatusChanged = { [weak self] status in

@@ -14,7 +14,7 @@ enum PopoverPage: Equatable {
 final class AppState {
     let settingsState: SettingsState
     let workflowLifecycle: WorkflowLifecycleManager
-    let quotaAndFallback: QuotaAndFallbackState
+    let quotaManager: QuotaManager
     let microphoneState: MicrophoneState
 
     var orchestrator: WorkflowOrchestrator { workflowLifecycle.orchestrator }
@@ -110,7 +110,7 @@ final class AppState {
     }
 
     init(quotaManager: QuotaManager = GroqQuotaManager.shared) {
-        self.quotaAndFallback = QuotaAndFallbackState(quotaManager: quotaManager)
+        self.quotaManager = quotaManager
         self.cloudTranscriptionRouter = CloudTranscriptionRouter(quotaManager: quotaManager)
         let store = ShortcutStore()
         self.shortcutStore = store
@@ -194,7 +194,11 @@ final class AppState {
     }
 
     var groqFallbackBannerContent: (title: String, detail: String)? {
-        quotaAndFallback.fallbackBannerContent(secureLocalModeEnabled: appSettings.secureLocalModeEnabled)
+        GroqFallbackBanner.content(
+            fallbackActive: quotaManager.fallbackActive,
+            resetAt: quotaManager.rateLimitResetAt,
+            secureLocalModeEnabled: appSettings.secureLocalModeEnabled
+        )
     }
 
     var onlineKeyHintBannerContent: (title: String, detail: String)? {
@@ -213,8 +217,8 @@ final class AppState {
             isDownloadingLocalModel: isDownloadingLocalModel,
             localModelDownloadStatusText: localModelDownloadStatusText,
             hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil,
-            groqFallbackActive: quotaAndFallback.fallbackActive,
-            groqQuotaUsedToday: quotaAndFallback.formattedUsedToday
+            groqFallbackActive: quotaManager.fallbackActive,
+            groqQuotaUsedToday: quotaManager.formattedUsedToday
         )
     }
 
