@@ -11,6 +11,7 @@ private final class FakeQuotaManager: QuotaManager {
     private(set) var updateCallCount = 0
 
     var formattedUsedToday: String { "0 Sek." }
+    var onFallbackChanged: ((Bool) -> Void)?
 
     func recordUsage(seconds: Int) {
         recordedUsageSeconds.append(seconds)

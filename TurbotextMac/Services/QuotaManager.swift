@@ -8,6 +8,7 @@ protocol QuotaManager: AnyObject {
     var rateLimitResetAt: Date? { get }
     var remainingAudioSeconds: Int? { get }
     var formattedUsedToday: String { get }
+    var onFallbackChanged: ((Bool) -> Void)? { get set }
 
     func recordUsage(seconds: Int)
     func activateFallback(resetAt: Date?)

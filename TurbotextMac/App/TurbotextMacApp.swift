@@ -15,11 +15,12 @@ struct TurbotextMacApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
-    private let menuBarStatusController = MenuBarStatusController()
+    private var menuBarStatusController: MenuBarStatusController!
     private var mainWindowController: MainWindowController!
     let appState = AppState()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        menuBarStatusController = MenuBarStatusController(quotaManager: appState.quotaAndFallback.quotaManager)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusItem.button {
@@ -53,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         appState.onCloudIndicatorRefreshNeeded = { [weak self] in
             self?.refreshMenuBarCloudIndicator()
         }
-        GroqQuotaManager.shared.onFallbackChanged = { [weak self] _ in
+        appState.quotaAndFallback.quotaManager.onFallbackChanged = { [weak self] _ in
             self?.refreshMenuBarCloudIndicator()
         }
         appState.networkPingService.onStatusChanged = { [weak self] status in

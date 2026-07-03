@@ -61,7 +61,7 @@ final class MenuBarStatusController {
     private var networkStatus: NetworkQualityStatus = .green
     private let quotaManager: QuotaManager
 
-    init(quotaManager: QuotaManager = GroqQuotaManager.shared) {
+    init(quotaManager: QuotaManager) {
         self.quotaManager = quotaManager
     }
 
