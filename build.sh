@@ -4,7 +4,7 @@ set -euo pipefail
 # Turbotext macOS App - Build & Run
 # Voraussetzungen: Full Xcode with Command Line Tools, xcodegen
 
-RUN_AFTER=false
+RUN_AFTER=true
 INSTALL_APP=false
 BUILD_CONFIGURATION="Release"
 UNIVERSAL_ARCHS="arm64 x86_64"
@@ -17,6 +17,9 @@ for arg in "$@"; do
         --run)
             RUN_AFTER=true
             ;;
+        --no-run)
+            RUN_AFTER=false
+            ;;
         --install)
             INSTALL_APP=true
             ;;
@@ -25,7 +28,7 @@ for arg in "$@"; do
             ;;
         *)
             echo "Unbekannte Option: $arg"
-            echo "Verwendung: ./build.sh [--install] [--run] [--release] [--debug]"
+            echo "Verwendung: ./build.sh [--install] [--no-run] [--release] [--debug]"
             exit 1
             ;;
     esac
@@ -180,10 +183,11 @@ echo "Kompatibel: Apple Silicon + Intel (macOS 14+)"
 echo ""
 echo "Nächste Schritte:"
 echo "1. App starten"
-echo "2. Mikrofon erlauben"
-echo "3. Für direktes Einfügen zusätzlich Bedienungshilfen erlauben"
-echo "4. In Turbotext deinen eigenen Groq API Key eintragen"
-echo "5. Loslegen und bei Bedarf im Code weiterbauen"
+echo "2. Direktes Einfügen: Bedienungshilfen erlauben"
+echo "   (optional: Eingabeüberwachung manuell über +-Button hinzufügen, s. Hinweis im Hauptfenster)"
+echo "3. Groq Key eintragen (ggf. OpenAI)"
+echo "4. Hotkey benutzen, Mikrofonnutzung erlauben"
+echo "5. Fertig – ab sofort per Hotkey diktieren"
 echo ""
 
 # Optional: direkt starten
