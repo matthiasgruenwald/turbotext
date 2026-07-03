@@ -10,11 +10,10 @@ final class MicrophoneState {
     let favoritesStore: MicrophoneFavoritesStore
     private let autoSelectionService: MicrophoneAutoSelectionService
     private let deviceProvider: () -> [AudioInputDevice]
-    private let defaultDeviceIDProvider: () -> AudioDeviceID?
 
-    /// Bumped whenever `MicrophoneAutoSelectionService` re-evaluates the active device,
-    /// so views reading `activeDeviceDisplayName` get invalidated on hardware changes.
-    private(set) var deviceSignal = 0
+    /// The currently resolved active microphone, kept in sync by
+    /// `MicrophoneAutoSelectionService` on every hardware change.
+    private(set) var activeMicrophone: ActiveMicrophone
 
     var favorites: [String] { favoritesStore.favoriteUIDs }
     var useSystemDefault: Bool {
@@ -23,11 +22,11 @@ final class MicrophoneState {
     }
 
     var activeDeviceDisplayName: String {
-        _ = deviceSignal
-        return favoritesStore.activeDeviceDisplayName(
-            availableDevices: deviceProvider(),
-            defaultDeviceID: defaultDeviceIDProvider()
-        )
+        guard let uid = activeMicrophone.uid,
+              let match = deviceProvider().first(where: { $0.uid == uid }) else {
+            return "Mikrofon"
+        }
+        return match.name
     }
 
     init(
@@ -38,14 +37,15 @@ final class MicrophoneState {
     ) {
         self.favoritesStore = favoritesStore
         self.deviceProvider = deviceProvider
-        self.defaultDeviceIDProvider = defaultDeviceIDProvider
+        self.activeMicrophone = ActiveMicrophone(uid: nil, source: .systemDefault)
         self.autoSelectionService = MicrophoneAutoSelectionService(
             favoritesStore: favoritesStore,
             deviceProvider: deviceProvider,
+            defaultDeviceIDProvider: defaultDeviceIDProvider,
             defaults: persistence
         )
-        autoSelectionService.onSelectionApplied = { [weak self] in
-            self?.deviceSignal += 1
+        autoSelectionService.onSelectionApplied = { [weak self] resolved in
+            self?.activeMicrophone = resolved
         }
     }
 

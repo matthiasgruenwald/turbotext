@@ -1,8 +1,9 @@
 import CoreAudio
 import Foundation
 
-/// Watches for audio device changes and keeps `selectedMicUID` (read by `AudioRecorder`)
-/// in sync with the highest-priority available favorite from `MicrophoneFavoritesStore`.
+/// Thin adapter around the pure `MicrophoneResolution` decision: owns the CoreAudio
+/// hardware-change listener and the retry-after-delay workaround, resolves the active
+/// microphone on each change, and persists the result for `AudioRecorder` to read.
 /// Never touches the macOS-wide default input device — purely app-internal (see ADR-0003).
 @MainActor
 final class MicrophoneAutoSelectionService {
@@ -11,23 +12,25 @@ final class MicrophoneAutoSelectionService {
     private let favoritesStore: MicrophoneFavoritesStore
     private let selectedMicUIDKey: String
     private let deviceProvider: () -> [AudioInputDevice]
+    private let defaultDeviceIDProvider: () -> AudioDeviceID?
     private let defaults: PersistenceProvider
     private var listenerBlock: AudioObjectPropertyListenerBlock?
 
-    /// Fired every time `applySelection()` runs, so UI showing the active microphone
-    /// (a plain computed property, not itself backed by an @Observable store) can be
-    /// told to re-render.
-    var onSelectionApplied: (() -> Void)?
+    /// Fired every time `applySelection()` runs, with the freshly resolved microphone,
+    /// so UI showing the active microphone can be told to re-render.
+    var onSelectionApplied: ((ActiveMicrophone) -> Void)?
 
     init(
         favoritesStore: MicrophoneFavoritesStore,
         selectedMicUIDKey: String = "selectedMicUID",
         deviceProvider: @escaping () -> [AudioInputDevice] = MicrophoneService.availableInputDevices,
+        defaultDeviceIDProvider: @escaping () -> AudioDeviceID? = MicrophoneService.defaultInputDeviceID,
         defaults: PersistenceProvider = UserDefaultsPersistence.shared
     ) {
         self.favoritesStore = favoritesStore
         self.selectedMicUIDKey = selectedMicUIDKey
         self.deviceProvider = deviceProvider
+        self.defaultDeviceIDProvider = defaultDeviceIDProvider
         self.defaults = defaults
     }
 
@@ -50,21 +53,22 @@ final class MicrophoneAutoSelectionService {
     }
 
     func applySelection() {
-        defer { onSelectionApplied?() }
-        guard !favoritesStore.useSystemDefault else {
-            clearSelectedUID()
-            return
-        }
-        let available = deviceProvider()
-        guard let selected = favoritesStore.selectedDevice(from: available) else {
-            clearSelectedUID()
-            return
-        }
-        defaults.set(selected.uid, forKey: selectedMicUIDKey)
+        let resolved = MicrophoneResolution.resolve(
+            favoriteUIDs: favoritesStore.favoriteUIDs,
+            useSystemDefault: favoritesStore.useSystemDefault,
+            availableDevices: deviceProvider(),
+            systemDefaultDeviceID: defaultDeviceIDProvider()
+        )
+        persist(resolved)
+        onSelectionApplied?(resolved)
     }
 
-    private func clearSelectedUID() {
-        defaults.removeObject(forKey: selectedMicUIDKey)
+    private func persist(_ resolved: ActiveMicrophone) {
+        guard resolved.source == .favorite, let uid = resolved.uid else {
+            defaults.removeObject(forKey: selectedMicUIDKey)
+            return
+        }
+        defaults.set(uid, forKey: selectedMicUIDKey)
     }
 
     private func observeDeviceChanges() {
