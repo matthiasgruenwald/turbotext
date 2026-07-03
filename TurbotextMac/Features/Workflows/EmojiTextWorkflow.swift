@@ -14,14 +14,7 @@ final class EmojiTextWorkflow: SpokenRewriteWorkflow {
         language: String = "de",
         providerMode: RewriteProviderMode = .auto,
         pipeline: SpokenWorkflowPipeline? = nil,
-        transcriber: @escaping SpokenWorkflowPipeline.Transcriber = { audioURL, duration, terms, language in
-            try await TranscriptionService.transcribe(
-                audioURL: audioURL,
-                durationSeconds: duration,
-                customTerms: terms,
-                language: language
-            ).text
-        },
+        transcriber: @escaping SpokenWorkflowPipeline.Transcriber,
         rewriter: @escaping Rewriter = { text, settings, providerMode in
             try await LLMService.addEmojis(
                 text: text,

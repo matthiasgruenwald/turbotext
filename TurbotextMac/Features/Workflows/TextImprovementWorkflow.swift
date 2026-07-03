@@ -13,14 +13,7 @@ final class TextImprovementWorkflow: SpokenRewriteWorkflow {
         language: String = "de",
         providerMode: RewriteProviderMode = .auto,
         pipeline: SpokenWorkflowPipeline? = nil,
-        transcriber: @escaping SpokenWorkflowPipeline.Transcriber = { audioURL, duration, terms, language in
-            try await TranscriptionService.transcribe(
-                audioURL: audioURL,
-                durationSeconds: duration,
-                customTerms: terms,
-                language: language
-            ).text
-        },
+        transcriber: @escaping SpokenWorkflowPipeline.Transcriber,
         improver: @escaping Improver = { text, settings, providerMode in
             try await LLMService.improve(
                 text: text,

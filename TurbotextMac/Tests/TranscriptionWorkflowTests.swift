@@ -76,7 +76,6 @@ final class TranscriptionWorkflowTests: XCTestCase {
             customTerms: [],
             language: "de",
             backend: .remote,
-            localModelName: "unused",
             pipeline: SpokenWorkflowPipeline(recorder: recorder),
             transcriber: transcribe
         )

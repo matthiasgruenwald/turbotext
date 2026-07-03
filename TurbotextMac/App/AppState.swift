@@ -283,11 +283,12 @@ final class AppState {
     ) -> (any Workflow)? {
         switch type {
         case .transcription:
+            let backend = backendOverride ?? (appSettings.secureLocalModeEnabled ? .local : .remote)
             return TranscriptionWorkflow(
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
-                backend: backendOverride ?? (appSettings.secureLocalModeEnabled ? .local : .remote),
-                localModelName: selectedLocalModelName
+                backend: backend,
+                transcriber: transcriber(for: backend)
             )
         case .localTranscription:
             return TranscriptionWorkflow(
@@ -295,28 +296,54 @@ final class AppState {
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
                 backend: .local,
-                localModelName: selectedLocalModelName
+                transcriber: transcriber(for: .local)
             )
         case .textImprover:
             return TextImprovementWorkflow(
                 settings: textImprovementSettings,
                 language: transcriptionSettings.language,
-                providerMode: appSettings.rewritingProviderMode
+                providerMode: appSettings.rewritingProviderMode,
+                transcriber: transcriber(for: .remote)
             )
         case .dampfAblassen:
             return DampfAblassenWorkflow(
                 settings: dampfAblassenSettings,
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
-                providerMode: appSettings.rewritingProviderMode
+                providerMode: appSettings.rewritingProviderMode,
+                transcriber: transcriber(for: .remote)
             )
         case .emojiText:
             return EmojiTextWorkflow(
                 settings: emojiTextSettings,
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
-                providerMode: appSettings.rewritingProviderMode
+                providerMode: appSettings.rewritingProviderMode,
+                transcriber: transcriber(for: .remote)
             )
+        }
+    }
+
+    private func transcriber(for backend: TranscriptionBackend) -> SpokenWorkflowPipeline.Transcriber {
+        switch backend {
+        case .remote:
+            return { [cloudTranscriptionRouter] audioURL, duration, terms, language in
+                try await cloudTranscriptionRouter.transcribe(
+                    audioURL: audioURL,
+                    durationSeconds: duration,
+                    customTerms: terms,
+                    language: language
+                ).text
+            }
+        case .local:
+            let localModelName = selectedLocalModelName
+            return { audioURL, _, _, language in
+                try await LocalTranscriptionService.shared.transcribe(
+                    audioURL: audioURL,
+                    language: language,
+                    modelName: localModelName
+                )
+            }
         }
     }
 
