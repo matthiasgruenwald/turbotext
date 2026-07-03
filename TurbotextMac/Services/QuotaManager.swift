@@ -6,10 +6,9 @@ import Observation
 /// audio seconds and today's usage. `Observable` conformance mirrors `Workflow: AnyObject, Observable`.
 @MainActor
 protocol QuotaManager: AnyObject, Observable {
-    var rateLimitResetAt: Date? { get }
     var remainingAudioSeconds: Int? { get }
     var formattedUsedToday: String { get }
 
     func recordUsage(seconds: Int)
-    func update(remainingSeconds: Int, resetAt: Date?)
+    func update(remainingSeconds: Int)
 }

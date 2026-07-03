@@ -4,25 +4,9 @@ import XCTest
 @MainActor
 final class GroqQuotaManagerTests: XCTestCase {
 
-    func testUpdateWithResetAtSetsBothValues() {
-        let resetAt = Date().addingTimeInterval(3600)
-        GroqQuotaManager.shared.update(remainingSeconds: 120, resetAt: resetAt)
+    func testUpdateSetsRemainingSeconds() {
+        GroqQuotaManager.shared.update(remainingSeconds: 120)
         XCTAssertEqual(GroqQuotaManager.shared.remainingAudioSeconds, 120)
-        XCTAssertEqual(GroqQuotaManager.shared.rateLimitResetAt, resetAt)
-    }
-
-    func testUpdateWithoutResetAtKeepsPreviousResetAt() {
-        let resetAt = Date().addingTimeInterval(3600)
-        GroqQuotaManager.shared.update(remainingSeconds: 300, resetAt: resetAt)
-        GroqQuotaManager.shared.update(remainingSeconds: 250, resetAt: nil)
-        XCTAssertEqual(GroqQuotaManager.shared.remainingAudioSeconds, 250)
-        XCTAssertEqual(GroqQuotaManager.shared.rateLimitResetAt, resetAt)
-    }
-
-    func testUpdateWithoutResetAtAndNoPriorResetAtLeavesItNil() {
-        GroqQuotaManager.shared.update(remainingSeconds: 90, resetAt: nil)
-        XCTAssertEqual(GroqQuotaManager.shared.remainingAudioSeconds, 90)
-        XCTAssertNil(GroqQuotaManager.shared.rateLimitResetAt)
     }
 
     func testRecordUsageAccumulatesWithinSameDay() {

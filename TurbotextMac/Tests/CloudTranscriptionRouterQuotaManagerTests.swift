@@ -5,7 +5,6 @@ import Observation
 @MainActor
 @Observable
 private final class FakeQuotaManager: QuotaManager {
-    private(set) var rateLimitResetAt: Date?
     private(set) var remainingAudioSeconds: Int?
     private(set) var recordedUsageSeconds: [Int] = []
     private(set) var updateCallCount = 0
@@ -16,12 +15,9 @@ private final class FakeQuotaManager: QuotaManager {
         recordedUsageSeconds.append(seconds)
     }
 
-    func update(remainingSeconds: Int, resetAt: Date?) {
+    func update(remainingSeconds: Int) {
         updateCallCount += 1
         remainingAudioSeconds = remainingSeconds
-        if let resetAt {
-            rateLimitResetAt = resetAt
-        }
     }
 }
 

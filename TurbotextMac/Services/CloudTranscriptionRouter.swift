@@ -102,7 +102,7 @@ struct CloudTranscriptionRouter {
         do {
             let info = try await groqQuotaCheck(apiKey)
             if let remaining = info.remainingAudioSeconds {
-                quotaManager.update(remainingSeconds: remaining, resetAt: info.resetAt)
+                quotaManager.update(remainingSeconds: remaining)
             }
         } catch GroqTranscriptionError.rateLimitExceeded(let resetAt) {
             fallbackManager.reportRateLimitExceeded(resetAt: resetAt)
@@ -112,7 +112,7 @@ struct CloudTranscriptionRouter {
 
     private func updateQuota(info: GroqRateLimitInfo, durationSeconds: TimeInterval) {
         if let remaining = info.remainingAudioSeconds {
-            quotaManager.update(remainingSeconds: remaining, resetAt: info.resetAt)
+            quotaManager.update(remainingSeconds: remaining)
         }
         quotaManager.recordUsage(seconds: Int(durationSeconds.rounded()))
     }

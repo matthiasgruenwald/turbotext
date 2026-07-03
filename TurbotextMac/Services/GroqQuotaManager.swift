@@ -7,14 +7,12 @@ final class GroqQuotaManager: QuotaManager {
     static let shared = GroqQuotaManager()
 
     private(set) var remainingAudioSeconds: Int?
-    private(set) var rateLimitResetAt: Date?
     private(set) var usedSecondsToday: Int
 
     private let defaults: PersistenceProvider
 
     private enum Keys {
         static let remainingSeconds = "groqRemainingAudioSeconds"
-        static let resetAt = "groqRateLimitResetAt"
         static let usedSecondsToday = "groqUsedSecondsToday"
         static let usedDayKey = "groqUsedDayKey"
     }
@@ -23,9 +21,6 @@ final class GroqQuotaManager: QuotaManager {
         self.defaults = defaults
         if defaults.object(forKey: Keys.remainingSeconds) != nil {
             remainingAudioSeconds = defaults.integer(forKey: Keys.remainingSeconds)
-        }
-        if let resetInterval = defaults.object(forKey: Keys.resetAt) as? Double {
-            rateLimitResetAt = Date(timeIntervalSince1970: resetInterval)
         }
         usedSecondsToday = defaults.string(forKey: Keys.usedDayKey) == Self.dayKey(for: Date())
             ? defaults.integer(forKey: Keys.usedSecondsToday)
@@ -60,20 +55,16 @@ final class GroqQuotaManager: QuotaManager {
         defaults.removeObject(forKey: Keys.usedDayKey)
     }
 
+    /// Test-support only: clears the persisted remaining-seconds cache so a fresh quota
+    /// check runs. No production caller — resetting quota state isn't a real user flow.
     func resetRemainingAudioSeconds() {
         remainingAudioSeconds = nil
-        rateLimitResetAt = nil
         defaults.removeObject(forKey: Keys.remainingSeconds)
-        defaults.removeObject(forKey: Keys.resetAt)
     }
 
-    func update(remainingSeconds: Int, resetAt: Date?) {
+    func update(remainingSeconds: Int) {
         remainingAudioSeconds = remainingSeconds
         defaults.set(remainingSeconds, forKey: Keys.remainingSeconds)
-        if let resetAt {
-            rateLimitResetAt = resetAt
-            defaults.set(resetAt.timeIntervalSince1970, forKey: Keys.resetAt)
-        }
     }
 
     var formattedUsedToday: String {

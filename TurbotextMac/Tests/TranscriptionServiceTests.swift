@@ -107,7 +107,6 @@ final class TranscriptionServiceTests: XCTestCase {
         await router.checkGroqQuotaIfNeeded(secureLocalModeEnabled: false)
 
         XCTAssertEqual(GroqQuotaManager.shared.remainingAudioSeconds, 321)
-        XCTAssertEqual(GroqQuotaManager.shared.rateLimitResetAt, resetAt)
     }
 
     func testQuotaCheckActivatesFallbackThroughRouter() async {

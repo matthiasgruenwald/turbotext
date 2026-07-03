@@ -62,31 +62,6 @@ final class MicrophoneFavoritesStore {
         persist()
     }
 
-    /// Pure selection logic: given the prioritized favorites list and the currently
-    /// available devices, returns the highest-priority device that is actually available.
-    /// Returns nil if no favorite is available (caller should fall back to the system default).
-    func selectedDevice(from availableDevices: [AudioInputDevice]) -> AudioInputDevice? {
-        guard !useSystemDefault else { return nil }
-        for uid in favoriteUIDs {
-            if let match = availableDevices.first(where: { $0.uid == uid }) {
-                return match
-            }
-        }
-        return nil
-    }
-
-    /// Display name for the mic actually in use: top available favorite, falling back to the
-    /// system default device, falling back to a placeholder if neither resolves.
-    func activeDeviceDisplayName(availableDevices: [AudioInputDevice], defaultDeviceID: AudioDeviceID?) -> String {
-        if let selected = selectedDevice(from: availableDevices) {
-            return selected.name
-        }
-        if let defaultDeviceID, let match = availableDevices.first(where: { $0.id == defaultDeviceID }) {
-            return match.name
-        }
-        return "Mikrofon"
-    }
-
     private func persist() {
         defaults.set(favoriteUIDs, forKey: favoritesKey)
     }
