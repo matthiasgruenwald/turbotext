@@ -11,30 +11,17 @@ final class MenuBarFacadeTests: XCTestCase {
         )
     }
 
-    func testExposesInjectedWorkflowStatusAndPermissions() {
-        var startedType: WorkflowType?
-        var stopCalled = false
-
+    func testExposesInjectedPermissions() {
         let facade = MenuBarFacade(
-            workflowStatus: .recording(.transcription),
             quotaUIStatus: GroqQuotaUIStatus(formattedUsedToday: "5 Min.", fallbackActive: true, rateLimitResetAt: nil),
             accessibilityPermissionGranted: true,
-            inputMonitoringPermissionGranted: false,
-            startWorkflow: { type in startedType = type },
-            stopWorkflow: { stopCalled = true }
+            inputMonitoringPermissionGranted: false
         )
 
-        XCTAssertEqual(facade.workflowStatus, .recording(.transcription))
         XCTAssertEqual(facade.quotaUIStatus.formattedUsedToday, "5 Min.")
         XCTAssertTrue(facade.quotaUIStatus.fallbackActive)
         XCTAssertTrue(facade.accessibilityPermissionGranted)
         XCTAssertFalse(facade.inputMonitoringPermissionGranted)
-
-        facade.startWorkflow(.transcription)
-        XCTAssertEqual(startedType, .transcription)
-
-        facade.stopWorkflow()
-        XCTAssertTrue(stopCalled)
     }
 
     func testAppStateExposesFacadeReflectingCurrentState() {
@@ -42,18 +29,8 @@ final class MenuBarFacadeTests: XCTestCase {
 
         let facade = appState.menuBarFacade
 
-        XCTAssertEqual(facade.workflowStatus, appState.workflowLifecycle.orchestrator.menuBarStatus)
         XCTAssertEqual(facade.quotaUIStatus, appState.groqTranscriptionProvider.quotaUIStatus)
         XCTAssertEqual(facade.accessibilityPermissionGranted, appState.accessibilityPermissionGranted)
         XCTAssertEqual(facade.inputMonitoringPermissionGranted, appState.inputMonitoringPermissionGranted)
-    }
-
-    func testAppStateFacadeStopWorkflowDelegatesToLifecycle() {
-        let appState = AppState(groqTranscriptionProvider: makeProvider())
-
-        // No active workflow: stop() should simply be a no-op that doesn't crash.
-        appState.menuBarFacade.stopWorkflow()
-
-        XCTAssertNil(appState.activeWorkflow)
     }
 }

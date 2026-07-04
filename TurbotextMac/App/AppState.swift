@@ -105,12 +105,9 @@ final class AppState {
     /// Narrow facade for the menu bar status UI — see `MenuBarFacade` for rationale.
     var menuBarFacade: MenuBarFacade {
         MenuBarFacade(
-            workflowStatus: workflowLifecycle.orchestrator.menuBarStatus,
             quotaUIStatus: groqTranscriptionProvider.quotaUIStatus,
             accessibilityPermissionGranted: accessibilityPermissionGranted,
-            inputMonitoringPermissionGranted: inputMonitoringPermissionGranted,
-            startWorkflow: { [weak self] type in self?.startWorkflow(type) },
-            stopWorkflow: { [weak self] in self?.stopCurrentWorkflow() }
+            inputMonitoringPermissionGranted: inputMonitoringPermissionGranted
         )
     }
 
