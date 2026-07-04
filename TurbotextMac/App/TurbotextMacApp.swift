@@ -41,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                 appState?.transcriptionModeStatus.menuBarCloudIndicator ?? .none
             },
             groqQuotaUsedTodayProvider: { [weak appState] in
-                appState?.groqTranscriptionProvider.quotaUIStatus.formattedUsedToday
+                appState?.menuBarFacade.quotaUIStatus.formattedUsedToday
             }
         )
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -93,10 +93,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     }
 
     private func refreshMenuBarCloudIndicator() {
+        let facade = appState.menuBarFacade
         menuBarStatusCoordinator.refreshCloudIndicator()
         menuBarStatusCoordinator.updatePermissions(
-            accessibilityGranted: appState.accessibilityPermissionGranted,
-            inputMonitoringGranted: appState.inputMonitoringPermissionGranted
+            accessibilityGranted: facade.accessibilityPermissionGranted,
+            inputMonitoringGranted: facade.inputMonitoringPermissionGranted
         )
     }
 
