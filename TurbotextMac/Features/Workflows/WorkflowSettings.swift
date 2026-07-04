@@ -63,16 +63,16 @@ enum TranscriptionBackend: String, Codable {
 
 // MARK: - Workflow Settings
 
-struct TranscriptionSettings: Codable {
+struct TranscriptionSettings: Codable, Equatable {
     var language: String = "de"
 }
 
-struct DampfAblassenSettings: Codable {
+struct DampfAblassenSettings: Codable, Equatable {
     var systemPrompt: String = "Du bekommst ein gesprochenes, oft langes und wütendes Transkript. Schreibe daraus EINEN kurzen Absatz in der Ich-Perspektive der sprechenden Person — als würde sie selbst schreiben, nicht als Beschreibung über sie. Der Absatz sagt genau, was sie eigentlich will oder braucht — ohne Schimpfwörter, Drohungen oder Sarkasmus. Gib NUR diesen Absatz zurück. Kein Vorwort, keine Anrede, keine Grußformel, keine Platzhalter, keine Erklärung, kein Satz über die Aufgabe selbst."
     var customName: String = ""
 }
 
-struct EmojiTextSettings: Codable {
+struct EmojiTextSettings: Codable, Equatable {
     var emojiDensity: EmojiDensity = .mittel
     var customName: String = ""
 
@@ -93,7 +93,7 @@ struct EmojiTextSettings: Codable {
     }
 }
 
-struct TextImprovementSettings: Codable {
+struct TextImprovementSettings: Codable, Equatable {
     var systemPrompt: String = """
     Überarbeite den folgenden per Spracheingabe transkribierten Text.
 

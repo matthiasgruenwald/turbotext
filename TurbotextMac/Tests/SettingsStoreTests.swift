@@ -4,11 +4,6 @@ import XCTest
 final class SettingsStoreTests: XCTestCase {
     private var fileURL: URL!
 
-    private func encoded<T: Encodable>(_ value: T) -> Data {
-        // swiftlint:disable:next force_try
-        try! JSONEncoder().encode(value)
-    }
-
     override func setUp() {
         super.setUp()
         fileURL = FileManager.default.temporaryDirectory
@@ -27,10 +22,10 @@ final class SettingsStoreTests: XCTestCase {
         let loaded = store.load()
 
         XCTAssertEqual(loaded.app, AppSettings())
-        XCTAssertEqual(encoded(loaded.transcription), encoded(TranscriptionSettings()))
-        XCTAssertEqual(encoded(loaded.textImprovement), encoded(TextImprovementSettings()))
-        XCTAssertEqual(encoded(loaded.dampfAblassen), encoded(DampfAblassenSettings()))
-        XCTAssertEqual(encoded(loaded.emojiText), encoded(EmojiTextSettings()))
+        XCTAssertEqual(loaded.transcription, TranscriptionSettings())
+        XCTAssertEqual(loaded.textImprovement, TextImprovementSettings())
+        XCTAssertEqual(loaded.dampfAblassen, DampfAblassenSettings())
+        XCTAssertEqual(loaded.emojiText, EmojiTextSettings())
     }
 
     func testSaveThenLoadRoundTripsAllSettings() {
@@ -63,10 +58,10 @@ final class SettingsStoreTests: XCTestCase {
         let loaded = store.load()
 
         XCTAssertEqual(loaded.app, app)
-        XCTAssertEqual(encoded(loaded.transcription), encoded(transcription))
-        XCTAssertEqual(encoded(loaded.textImprovement), encoded(textImprovement))
-        XCTAssertEqual(encoded(loaded.dampfAblassen), encoded(dampfAblassen))
-        XCTAssertEqual(encoded(loaded.emojiText), encoded(emojiText))
+        XCTAssertEqual(loaded.transcription, transcription)
+        XCTAssertEqual(loaded.textImprovement, textImprovement)
+        XCTAssertEqual(loaded.dampfAblassen, dampfAblassen)
+        XCTAssertEqual(loaded.emojiText, emojiText)
     }
 
     func testSaveThenLoadRoundTripsRewritingProviderMode() {
