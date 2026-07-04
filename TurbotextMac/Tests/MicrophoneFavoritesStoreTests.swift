@@ -82,4 +82,60 @@ final class MicrophoneFavoritesStoreTests: XCTestCase {
         let store2 = MicrophoneFavoritesStore(favoritesKey: key, useSystemDefaultKey: defaultsKey)
         XCTAssertEqual(store2.favoriteUIDs, ["mic-1"])
     }
+
+    // MARK: - resolveActiveDevice
+
+    private func device(_ uid: String, name: String? = nil) -> AudioInputDevice {
+        AudioInputDevice(id: AudioDeviceID(abs(uid.hashValue) % Int(UInt32.max)), name: name ?? uid, uid: uid)
+    }
+
+    func testResolvesHighestPriorityAvailableFavorite() {
+        let store = makeStore()
+        store.addFavorite(uid: "docking-station-A")
+        store.addFavorite(uid: "docking-station-B")
+        store.addFavorite(uid: "built-in")
+        let available = [device("built-in"), device("docking-station-B")]
+
+        let result = store.resolveActiveDevice(availableDevices: available, systemDefaultID: nil)
+
+        XCTAssertEqual(result, ActiveMicrophone(uid: "docking-station-B", source: .favorite))
+    }
+
+    func testFallsBackToSystemDefaultWhenNoFavoriteAvailable() {
+        let store = makeStore()
+        store.addFavorite(uid: "docking-station-A")
+        let defaultDevice = device("built-in")
+
+        let result = store.resolveActiveDevice(availableDevices: [defaultDevice], systemDefaultID: defaultDevice.id)
+
+        XCTAssertEqual(result, ActiveMicrophone(uid: "built-in", source: .systemDefault))
+    }
+
+    func testFallsBackToSystemDefaultWhenUseSystemDefaultEnabledEvenIfFavoriteAvailable() {
+        let store = makeStore()
+        store.addFavorite(uid: "built-in")
+        store.useSystemDefault = true
+        let favoriteDevice = device("built-in")
+
+        let result = store.resolveActiveDevice(availableDevices: [favoriteDevice], systemDefaultID: favoriteDevice.id)
+
+        XCTAssertEqual(result, ActiveMicrophone(uid: "built-in", source: .systemDefault))
+    }
+
+    func testResolvesNilUIDWhenNothingAvailable() {
+        let store = makeStore()
+        store.addFavorite(uid: "docking-station-A")
+
+        let result = store.resolveActiveDevice(availableDevices: [], systemDefaultID: nil)
+
+        XCTAssertEqual(result, ActiveMicrophone(uid: nil, source: .systemDefault))
+    }
+
+    func testResolvesNilUIDWhenFavoritesEmptyAndNoSystemDefaultMatch() {
+        let store = makeStore()
+
+        let result = store.resolveActiveDevice(availableDevices: [device("built-in")], systemDefaultID: nil)
+
+        XCTAssertEqual(result, ActiveMicrophone(uid: nil, source: .systemDefault))
+    }
 }

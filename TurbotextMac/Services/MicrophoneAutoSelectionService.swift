@@ -1,7 +1,7 @@
 import CoreAudio
 import Foundation
 
-/// Thin adapter around the pure `MicrophoneResolution` decision: owns the CoreAudio
+/// Thin adapter around `MicrophoneFavoritesStore`'s resolution logic: owns the CoreAudio
 /// hardware-change listener and the retry-after-delay workaround, resolves the active
 /// microphone on each change, and persists the result for `AudioRecorder` to read.
 /// Never touches the macOS-wide default input device — purely app-internal (see ADR-0003).
@@ -53,11 +53,9 @@ final class MicrophoneAutoSelectionService {
     }
 
     func applySelection() {
-        let resolved = MicrophoneResolution.resolve(
-            favoriteUIDs: favoritesStore.favoriteUIDs,
-            useSystemDefault: favoritesStore.useSystemDefault,
+        let resolved = favoritesStore.resolveActiveDevice(
             availableDevices: deviceProvider(),
-            systemDefaultDeviceID: defaultDeviceIDProvider()
+            systemDefaultID: defaultDeviceIDProvider()
         )
         persist(resolved)
         onSelectionApplied?(resolved)
