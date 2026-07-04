@@ -46,6 +46,7 @@ struct MenuBarRenderState: Equatable {
 /// fallback/quota, network quality, and permissions — into a single `renderState`.
 /// Replaces the previous 3 independently-wired callback chains (`quotaManager`/
 /// `fallbackManager`, `networkPingService`, `appState.onCloudIndicatorRefreshNeeded`).
+/// Groq state now comes from `GroqTranscriptionProvider.onFallbackStateChanged`.
 @Observable
 @MainActor
 final class MenuBarStatusCoordinator {
@@ -60,7 +61,7 @@ final class MenuBarStatusCoordinator {
 
     init(
         orchestrator: WorkflowOrchestrator,
-        fallbackManager: GroqFallbackManager,
+        groqTranscriptionProvider: GroqTranscriptionProvider,
         networkPingService: NetworkPingService,
         cloudIndicatorProvider: @escaping () -> MenuBarCloudIndicator,
         groqQuotaUsedTodayProvider: @escaping () -> String?
@@ -76,7 +77,7 @@ final class MenuBarStatusCoordinator {
         orchestrator.onMenuBarStatusChange = { [weak self] status in
             self?.updateStatus(status)
         }
-        fallbackManager.onStateChanged = { [weak self] _ in
+        groqTranscriptionProvider.onFallbackStateChanged = { [weak self] _ in
             self?.refreshCloudIndicator()
         }
         networkPingService.onStatusChanged = { [weak self] status in

@@ -35,13 +35,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
         menuBarStatusCoordinator = MenuBarStatusCoordinator(
             orchestrator: appState.workflowLifecycle.orchestrator,
-            fallbackManager: appState.fallbackManager,
+            groqTranscriptionProvider: appState.groqTranscriptionProvider,
             networkPingService: appState.networkPingService,
             cloudIndicatorProvider: { [weak appState] in
                 appState?.transcriptionModeStatus.menuBarCloudIndicator ?? .none
             },
             groqQuotaUsedTodayProvider: { [weak appState] in
-                appState?.quotaManager.formattedUsedToday
+                appState?.groqTranscriptionProvider.quotaUIStatus.formattedUsedToday
             }
         )
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)

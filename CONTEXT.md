@@ -10,11 +10,11 @@ Architekturentscheidungen (ADRs) liegen in `docs/adr/`, nicht in dieser Datei.
 
 ## Transkriptions-Backend
 
-**CloudTranscriptionRouter** — Logik in `TranscriptionService`, die Groq-first mit OpenAI-Fallback kombiniert. Kein eigener Typ, aber konzeptuell der Router.
+**GroqTranscriptionProvider** — Kapselt Groq-first-mit-OpenAI-Fallback-Routing sowie die intern gehaltenen `GroqQuotaManager`/`GroqFallbackManager`. `AppState` hält genau eine Instanz; Views lesen Quota/Fallback-Status ausschließlich über die berechnete Eigenschaft `quotaUIStatus` (statt die beiden Manager direkt anzusprechen).
 
-**Groq-Kontingent** — Tägliches Free-Tier-Budget bei Groq (Audio-Sekunden). Kommt aus HTTP-Response-Header `x-ratelimit-remaining-audio-seconds`; `x-ratelimit-reset-audio` ist optional und wird von Groq offenbar nur kurz vor Limit-Erreichen mitgeschickt. Wird persistent in `UserDefaults` via `GroqQuotaStore` gespeichert.
+**Groq-Kontingent** — Tägliches Free-Tier-Budget bei Groq (Audio-Sekunden). Kommt aus HTTP-Response-Header `x-ratelimit-remaining-audio-seconds`; `x-ratelimit-reset-audio` ist optional und wird von Groq offenbar nur kurz vor Limit-Erreichen mitgeschickt. Wird persistent in `UserDefaults` via `GroqQuotaManager` gespeichert.
 
-**Groq-Fallback** — Zustand, in dem der Router nach Groq-429 dauerhaft auf OpenAI umschaltet. Bleibt aktiv bis `rateLimitResetAt` überschritten ist (auch nach App-Neustart). Gespeichert in `GroqQuotaStore.shared`.
+**Groq-Fallback** — Zustand, in dem `GroqTranscriptionProvider` nach Groq-429 dauerhaft auf OpenAI umschaltet. Bleibt aktiv bis `rateLimitResetAt` überschritten ist (auch nach App-Neustart). Gespeichert in `GroqFallbackManager.shared`.
 
 **Paid Mode** — Wenn Online-Transkription aktiv UND (kein Groq-Key konfiguriert ODER Groq-Fallback aktiv). Wird im Menüleisten-Icon als kleiner Punkt angezeigt.
 

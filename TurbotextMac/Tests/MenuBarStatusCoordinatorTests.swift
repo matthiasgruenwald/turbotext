@@ -4,13 +4,19 @@ import XCTest
 @MainActor
 final class MenuBarStatusCoordinatorTests: XCTestCase {
 
+    private func makeProvider() -> GroqTranscriptionProvider {
+        GroqTranscriptionProvider(
+            quotaManager: GroqQuotaManager(defaults: InMemoryPersistence()),
+            fallbackManager: GroqFallbackManager(defaults: InMemoryPersistence())
+        )
+    }
+
     func testInitialRenderStateReflectsInjectedSources() {
         let orchestrator = WorkflowOrchestrator()
-        let fallbackManager = GroqFallbackManager(defaults: InMemoryPersistence())
         let networkPingService = NetworkPingService()
         let coordinator = MenuBarStatusCoordinator(
             orchestrator: orchestrator,
-            fallbackManager: fallbackManager,
+            groqTranscriptionProvider: makeProvider(),
             networkPingService: networkPingService,
             cloudIndicatorProvider: { .groqReady },
             groqQuotaUsedTodayProvider: { "5 min" }
@@ -27,7 +33,7 @@ final class MenuBarStatusCoordinatorTests: XCTestCase {
         let orchestrator = WorkflowOrchestrator()
         let coordinator = MenuBarStatusCoordinator(
             orchestrator: orchestrator,
-            fallbackManager: GroqFallbackManager(defaults: InMemoryPersistence()),
+            groqTranscriptionProvider: makeProvider(),
             networkPingService: NetworkPingService(),
             cloudIndicatorProvider: { .none },
             groqQuotaUsedTodayProvider: { nil }
@@ -42,7 +48,7 @@ final class MenuBarStatusCoordinatorTests: XCTestCase {
         let networkPingService = NetworkPingService()
         let coordinator = MenuBarStatusCoordinator(
             orchestrator: WorkflowOrchestrator(),
-            fallbackManager: GroqFallbackManager(defaults: InMemoryPersistence()),
+            groqTranscriptionProvider: makeProvider(),
             networkPingService: networkPingService,
             cloudIndicatorProvider: { .none },
             groqQuotaUsedTodayProvider: { nil }
@@ -55,11 +61,11 @@ final class MenuBarStatusCoordinatorTests: XCTestCase {
     }
 
     func testFallbackStateChangeRefreshesCloudIndicatorFromProvider() {
-        let fallbackManager = GroqFallbackManager(defaults: InMemoryPersistence())
+        let groqTranscriptionProvider = makeProvider()
         var indicator: MenuBarCloudIndicator = .groqReady
         let coordinator = MenuBarStatusCoordinator(
             orchestrator: WorkflowOrchestrator(),
-            fallbackManager: fallbackManager,
+            groqTranscriptionProvider: groqTranscriptionProvider,
             networkPingService: NetworkPingService(),
             cloudIndicatorProvider: { indicator },
             groqQuotaUsedTodayProvider: { nil }
@@ -67,7 +73,7 @@ final class MenuBarStatusCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.renderState.cloudIndicator, .groqReady)
 
         indicator = .openAIFallback
-        fallbackManager.reportRateLimitExceeded(resetAt: Date().addingTimeInterval(3600))
+        groqTranscriptionProvider.onFallbackStateChanged?(true)
 
         XCTAssertEqual(coordinator.renderState.cloudIndicator, .openAIFallback)
     }
@@ -75,7 +81,7 @@ final class MenuBarStatusCoordinatorTests: XCTestCase {
     func testUpdatePermissionsRefreshesRenderState() {
         let coordinator = MenuBarStatusCoordinator(
             orchestrator: WorkflowOrchestrator(),
-            fallbackManager: GroqFallbackManager(defaults: InMemoryPersistence()),
+            groqTranscriptionProvider: makeProvider(),
             networkPingService: NetworkPingService(),
             cloudIndicatorProvider: { .none },
             groqQuotaUsedTodayProvider: { nil }
@@ -91,7 +97,7 @@ final class MenuBarStatusCoordinatorTests: XCTestCase {
         var indicator: MenuBarCloudIndicator = .none
         let coordinator = MenuBarStatusCoordinator(
             orchestrator: WorkflowOrchestrator(),
-            fallbackManager: GroqFallbackManager(defaults: InMemoryPersistence()),
+            groqTranscriptionProvider: makeProvider(),
             networkPingService: NetworkPingService(),
             cloudIndicatorProvider: { indicator },
             groqQuotaUsedTodayProvider: { nil }
@@ -107,7 +113,7 @@ final class MenuBarStatusCoordinatorTests: XCTestCase {
     func testTooltipUsesIdleTooltipLogic() {
         let coordinator = MenuBarStatusCoordinator(
             orchestrator: WorkflowOrchestrator(),
-            fallbackManager: GroqFallbackManager(defaults: InMemoryPersistence()),
+            groqTranscriptionProvider: makeProvider(),
             networkPingService: NetworkPingService(),
             cloudIndicatorProvider: { .groqReady },
             groqQuotaUsedTodayProvider: { "45 Min." }

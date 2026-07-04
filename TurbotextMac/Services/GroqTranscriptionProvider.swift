@@ -32,8 +32,20 @@ enum TranscriptionOutcome {
     }
 }
 
+/// What views need to render Groq quota/fallback UI — a single read-only snapshot
+/// instead of reaching into `GroqQuotaManager`/`GroqFallbackManager` directly.
+struct GroqQuotaUIStatus: Equatable {
+    let formattedUsedToday: String
+    let fallbackActive: Bool
+    let rateLimitResetAt: Date?
+}
+
+/// Encapsulates the Groq-first/OpenAI-fallback routing decision together with the
+/// quota tracking (`GroqQuotaManager`) and persistent fallback state machine
+/// (`GroqFallbackManager`, ADR-0001) it depends on. Callers get one object and one
+/// status surface (`quotaUIStatus`) instead of wiring three collaborators together.
 @MainActor
-struct CloudTranscriptionRouter {
+final class GroqTranscriptionProvider {
     typealias GroqTranscribe = (URL, String, [String], String?) async throws -> (text: String, rateLimitInfo: GroqRateLimitInfo)
     typealias OpenAITranscribe = (URL, [String], String?) async throws -> String
     typealias GroqQuotaCheck = (String) async throws -> GroqRateLimitInfo
@@ -45,6 +57,13 @@ struct CloudTranscriptionRouter {
     private let groqQuotaCheck: GroqQuotaCheck
     private let quotaManager: QuotaManager
     private let fallbackManager: GroqFallbackManager
+
+    /// Fired whenever the fallback state changes, so observers (e.g. the menu bar icon)
+    /// can refresh without polling `quotaUIStatus`.
+    var onFallbackStateChanged: ((Bool) -> Void)? {
+        get { fallbackManager.onStateChanged }
+        set { fallbackManager.onStateChanged = newValue }
+    }
 
     init(
         groqKey: @escaping GroqKeyLoader = { KeychainService.load(key: .groqAPIKey) },
@@ -60,6 +79,14 @@ struct CloudTranscriptionRouter {
         self.groqQuotaCheck = groqQuotaCheck
         self.quotaManager = quotaManager
         self.fallbackManager = fallbackManager
+    }
+
+    var quotaUIStatus: GroqQuotaUIStatus {
+        GroqQuotaUIStatus(
+            formattedUsedToday: quotaManager.formattedUsedToday,
+            fallbackActive: fallbackManager.isActive,
+            rateLimitResetAt: fallbackManager.rateLimitResetAt
+        )
     }
 
     func transcribe(

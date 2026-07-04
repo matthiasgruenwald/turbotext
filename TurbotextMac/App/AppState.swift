@@ -14,8 +14,7 @@ enum PopoverPage: Equatable {
 final class AppState {
     private let settingsState: SettingsState
     let workflowLifecycle: WorkflowLifecycleManager
-    let quotaManager: QuotaManager
-    let fallbackManager: GroqFallbackManager
+    let groqTranscriptionProvider: GroqTranscriptionProvider
     let microphoneState: MicrophoneState
     private let localModelState: LocalModelState
 
@@ -50,7 +49,6 @@ final class AppState {
     var requestedSettingsSection: SettingsSection?
     private var lastPopoverPasteTarget: PasteTarget?
     private var isCheckingGroqQuota = false
-    private let cloudTranscriptionRouter: CloudTranscriptionRouter
 
     // Persisted settings (delegated to `settingsState`)
     var appSettings: AppSettings {
@@ -105,12 +103,10 @@ final class AppState {
     }
 
     init(
-        quotaManager: QuotaManager = GroqQuotaManager.shared,
-        fallbackManager: GroqFallbackManager = GroqFallbackManager.shared
+        groqTranscriptionProvider: GroqTranscriptionProvider? = nil
     ) {
-        self.quotaManager = quotaManager
-        self.fallbackManager = fallbackManager
-        self.cloudTranscriptionRouter = CloudTranscriptionRouter(quotaManager: quotaManager, fallbackManager: fallbackManager)
+        let groqTranscriptionProvider = groqTranscriptionProvider ?? GroqTranscriptionProvider()
+        self.groqTranscriptionProvider = groqTranscriptionProvider
         let store = ShortcutStore()
         self.shortcutStore = store
         self.hotkeyCaptureService = HotkeyCaptureService(store: store)
@@ -170,7 +166,7 @@ final class AppState {
         Task { @MainActor [weak self] in
             defer { self?.isCheckingGroqQuota = false }
             guard let self else { return }
-            await cloudTranscriptionRouter.checkGroqQuotaIfNeeded(
+            await groqTranscriptionProvider.checkGroqQuotaIfNeeded(
                 secureLocalModeEnabled: appSettings.secureLocalModeEnabled
             )
         }
@@ -195,9 +191,10 @@ final class AppState {
     }
 
     var groqFallbackBannerContent: (title: String, detail: String)? {
-        GroqFallbackBanner.content(
-            fallbackActive: fallbackManager.isActive,
-            resetAt: fallbackManager.rateLimitResetAt,
+        let status = groqTranscriptionProvider.quotaUIStatus
+        return GroqFallbackBanner.content(
+            fallbackActive: status.fallbackActive,
+            resetAt: status.rateLimitResetAt,
             secureLocalModeEnabled: appSettings.secureLocalModeEnabled
         )
     }
@@ -211,15 +208,16 @@ final class AppState {
     }
 
     var transcriptionModeStatus: TranscriptionModeStatus {
-        TranscriptionModeStatus(
+        let status = groqTranscriptionProvider.quotaUIStatus
+        return TranscriptionModeStatus(
             secureLocalModeEnabled: appSettings.secureLocalModeEnabled,
             selectedLocalModelInstalled: selectedLocalModelIsInstalled,
             selectedLocalModelDisplayName: selectedLocalModelDisplayName,
             isDownloadingLocalModel: isDownloadingLocalModel,
             localModelDownloadStatusText: localModelDownloadStatusText,
             hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil,
-            groqFallbackActive: fallbackManager.isActive,
-            groqQuotaUsedToday: quotaManager.formattedUsedToday
+            groqFallbackActive: status.fallbackActive,
+            groqQuotaUsedToday: status.formattedUsedToday
         )
     }
 
@@ -313,8 +311,8 @@ final class AppState {
     private func transcriber(for backend: TranscriptionBackend) -> SpokenWorkflowPipeline.Transcriber {
         switch backend {
         case .remote:
-            return { [cloudTranscriptionRouter] audioURL, duration, terms, language in
-                try await cloudTranscriptionRouter.transcribe(
+            return { [groqTranscriptionProvider] audioURL, duration, terms, language in
+                try await groqTranscriptionProvider.transcribe(
                     audioURL: audioURL,
                     durationSeconds: duration,
                     customTerms: terms,

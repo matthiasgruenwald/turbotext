@@ -21,7 +21,7 @@ final class TranscriptionServiceTests: XCTestCase {
     }
 
     func testNormalSuccessUsesGroqAndDoesNotActivateFallback() async throws {
-        let router = CloudTranscriptionRouter(
+        let provider = GroqTranscriptionProvider(
             groqKey: { "gsk_test_key" },
             groqTranscribe: { _, _, _, _ in
                 ("Hallo Welt", GroqRateLimitInfo(remainingAudioSeconds: 500, resetAt: nil))
@@ -32,7 +32,7 @@ final class TranscriptionServiceTests: XCTestCase {
             }
         )
 
-        let outcome = try await router.transcribe(
+        let outcome = try await provider.transcribe(
             audioURL: dummyAudioURL,
             durationSeconds: 2
         )
@@ -47,7 +47,7 @@ final class TranscriptionServiceTests: XCTestCase {
 
     func testGroq429ActivatesFallbackAndReturnsOpenAIText() async throws {
         let resetAt = Date().addingTimeInterval(3600)
-        let router = CloudTranscriptionRouter(
+        let provider = GroqTranscriptionProvider(
             groqKey: { "gsk_test_key" },
             groqTranscribe: { _, _, _, _ in
                 throw GroqTranscriptionError.rateLimitExceeded(resetAt: resetAt)
@@ -57,7 +57,7 @@ final class TranscriptionServiceTests: XCTestCase {
             }
         )
 
-        let outcome = try await router.transcribe(
+        let outcome = try await provider.transcribe(
             audioURL: dummyAudioURL,
             durationSeconds: 2
         )
@@ -72,7 +72,7 @@ final class TranscriptionServiceTests: XCTestCase {
 
     func testFallbackAlreadyActiveGoesStraightToOpenAI() async throws {
         GroqFallbackManager.shared.reportRateLimitExceeded(resetAt: Date().addingTimeInterval(3600))
-        let router = CloudTranscriptionRouter(
+        let provider = GroqTranscriptionProvider(
             groqKey: { "gsk_test_key" },
             groqTranscribe: { _, _, _, _ in
                 XCTFail("Groq should not be called while fallback is active")
@@ -83,7 +83,7 @@ final class TranscriptionServiceTests: XCTestCase {
             }
         )
 
-        let outcome = try await router.transcribe(
+        let outcome = try await provider.transcribe(
             audioURL: dummyAudioURL,
             durationSeconds: 2
         )
@@ -96,7 +96,7 @@ final class TranscriptionServiceTests: XCTestCase {
 
     func testQuotaCheckUpdatesQuotaThroughRouter() async {
         let resetAt = Date().addingTimeInterval(3600)
-        let router = CloudTranscriptionRouter(
+        let provider = GroqTranscriptionProvider(
             groqKey: { "gsk_test_key" },
             groqQuotaCheck: { apiKey in
                 XCTAssertEqual(apiKey, "gsk_test_key")
@@ -104,28 +104,28 @@ final class TranscriptionServiceTests: XCTestCase {
             }
         )
 
-        await router.checkGroqQuotaIfNeeded(secureLocalModeEnabled: false)
+        await provider.checkGroqQuotaIfNeeded(secureLocalModeEnabled: false)
 
         XCTAssertEqual(GroqQuotaManager.shared.remainingAudioSeconds, 321)
     }
 
     func testQuotaCheckActivatesFallbackThroughRouter() async {
         let resetAt = Date().addingTimeInterval(3600)
-        let router = CloudTranscriptionRouter(
+        let provider = GroqTranscriptionProvider(
             groqKey: { "gsk_test_key" },
             groqQuotaCheck: { _ in
                 throw GroqTranscriptionError.rateLimitExceeded(resetAt: resetAt)
             }
         )
 
-        await router.checkGroqQuotaIfNeeded(secureLocalModeEnabled: false)
+        await provider.checkGroqQuotaIfNeeded(secureLocalModeEnabled: false)
 
         XCTAssertTrue(GroqFallbackManager.shared.isActive)
         XCTAssertEqual(GroqFallbackManager.shared.rateLimitResetAt, resetAt)
     }
 
     func testQuotaCheckSkipsWhenRouterHasNoGroqKey() async {
-        let router = CloudTranscriptionRouter(
+        let provider = GroqTranscriptionProvider(
             groqKey: { nil },
             groqQuotaCheck: { _ in
                 XCTFail("Quota check should not run without a Groq key")
@@ -133,7 +133,7 @@ final class TranscriptionServiceTests: XCTestCase {
             }
         )
 
-        await router.checkGroqQuotaIfNeeded(secureLocalModeEnabled: false)
+        await provider.checkGroqQuotaIfNeeded(secureLocalModeEnabled: false)
 
         XCTAssertNil(GroqQuotaManager.shared.remainingAudioSeconds)
         XCTAssertFalse(GroqFallbackManager.shared.isActive)
