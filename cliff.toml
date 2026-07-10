@@ -1,0 +1,53 @@
+[changelog]
+header = """
+# Changelog\n
+Alle bemerkenswerten Änderungen an Turbotext werden hier dokumentiert.\n
+Ab v0.9.0 wird der Changelog strukturiert geführt — mit Git-Tags, Conventional Commits und automatisch generiertem Entwurf via [`git-cliff`](https://git-cliff.org).\n
+---\n
+"""
+
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] — {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+{% for commit in commits %}\
+- {{ commit.message | upper_first }}{% if commit.remote.pr_number %} (#{{ commit.remote.pr_number }}){% endif %}
+{% endfor %}
+{% endfor %}\n
+"""
+
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+
+commit_preprocessors = [
+  { pattern = "^Closes #\\d+: ", replace = "" },
+]
+
+commit_parsers = [
+  { message = "^feat", group = "🚀 Features" },
+  { message = "^fix", group = "🐛 Bug Fixes" },
+  { message = "^security", group = "🔒 Security" },
+  { message = "^enhance", group = "🌟 Enhancements" },
+  { message = "^perf", group = "🌟 Enhancements" },
+  { message = "^refactor", skip = true },
+  { message = "^test", skip = true },
+  { message = "^docs", skip = true },
+  { message = "^chore", skip = true },
+  { message = "^build", skip = true },
+  { message = "^merge", skip = true },
+  { message = "^ci", skip = true },
+]
+
+filter_commits = true
+tag_pattern = "v[0-9]*"
+topo_order = false
+sort_commits = "oldest"
