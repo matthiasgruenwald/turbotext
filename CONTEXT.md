@@ -34,6 +34,12 @@ Architekturentscheidungen (ADRs) liegen in `docs/adr/`, nicht in dieser Datei.
 
 ## Mikrofon-System
 
+**Cursornahe Live-Wellenform** — Ein schwebendes Feedback-Fenster für jeden aufnehmenden Sprach-Workflow. Es erscheint am aktuellen Eingabecursor und nutzt den Mauszeiger als Fallback, falls die Ziel-App keine Cursorposition preisgibt. Es bleibt während einer Aufnahme am beim Start erfassten Einfügeziel und wechselt erst mit dem nächsten Start. Während der Aufnahme zeigt es einen fortlaufenden Verlauf des Mikrofonsignals statt nur eines Momentanpegels; nach Aufnahmeende wechselt es dort in einen Verarbeitungszustand und endet erst nach Einfügen oder Fehler.
+
+**Stillehinweis** — Ein nicht-blockierender Hinweis der cursornahen Live-Wellenform, wenn beim Aufnahmestart fünf Sekunden lang kein verwertbares Mikrofonsignal ankommt. Er beendet die Aufnahme nicht und diagnostiziert keine Ursache; bei anschließendem Signal verschwindet er wieder.
+
+**Aufnahmestartfehler** — Ein unmittelbarer, cursornahe angezeigter Fehlerzustand, wenn ein Sprach-Workflow keine Aufnahme starten kann. Er unterscheidet sich vom Stillehinweis und nennt eine verständliche Ursache, falls Turbotext sie kennt. Er bleibt etwa fünf, höchstens zehn Sekunden lesbar, kann manuell geschlossen werden und wird ausschließlich über das gewohnte Tastenkürzel erneut versucht.
+
 **Mikrofon-Favoritenliste** — vom Nutzer priorisierte Liste von Mikro-UIDs, persistiert in `UserDefaults`. Ersetzt NICHT den macOS-Systemstandard, sondern ist eine App-interne Auswahl. Beim App-Start und bei Gerätewechsel (`kAudioHardwarePropertyDevices`-Notification) wählt die App das höchstpriorisierte verfügbare Gerät aus der Liste. Ist kein Favorit verfügbar, fällt die App auf den macOS-Systemstandard zurück. Nutzer kann alternativ explizit "macOS-Standard verwenden" wählen (kein Override).
 
 ## App-Präsenz
