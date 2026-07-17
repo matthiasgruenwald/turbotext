@@ -28,6 +28,10 @@ final class WorkflowOrchestrator {
     typealias FrontmostPidProvider = @MainActor () -> pid_t?
 
     var activeWorkflow: (any Workflow)?
+    /// Message text from the most recent `.error` phase, e.g. a known recording-start
+    /// failure ("Kein Mikrofon verfügbar."). Read by `RecordingOverlayController` when
+    /// it decides to surface a start error in the signal pill.
+    private(set) var lastErrorMessage: String?
     var menuBarStatus: MenuBarStatus = .idle {
         didSet {
             guard oldValue != menuBarStatus else { return }
@@ -200,7 +204,8 @@ final class WorkflowOrchestrator {
         case .done:
             menuBarStatus = .success(workflow.type)
 
-        case .error:
+        case .error(let message):
+            lastErrorMessage = message
             menuBarStatus = .error(workflow.type)
             if activeLaunchSource == .hotkeyBackground {
                 activeWorkflow = nil

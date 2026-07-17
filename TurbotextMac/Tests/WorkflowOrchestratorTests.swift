@@ -160,6 +160,16 @@ final class WorkflowOrchestratorTests: XCTestCase {
         XCTAssertEqual(orchestrator.menuBarStatus, .error(.transcription))
     }
 
+    func testErrorPhaseCapturesLastErrorMessage() {
+        let box = WorkflowBox()
+        let orchestrator = makeOrchestrator(createdWorkflows: box)
+
+        orchestrator.start(.transcription, source: .manual, pasteTarget: nil)
+        box.workflows[0].phase = .error("Kein Mikrofon verfügbar.")
+
+        XCTAssertEqual(orchestrator.lastErrorMessage, "Kein Mikrofon verfügbar.")
+    }
+
     func testErrorPhaseDuringHotkeyBackgroundClearsActiveWorkflowAndNotifiesFinished() {
         let box = WorkflowBox()
         let orchestrator = makeOrchestrator(createdWorkflows: box)

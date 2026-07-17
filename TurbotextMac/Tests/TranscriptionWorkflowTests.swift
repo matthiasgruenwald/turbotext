@@ -65,6 +65,41 @@ final class TranscriptionWorkflowTests: XCTestCase {
         XCTAssertEqual(workflow.audioLevel, 0.42)
     }
 
+    /// Deterministic start-error seam (AC #107): a known recording-start failure
+    /// (e.g. no microphone) never touches real Core Audio or TCC — it's injected
+    /// through `SpokenWorkflowRecording.errorMessage`.
+    func testStartWithKnownRecordingErrorSetsErrorPhaseAndNeverStartsRecording() {
+        let recorder = FakeTranscriptionRecorder(isRecording: false, duration: 0, recordingURL: nil)
+        recorder.startErrorMessage = "Kein Mikrofon verfügbar."
+        let workflow = makeWorkflow(recorder: recorder, transcribe: { _, _, _, _ in "unused" })
+
+        workflow.start()
+
+        XCTAssertEqual(workflow.phase, .error("Kein Mikrofon verfügbar."))
+        XCTAssertFalse(workflow.isRecording)
+    }
+
+    /// Start -> stop -> start again must behave like two independent recordings,
+    /// with no real Core Audio/TCC dependency — exercises the seam deterministically.
+    func testStartStopStartCycleRestartsCleanly() {
+        let recorder = FakeTranscriptionRecorder(isRecording: false, duration: 0, recordingURL: nil)
+        let workflow = makeWorkflow(recorder: recorder, transcribe: { _, _, _, _ in "unused" })
+
+        workflow.start()
+        XCTAssertTrue(workflow.isRecording)
+        XCTAssertEqual(workflow.phase, .running("Aufnahme läuft ..."))
+
+        // Too-short recording gets rejected on stop — a legitimate outcome that must
+        // still leave the workflow free to record again immediately after.
+        workflow.stop()
+        XCTAssertFalse(workflow.isRecording)
+        XCTAssertEqual(workflow.phase, .error("Keine Aufnahme erkannt."))
+
+        workflow.start()
+        XCTAssertTrue(workflow.isRecording)
+        XCTAssertEqual(workflow.phase, .running("Aufnahme läuft ..."))
+    }
+
     // MARK: - Helpers
 
     private func makeWorkflow(
@@ -95,6 +130,9 @@ private final class FakeTranscriptionRecorder: SpokenWorkflowRecording {
     var errorMessage: String?
     var audioLevel: Float = 0
     var lastRecordingDuration: TimeInterval
+    /// When set, `startRecording()` fails deterministically (like a real "no microphone"
+    /// or Core Audio start failure) instead of flipping `isRecording` on.
+    var startErrorMessage: String?
 
     init(isRecording: Bool, duration: TimeInterval, recordingURL: URL?) {
         self.isRecording = isRecording
@@ -103,6 +141,11 @@ private final class FakeTranscriptionRecorder: SpokenWorkflowRecording {
     }
 
     func startRecording() {
+        errorMessage = nil
+        if let startErrorMessage {
+            errorMessage = startErrorMessage
+            return
+        }
         isRecording = true
     }
 

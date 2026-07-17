@@ -3,6 +3,40 @@ import XCTest
 
 @MainActor
 final class SpokenWorkflowPipelineTests: XCTestCase {
+    /// Deterministic recorder/engine seam (AC #107): a known start failure (no
+    /// microphone, Core Audio start error, ...) is injectable via `errorMessage`,
+    /// with no dependency on real Core Audio or TCC permissions.
+    func testStartRecordingSurfacesKnownRecorderErrorAsFailure() {
+        let recorder = FakeSpokenRecorder(isRecording: false)
+        recorder.errorMessage = "Kein Mikrofon verfügbar."
+        let pipeline = SpokenWorkflowPipeline(recorder: recorder)
+
+        let result = pipeline.startRecording()
+
+        guard case .failure(let error) = result else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertEqual(error.localizedDescription, "Kein Mikrofon verfügbar.")
+        XCTAssertEqual(recorder.startCount, 1)
+    }
+
+    /// Start -> stop -> start again must work without a real Core Audio engine,
+    /// leaving the pipeline free to record again after a stop.
+    func testStartStopStartCycleUsesRecorderDeterministically() {
+        let recorder = FakeSpokenRecorder(isRecording: false, duration: 1)
+        let pipeline = SpokenWorkflowPipeline(recorder: recorder)
+
+        guard case .success = pipeline.startRecording() else { return XCTFail("expected first start to succeed") }
+        XCTAssertTrue(pipeline.isRecording)
+
+        recorder.isRecording = false
+        XCTAssertEqual(pipeline.stopRecording(), .success(SpokenWorkflowPipeline.Recording(url: recorder.recordingURL!, duration: 1)))
+
+        guard case .success = pipeline.startRecording() else { return XCTFail("expected restart to succeed") }
+        XCTAssertTrue(pipeline.isRecording)
+        XCTAssertEqual(recorder.startCount, 2)
+    }
+
     func testStopRejectsTooShortRecordingAndDiscardsIt() {
         let recorder = FakeSpokenRecorder(isRecording: true, duration: 0.2)
         let pipeline = SpokenWorkflowPipeline(recorder: recorder)
@@ -87,6 +121,7 @@ private final class FakeSpokenRecorder: SpokenWorkflowRecording {
     var lastRecordingDuration: TimeInterval
     var stopCount = 0
     var discardCount = 0
+    var startCount = 0
 
     init(isRecording: Bool = false, duration: TimeInterval = 1, recordingURL: URL? = URL(fileURLWithPath: "/tmp/fake.m4a")) {
         self.isRecording = isRecording
@@ -95,6 +130,8 @@ private final class FakeSpokenRecorder: SpokenWorkflowRecording {
     }
 
     func startRecording() {
+        startCount += 1
+        guard errorMessage == nil else { return }
         isRecording = true
     }
 

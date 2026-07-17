@@ -11,10 +11,17 @@ private final class FakeOverlayWorkflow: Workflow {
     var onPhaseChange: WorkflowPhaseChangeHandler?
     var isRecording = false
     var audioLevel: Float = 0
+    /// When set, `start()` fails immediately with this message instead of recording —
+    /// simulates a known recording-start error (e.g. no microphone) deterministically.
+    var startErrorMessage: String?
 
     init(type: WorkflowType) { self.type = type }
 
     func start() {
+        if let startErrorMessage {
+            phase = .error(startErrorMessage)
+            return
+        }
         isRecording = true
         phase = .running("recording")
     }
@@ -38,6 +45,21 @@ private func makeOrchestratorWithWorkflow() -> (WorkflowOrchestrator, FakeOverla
     )
     orchestrator.start(.transcription, source: .manual, pasteTarget: nil)
     return (orchestrator, createdWorkflow)
+}
+
+@MainActor
+private func makeOrchestratorWithFailingStart(message: String) -> WorkflowOrchestrator {
+    WorkflowOrchestrator(
+        workflowFactory: { type, _ in
+            let workflow = FakeOverlayWorkflow(type: type)
+            workflow.startErrorMessage = message
+            return workflow
+        },
+        pasteAction: {},
+        trustCheck: { _ in true },
+        frontmostPidProvider: { nil },
+        writeToPasteboard: { _ in }
+    )
 }
 
 @MainActor
@@ -147,5 +169,121 @@ final class RecordingOverlayControllerTests: XCTestCase {
             panel.collectionBehavior,
             [.auxiliary, .fullScreenAuxiliary, .canJoinAllSpaces, .ignoresCycle]
         )
+    }
+
+    // MARK: - Known start errors
+
+    func testKnownStartErrorShowsErrorPhaseWithMessage() {
+        let orchestrator = makeOrchestratorWithFailingStart(message: "Kein Mikrofon verfügbar.")
+        orchestrator.start(.transcription, source: .manual, pasteTarget: nil)
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .textCursor },
+            anchorResolver: { self.anchor }
+        )
+
+        controller.tick()
+
+        XCTAssertEqual(controller.state.phase, .error)
+        XCTAssertEqual(controller.state.errorMessage, "Kein Mikrofon verfügbar.")
+    }
+
+    func testErrorPanelAcceptsMouseEventsSoItCanBeClosedManually() throws {
+        let orchestrator = makeOrchestratorWithFailingStart(message: "boom")
+        orchestrator.start(.transcription, source: .manual, pasteTarget: nil)
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .textCursor },
+            anchorResolver: { self.anchor }
+        )
+
+        controller.tick()
+
+        let panel = try XCTUnwrap(controller.debugPanel)
+        XCTAssertFalse(panel.ignoresMouseEvents, "the error pill must be clickable so it can be dismissed manually")
+    }
+
+    func testDismissErrorHidesTheOverlayImmediately() {
+        let orchestrator = makeOrchestratorWithFailingStart(message: "boom")
+        orchestrator.start(.transcription, source: .manual, pasteTarget: nil)
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .textCursor },
+            anchorResolver: { self.anchor }
+        )
+        controller.tick()
+        XCTAssertEqual(controller.state.phase, .error)
+
+        controller.dismissError()
+
+        XCTAssertEqual(controller.state, .hidden)
+    }
+
+    func testErrorAutoDismissesAfterFiveSecondsOfPolling() {
+        let orchestrator = makeOrchestratorWithFailingStart(message: "boom")
+        orchestrator.start(.transcription, source: .manual, pasteTarget: nil)
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .textCursor },
+            anchorResolver: { self.anchor }
+        )
+
+        for _ in 0..<25 {
+            controller.tick()
+        }
+        XCTAssertEqual(
+            controller.state.phase, .error,
+            "must still be visible halfway through the 5s window, not hidden by the orchestrator repeating the same status"
+        )
+
+        for _ in 0..<25 {
+            controller.tick()
+        }
+        XCTAssertEqual(controller.state, .hidden)
+    }
+
+    /// Regression: `WorkflowOrchestrator` resets `menuBarStatus` to `.idle` on its own
+    /// ~1.6s after a hotkey-background start error — well before the pill's 5s window.
+    /// The overlay must keep showing the error through that reset.
+    func testErrorSurvivesTheOrchestratorsOwnMenuBarStatusResetForHotkeyBackgroundSource() {
+        let orchestrator = makeOrchestratorWithFailingStart(message: "boom")
+        orchestrator.start(.transcription, source: .hotkeyBackground, pasteTarget: nil)
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .textCursor },
+            anchorResolver: { self.anchor }
+        )
+
+        controller.tick()
+        XCTAssertEqual(controller.state.phase, .error)
+
+        let resetExpectation = expectation(description: "orchestrator resets menuBarStatus to idle")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+            XCTAssertEqual(orchestrator.menuBarStatus, .idle, "sanity check: the orchestrator really did reset on its own")
+            resetExpectation.fulfill()
+        }
+        wait(for: [resetExpectation], timeout: 3)
+
+        controller.tick()
+        XCTAssertEqual(controller.state.phase, .error, "the pill must still be showing despite the orchestrator's own reset")
+    }
+
+    // MARK: - Silence hint
+
+    func testSilenceHintAppearsAfterFiveSecondsOfPollingWithoutSignal() {
+        let (orchestrator, _) = makeOrchestratorWithWorkflow()
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .textCursor },
+            anchorResolver: { self.anchor },
+            levelProvider: { 0 }
+        )
+
+        for _ in 0..<50 {
+            controller.tick()
+        }
+
+        XCTAssertEqual(controller.state.phase, .recording, "recording keeps running while the hint is shown")
+        XCTAssertTrue(controller.state.showsSilenceHint)
     }
 }

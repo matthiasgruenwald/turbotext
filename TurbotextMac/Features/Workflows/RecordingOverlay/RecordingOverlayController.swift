@@ -19,6 +19,7 @@ final class RecordingOverlayController {
     private let modeProvider: () -> RecordingOverlayMode
     private let anchorResolver: () -> RecordingOverlayAnchor
     private let levelProvider: () -> Float?
+    private let errorMessageProvider: () -> String?
 
     private(set) var state: RecordingOverlayState = .hidden
     private var panel: NSPanel?
@@ -32,12 +33,14 @@ final class RecordingOverlayController {
         orchestrator: WorkflowOrchestrator,
         modeProvider: @escaping () -> RecordingOverlayMode,
         anchorResolver: @escaping () -> RecordingOverlayAnchor = RecordingOverlayAnchorResolver.resolveWithSystemProviders,
-        levelProvider: (() -> Float?)? = nil
+        levelProvider: (() -> Float?)? = nil,
+        errorMessageProvider: (() -> String?)? = nil
     ) {
         self.orchestrator = orchestrator
         self.modeProvider = modeProvider
         self.anchorResolver = anchorResolver
         self.levelProvider = levelProvider ?? { [weak orchestrator] in orchestrator?.activeWorkflow?.audioLevel }
+        self.errorMessageProvider = errorMessageProvider ?? { [weak orchestrator] in orchestrator?.lastErrorMessage }
     }
 
     func start() {
@@ -60,13 +63,31 @@ final class RecordingOverlayController {
         }
 
         let previousPhase = state.phase
-        state = state.applying(menuBarStatus: orchestrator.menuBarStatus, resolveAnchor: anchorResolver)
+        state = state.applying(
+            menuBarStatus: orchestrator.menuBarStatus,
+            resolveAnchor: anchorResolver,
+            resolveErrorMessage: errorMessageProvider
+        )
 
-        if state.phase == .recording, let level = levelProvider() {
-            state = state.receivingLevel(level)
+        switch state.phase {
+        case .recording:
+            if let level = levelProvider() {
+                state = state.receivingLevel(level, elapsed: Self.pollInterval)
+            }
+        case .error:
+            state = state.advancingError(by: Self.pollInterval)
+        case .hidden, .processing:
+            break
         }
 
         guard state.phase != previousPhase || state.phase == .recording else { return }
+        render()
+    }
+
+    /// Manual close of a visible start error, e.g. from a click on the pill.
+    func dismissError() {
+        guard state.phase == .error else { return }
+        state = state.dismissingError()
         render()
     }
 
@@ -80,9 +101,12 @@ final class RecordingOverlayController {
         switch state.phase {
         case .hidden:
             panel?.orderOut(nil)
-        case .recording, .processing:
+        case .recording, .processing, .error:
             let activePanel = panel ?? makePanel()
             panel = activePanel
+            // Only the error pill accepts clicks (manual dismiss); every other state
+            // must stay click-through so it never steals input from the target app.
+            activePanel.ignoresMouseEvents = state.phase != .error
             updateContent(of: activePanel)
             positionPanel(activePanel)
             activePanel.orderFrontRegardless()
@@ -108,7 +132,13 @@ final class RecordingOverlayController {
     }
 
     private func updateContent(of panel: NSPanel) {
-        let pill = RecordingOverlaySignalPillView(phase: state.phase, levelHistory: state.levelHistory)
+        let pill = RecordingOverlaySignalPillView(
+            phase: state.phase,
+            levelHistory: state.levelHistory,
+            showsSilenceHint: state.showsSilenceHint,
+            errorMessage: state.errorMessage,
+            onDismissError: { [weak self] in self?.dismissError() }
+        )
         let hostingView = NSHostingView(rootView: pill)
         let fittingSize = hostingView.fittingSize
         hostingView.frame = NSRect(origin: .zero, size: fittingSize)

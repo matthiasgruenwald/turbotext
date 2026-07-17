@@ -3,32 +3,69 @@ import SwiftUI
 /// Dark, non-interactive signal pill shown near the insertion caret while a
 /// voice workflow records and processes. Visual language matches variant A
 /// ("Signal-Pille") from the throwaway CursorWaveformVisualPrototype.
+///
+/// The outer capsule always renders at a fixed size (`width`/`height`), no matter
+/// which phase or sub-state is shown — content that appears/disappears inside it
+/// (silence hint, error text) must never resize or reflow the pill.
 struct RecordingOverlaySignalPillView: View {
+    static let width: CGFloat = 260
+    static let height: CGFloat = 44
+
     let phase: RecordingOverlayPhase
     let levelHistory: [Float]
+    var showsSilenceHint: Bool = false
+    var errorMessage: String?
+    var onDismissError: () -> Void = {}
 
     var body: some View {
-        HStack(spacing: 12) {
-            switch phase {
-            case .hidden:
-                EmptyView()
-            case .recording:
+        content
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .frame(width: Self.width, height: Self.height)
+            .background(Color(red: 0.13, green: 0.15, blue: 0.20))
+            .clipShape(Capsule())
+            .shadow(color: .black.opacity(0.35), radius: 14, y: 8)
+            .contentShape(Capsule())
+            .onTapGesture {
+                guard phase == .error else { return }
+                onDismissError()
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch phase {
+        case .hidden:
+            EmptyView()
+        case .recording:
+            HStack(spacing: 12) {
                 Circle().fill(.red).frame(width: 9, height: 9)
-                WaveformBars(levelHistory: levelHistory)
-            case .processing:
+                if showsSilenceHint {
+                    Text("Kein Signal erkannt …")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                } else {
+                    WaveformBars(levelHistory: levelHistory)
+                }
+            }
+        case .processing:
+            HStack(spacing: 12) {
                 ProgressView().controlSize(.small).tint(.white)
                 Text("Wird verarbeitet …")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.white)
             }
+        case .error:
+            HStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                Text(errorMessage ?? "Aufnahme konnte nicht gestartet werden.")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .frame(minWidth: phase == .recording ? 180 : 0)
-        .background(Color(red: 0.13, green: 0.15, blue: 0.20))
-        .clipShape(Capsule())
-        .shadow(color: .black.opacity(0.35), radius: 14, y: 8)
-        .fixedSize()
     }
 }
 
