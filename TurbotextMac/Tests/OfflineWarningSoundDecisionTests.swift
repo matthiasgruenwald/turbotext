@@ -157,6 +157,32 @@ final class TranscriptionFallbackResolverTests: XCTestCase {
         XCTAssertNil(decision.soundKind)
     }
 
+    // MARK: Apple Speech availability (#123) — prefer it over WhisperKit for the fallback
+
+    func testRedTranscriptionToggleOnAppleSpeechAvailableWithoutWhisperKitFallsBackToLocal() {
+        let decision = TranscriptionFallbackResolver.resolve(
+            for: .red,
+            workflowType: .transcription,
+            autoFallbackToLocalOnOffline: true,
+            isLocalModelInstalled: false,
+            appleSpeechAvailable: true
+        )
+        XCTAssertEqual(decision.backend, .local)
+        XCTAssertEqual(decision.soundKind, .localFallbackActive)
+    }
+
+    func testRedTranscriptionToggleOnNeitherBackendAvailableStaysRemoteWithWarningSound() {
+        let decision = TranscriptionFallbackResolver.resolve(
+            for: .red,
+            workflowType: .transcription,
+            autoFallbackToLocalOnOffline: true,
+            isLocalModelInstalled: false,
+            appleSpeechAvailable: false
+        )
+        XCTAssertEqual(decision.backend, .remote)
+        XCTAssertEqual(decision.soundKind, .networkUnavailable)
+    }
+
     // MARK: localTranscription is never eligible for fallback (already local)
 
     func testRedLocalTranscriptionNeverFallsBackOrPlaysSound() {

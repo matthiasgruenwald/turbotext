@@ -41,6 +41,7 @@ final class WorkflowSubtitleQuotaTests: XCTestCase {
         try KeychainService.save(key: .openAIAPIKey, value: "sk-test-key-1234567890")
         let appState = AppState()
         appState.appSettings.alwaysLocalTranscription = true
+        defer { appState.appSettings.alwaysLocalTranscription = false }
 
         XCTAssertTrue(appState.isWorkflowAvailable(.textImprover))
         XCTAssertTrue(appState.isWorkflowAvailable(.dampfAblassen))

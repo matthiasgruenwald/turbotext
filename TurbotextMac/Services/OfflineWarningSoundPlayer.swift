@@ -39,14 +39,16 @@ struct TranscriptionFallbackDecision: Equatable {
 
 enum TranscriptionFallbackResolver {
     /// Decides which backend to use for a transcription hotkey press and which sound to play,
-    /// based on network status, the auto-fallback toggle, and whether the local model is installed.
+    /// based on network status, the auto-fallback toggle, and whether a local backend is ready
+    /// — Apple Speech, or the legacy WhisperKit model (#123: prefer Apple Speech where available).
     /// Only `.transcription` is eligible for local fallback — other cloud workflow types
     /// (`textImprover`, `dampfAblassen`, `emojiText`) keep the #42 warning-sound-only behavior.
     static func resolve(
         for status: NetworkQualityStatus,
         workflowType: WorkflowType,
         autoFallbackToLocalOnOffline: Bool,
-        isLocalModelInstalled: Bool
+        isLocalModelInstalled: Bool,
+        appleSpeechAvailable: Bool = false
     ) -> TranscriptionFallbackDecision {
         guard status == .red, workflowType == .transcription else {
             return TranscriptionFallbackDecision(
@@ -55,7 +57,7 @@ enum TranscriptionFallbackResolver {
             )
         }
 
-        guard autoFallbackToLocalOnOffline, isLocalModelInstalled else {
+        guard autoFallbackToLocalOnOffline, isLocalModelInstalled || appleSpeechAvailable else {
             return TranscriptionFallbackDecision(backend: .remote, soundKind: .networkUnavailable)
         }
 

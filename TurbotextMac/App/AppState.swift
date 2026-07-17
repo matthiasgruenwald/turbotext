@@ -17,6 +17,7 @@ final class AppState {
     let groqTranscriptionProvider: GroqTranscriptionProvider
     let microphoneState: MicrophoneState
     private let localModelState: LocalModelState
+    private let appleSpeechAvailabilityState: AppleSpeechAvailabilityState
 
     var activeWorkflow: (any Workflow)? { workflowLifecycle.activeWorkflow }
     var currentPhase: WorkflowPhase { workflowLifecycle.currentPhase }
@@ -81,8 +82,14 @@ final class AppState {
 
     // Computed
     var isConfigured: Bool {
-        KeychainService.isConfigured || !LocalTranscriptionService.installedModels().isEmpty
+        KeychainService.isConfigured
+            || !LocalTranscriptionService.installedModels().isEmpty
+            || isAppleSpeechAvailable
     }
+
+    /// Exposed so `TurbotextMacApp`'s hotkey-time offline-fallback decision
+    /// (`TranscriptionFallbackResolver`) can prefer Apple Speech over WhisperKit too (#123).
+    var isAppleSpeechAvailable: Bool { appleSpeechAvailabilityState.isAvailable }
     var shouldShowOnboarding: Bool {
         !isConfigured && !appSettings.hasSeenOnboarding
     }
@@ -128,6 +135,7 @@ final class AppState {
             getHasAutoSelectedFastLocalModel: { settings.appSettings.hasAutoSelectedFastLocalModel },
             setHasAutoSelectedFastLocalModel: { settings.appSettings.hasAutoSelectedFastLocalModel = $0 }
         )
+        self.appleSpeechAvailabilityState = AppleSpeechAvailabilityState()
 
         let lifecycle = WorkflowLifecycleManager()
         self.workflowLifecycle = lifecycle
@@ -164,6 +172,7 @@ final class AppState {
         microphoneState.start()
         networkPingService.start()
         checkGroqQuotaIfNeeded()
+        appleSpeechAvailabilityState.refresh()
     }
 
     func checkGroqQuotaIfNeeded() {
@@ -270,12 +279,12 @@ final class AppState {
     ) -> (any Workflow)? {
         switch type {
         case .transcription:
-            let backend = backendOverride ?? (appSettings.alwaysLocalTranscription ? .local : .remote)
+            let resolved = resolvedTranscriber(backendOverride: backendOverride)
             return TranscriptionWorkflow(
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
-                backend: backend,
-                transcriber: transcriber(for: backend)
+                backend: resolved.backend,
+                transcriber: resolved.transcriber
             )
         case .localTranscription:
             return TranscriptionWorkflow(
@@ -290,7 +299,7 @@ final class AppState {
                 settings: textImprovementSettings,
                 language: transcriptionSettings.language,
                 providerMode: appSettings.rewritingProviderMode,
-                transcriber: transcriber(for: .remote)
+                transcriber: defaultResolvedTranscriber
             )
         case .dampfAblassen:
             return SpokenRewriteWorkflow.dampfAblassen(
@@ -298,7 +307,7 @@ final class AppState {
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
                 providerMode: appSettings.rewritingProviderMode,
-                transcriber: transcriber(for: .remote)
+                transcriber: defaultResolvedTranscriber
             )
         case .emojiText:
             return SpokenRewriteWorkflow.emojiText(
@@ -306,8 +315,42 @@ final class AppState {
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
                 providerMode: appSettings.rewritingProviderMode,
-                transcriber: transcriber(for: .remote)
+                transcriber: defaultResolvedTranscriber
             )
+        }
+    }
+
+    /// The resolved transcriber for the three rewrite workflows, which never carry a
+    /// `backendOverride` — only the `.transcription` factory closure does (from the
+    /// hotkey-time offline-fallback decision).
+    private var defaultResolvedTranscriber: SpokenWorkflowPipeline.Transcriber {
+        resolvedTranscriber(backendOverride: nil).transcriber
+    }
+
+    /// Resolves the transcriber for the four cloud-capable spoken workflows via
+    /// `TranscriptionBackendResolver` (#123), replacing the direct
+    /// `alwaysLocalTranscription ? .local : .remote` checks that used to live here.
+    /// `backendOverride`, when `.local`, is treated as an explicit legacy-WhisperKit
+    /// request (rule 4) — the offline auto-fallback (rule 3) is decided independently
+    /// from live network state, so it no longer needs to flow through this parameter.
+    private func resolvedTranscriber(
+        backendOverride: TranscriptionBackend?
+    ) -> (transcriber: SpokenWorkflowPipeline.Transcriber, backend: TranscriptionBackend) {
+        let resolution = TranscriptionBackendResolver.resolve(
+            alwaysLocalTranscription: appSettings.alwaysLocalTranscription,
+            appleSpeechAvailable: appleSpeechAvailabilityState.isAvailable,
+            isOnline: networkPingService.status != .red,
+            autoFallbackToLocalOnOffline: appSettings.autoFallbackToLocalOnOffline,
+            legacyWhisperKitRequested: backendOverride == .local,
+            whisperKitModelInstalled: selectedLocalModelIsInstalled
+        )
+        switch resolution {
+        case .appleSpeech:
+            return (AppleSpeechAvailability.makeTranscriber() ?? transcriber(for: .local), .local)
+        case .remote:
+            return (transcriber(for: .remote), .remote)
+        case .whisperKit:
+            return (transcriber(for: .local), .local)
         }
     }
 
@@ -339,9 +382,10 @@ final class AppState {
         case .localTranscription:
             return selectedLocalModelIsInstalled
         case .transcription:
-            return transcriptionModeStatus.alwaysLocalTranscription
-                ? transcriptionModeStatus.selectedLocalModelInstalled
-                : KeychainService.isConfigured
+            guard transcriptionModeStatus.alwaysLocalTranscription else {
+                return KeychainService.isConfigured
+            }
+            return appleSpeechAvailabilityState.isAvailable || transcriptionModeStatus.selectedLocalModelInstalled
         case .textImprover, .dampfAblassen, .emojiText:
             return KeychainService.isConfigured
         }
@@ -357,6 +401,7 @@ final class AppState {
 
     func enableAlwaysLocalTranscription() {
         appSettings.alwaysLocalTranscription = true
+        appleSpeechAvailabilityState.refresh()
         if !selectedLocalModelIsInstalled {
             installSelectedLocalModel()
         }

@@ -131,7 +131,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             for: appState.networkPingService.status,
             workflowType: type,
             autoFallbackToLocalOnOffline: appState.appSettings.autoFallbackToLocalOnOffline,
-            isLocalModelInstalled: appState.selectedLocalModelIsInstalled
+            isLocalModelInstalled: appState.selectedLocalModelIsInstalled,
+            appleSpeechAvailable: appState.isAppleSpeechAvailable
         )
 
         if let soundKind = fallback.soundKind {
