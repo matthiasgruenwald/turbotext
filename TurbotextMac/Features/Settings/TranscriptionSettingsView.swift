@@ -100,7 +100,7 @@ struct TranscriptionSettingsView: View {
 
             // MARK: Mikrofon
             MicrophoneFavoritesSectionView(
-                store: appState.microphoneFavoritesStore,
+                microphoneState: appState.microphoneState,
                 availableDevices: availableDevices
             )
 

@@ -18,7 +18,10 @@ final class MicrophoneState {
     var favorites: [String] { favoritesStore.favoriteUIDs }
     var useSystemDefault: Bool {
         get { favoritesStore.useSystemDefault }
-        set { favoritesStore.useSystemDefault = newValue }
+        set {
+            favoritesStore.useSystemDefault = newValue
+            autoSelectionService.applySelection()
+        }
     }
 
     var activeDeviceDisplayName: String {
@@ -55,17 +58,21 @@ final class MicrophoneState {
 
     func addFavorite(uid: String) {
         favoritesStore.addFavorite(uid: uid)
+        autoSelectionService.applySelection()
     }
 
     func removeFavorite(uid: String) {
         favoritesStore.removeFavorite(uid: uid)
+        autoSelectionService.applySelection()
     }
 
     func moveUp(uid: String) {
         favoritesStore.moveUp(uid: uid)
+        autoSelectionService.applySelection()
     }
 
     func moveDown(uid: String) {
         favoritesStore.moveDown(uid: uid)
+        autoSelectionService.applySelection()
     }
 }

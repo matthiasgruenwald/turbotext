@@ -76,9 +76,6 @@ final class AppState {
     let shortcutStore: ShortcutStore
     let hotkeyCaptureService: HotkeyCaptureService
 
-    // Microphone favorites (delegated to `microphoneState`)
-    var microphoneFavoritesStore: MicrophoneFavoritesStore { microphoneState.favoritesStore }
-
     // Network status
     let networkPingService: NetworkPingService
 

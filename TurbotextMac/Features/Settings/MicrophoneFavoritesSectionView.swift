@@ -1,25 +1,25 @@
 import SwiftUI
 
 struct MicrophoneFavoritesSectionView: View {
-    @Bindable var store: MicrophoneFavoritesStore
+    @Bindable var microphoneState: MicrophoneState
     let availableDevices: [AudioInputDevice]
 
     private var favoriteDevices: [AudioInputDevice] {
-        store.favoriteUIDs.map { uid in
+        microphoneState.favorites.map { uid in
             availableDevices.first(where: { $0.uid == uid })
                 ?? AudioInputDevice(id: 0, name: uid, uid: uid)
         }
     }
 
     private var addableDevices: [AudioInputDevice] {
-        availableDevices.filter { !store.favoriteUIDs.contains($0.uid) }
+        availableDevices.filter { !microphoneState.favorites.contains($0.uid) }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionLabel(text: "Mikrofon")
 
-            Toggle("macOS-Standard verwenden", isOn: $store.useSystemDefault)
+            Toggle("macOS-Standard verwenden", isOn: $microphoneState.useSystemDefault)
                 .toggleStyle(.switch)
                 .controlSize(.small)
 
@@ -28,7 +28,7 @@ struct MicrophoneFavoritesSectionView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if !store.useSystemDefault {
+            if !microphoneState.useSystemDefault {
                 if favoriteDevices.isEmpty {
                     Text("Keine Favoriten. Füge unten ein Mikrofon hinzu.")
                         .font(.system(size: 10.5))
@@ -40,9 +40,9 @@ struct MicrophoneFavoritesSectionView: View {
                                 device: device,
                                 isFirst: index == 0,
                                 isLast: index == favoriteDevices.count - 1,
-                                onMoveUp: { store.moveUp(uid: device.uid) },
-                                onMoveDown: { store.moveDown(uid: device.uid) },
-                                onRemove: { store.removeFavorite(uid: device.uid) }
+                                onMoveUp: { microphoneState.moveUp(uid: device.uid) },
+                                onMoveDown: { microphoneState.moveDown(uid: device.uid) },
+                                onRemove: { microphoneState.removeFavorite(uid: device.uid) }
                             )
                         }
                     }
@@ -57,7 +57,7 @@ struct MicrophoneFavoritesSectionView: View {
                         Menu {
                             ForEach(addableDevices) { device in
                                 Button(device.name) {
-                                    store.addFavorite(uid: device.uid)
+                                    microphoneState.addFavorite(uid: device.uid)
                                 }
                             }
                         } label: {
