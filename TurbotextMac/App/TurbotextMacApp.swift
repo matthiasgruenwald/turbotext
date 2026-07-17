@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var mainWindowController: MainWindowController!
     private var prewarmObserver: PrewarmObserver!
     private var dockModeObserver: DockModeObserver!
+    private var recordingOverlayController: RecordingOverlayController!
     let appState = AppState()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -61,6 +62,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         mainWindowController = MainWindowController(makeWindow: { [weak self] in
             self?.makeMainWindow() ?? NSWindow()
         })
+
+        recordingOverlayController = RecordingOverlayController(
+            orchestrator: appState.workflowLifecycle.orchestrator,
+            modeProvider: { [weak appState] in appState?.appSettings.recordingOverlayMode ?? .off }
+        )
+        recordingOverlayController.start()
 
         DockModeService.apply(dockModeEnabled: appState.appSettings.dockModeEnabled)
         appState.prewarmLocalTranscriptionIfNeeded()

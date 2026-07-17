@@ -12,6 +12,7 @@ struct AppSettings: Codable, Equatable {
     var dockModeEnabled: Bool = true
     var autoFallbackToLocalOnOffline: Bool = false
     var rewritingProviderMode: RewriteProviderMode = .auto
+    var recordingOverlayMode: RecordingOverlayMode = .textCursor
 
     enum CodingKeys: String, CodingKey {
         case hotkeyMode
@@ -23,6 +24,7 @@ struct AppSettings: Codable, Equatable {
         case dockModeEnabled
         case autoFallbackToLocalOnOffline
         case rewritingProviderMode
+        case recordingOverlayMode
     }
 }
 
@@ -53,6 +55,24 @@ extension AppSettings {
             RewriteProviderMode.self,
             forKey: .rewritingProviderMode
         ) ?? .auto
+        recordingOverlayMode = try container.decodeIfPresent(
+            RecordingOverlayMode.self,
+            forKey: .recordingOverlayMode
+        ) ?? .textCursor
+    }
+}
+
+enum RecordingOverlayMode: String, Codable, CaseIterable, Identifiable {
+    case off
+    case textCursor
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .off: return "Aus"
+        case .textCursor: return "Textcursor"
+        }
     }
 }
 

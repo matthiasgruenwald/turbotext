@@ -25,6 +25,19 @@ struct ShortcutsSettingsView: View {
                     .pickerStyle(.segmented)
                 }
 
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Aufnahmeanzeige")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+
+                    Picker("", selection: $appState.appSettings.recordingOverlayMode) {
+                        ForEach(RecordingOverlayMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
                 Divider()
 
                 VStack(alignment: .leading, spacing: 12) {
