@@ -65,6 +65,7 @@ extension AppSettings {
 enum RecordingOverlayMode: String, Codable, CaseIterable, Identifiable {
     case off
     case textCursor
+    case screenBottomCenter
 
     var id: String { rawValue }
 
@@ -72,6 +73,7 @@ enum RecordingOverlayMode: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .off: return "Aus"
         case .textCursor: return "Textcursor"
+        case .screenBottomCenter: return "Bildschirmmitte unten"
         }
     }
 }

@@ -18,6 +18,11 @@ final class RecordingOverlayController {
     private let orchestrator: WorkflowOrchestrator
     private let modeProvider: () -> RecordingOverlayMode
     private let anchorResolver: () -> RecordingOverlayAnchor
+    /// Caret rect for one specific app, by process id. Drives continuous repositioning
+    /// in `.textCursor` mode while `.recording`/`.processing`, bound to the target app
+    /// captured at workflow start rather than whichever app currently has focus.
+    private let caretRectProvider: (pid_t) -> CGRect?
+    private let screenBottomCenterProvider: () -> CGPoint
     private let levelProvider: () -> Float?
     private let errorMessageProvider: () -> String?
 
@@ -32,13 +37,33 @@ final class RecordingOverlayController {
     init(
         orchestrator: WorkflowOrchestrator,
         modeProvider: @escaping () -> RecordingOverlayMode,
-        anchorResolver: @escaping () -> RecordingOverlayAnchor = RecordingOverlayAnchorResolver.resolveWithSystemProviders,
+        anchorResolver: (() -> RecordingOverlayAnchor)? = nil,
+        caretRectProvider: @escaping (pid_t) -> CGRect? = RecordingOverlayAnchorResolver.caretRect(forProcessIdentifier:),
+        screenBottomCenterProvider: @escaping () -> CGPoint = { RecordingOverlayAnchorResolver.activeScreenBottomCenter() },
         levelProvider: (() -> Float?)? = nil,
         errorMessageProvider: (() -> String?)? = nil
     ) {
         self.orchestrator = orchestrator
         self.modeProvider = modeProvider
-        self.anchorResolver = anchorResolver
+        // Mode- and target-aware initial anchor, so the very first rendered frame already
+        // matches what `repositionIfNeeded()` would settle on, instead of flashing at a
+        // system-wide (possibly wrong-app) or off-screen position for one poll tick.
+        // Tests inject an explicit resolver and don't rely on this default.
+        self.anchorResolver = anchorResolver ?? { [weak orchestrator] in
+            switch modeProvider() {
+            case .off:
+                return RecordingOverlayAnchorResolver.resolveWithSystemProviders()
+            case .textCursor:
+                if let pid = orchestrator?.activePasteTargetProcessIdentifier, let rect = caretRectProvider(pid) {
+                    return RecordingOverlayAnchor(point: CGPoint(x: rect.minX, y: rect.minY), source: .textCursor)
+                }
+                return RecordingOverlayAnchorResolver.resolveWithSystemProviders()
+            case .screenBottomCenter:
+                return RecordingOverlayAnchor(point: screenBottomCenterProvider(), source: .screenBottomCenter)
+            }
+        }
+        self.caretRectProvider = caretRectProvider
+        self.screenBottomCenterProvider = screenBottomCenterProvider
         self.levelProvider = levelProvider ?? { [weak orchestrator] in orchestrator?.activeWorkflow?.audioLevel }
         self.errorMessageProvider = errorMessageProvider ?? { [weak orchestrator] in orchestrator?.lastErrorMessage }
     }
@@ -63,6 +88,7 @@ final class RecordingOverlayController {
         }
 
         let previousPhase = state.phase
+        let previousAnchor = state.anchor
         state = state.applying(
             menuBarStatus: orchestrator.menuBarStatus,
             resolveAnchor: anchorResolver,
@@ -74,14 +100,37 @@ final class RecordingOverlayController {
             if let level = levelProvider() {
                 state = state.receivingLevel(level, elapsed: Self.pollInterval)
             }
+            repositionIfNeeded()
+        case .processing:
+            repositionIfNeeded()
         case .error:
             state = state.advancingError(by: Self.pollInterval)
-        case .hidden, .processing:
+        case .hidden:
             break
         }
 
-        guard state.phase != previousPhase || state.phase == .recording else { return }
+        let anchorChanged = state.anchor != previousAnchor
+        guard state.phase != previousPhase || state.phase == .recording || anchorChanged else { return }
         render()
+    }
+
+    /// Keeps the overlay following its anchor while `.recording`/`.processing`, past the
+    /// single resolution `applying()` does at the phase transition. `.textCursor` re-queries
+    /// the target app's caret by pid every tick (freezing at the last known position once
+    /// that app stops reporting one — e.g. focus moved elsewhere); `.screenBottomCenter`
+    /// re-samples the active screen every tick. A workflow with no captured target app
+    /// (e.g. started without a paste target) keeps the frozen anchor `applying()` resolved.
+    private func repositionIfNeeded() {
+        switch modeProvider() {
+        case .off:
+            return
+        case .textCursor:
+            guard let targetPid = orchestrator.activePasteTargetProcessIdentifier,
+                  let rect = caretRectProvider(targetPid) else { return }
+            state = state.repositioned(to: RecordingOverlayAnchor(point: CGPoint(x: rect.minX, y: rect.minY), source: .textCursor))
+        case .screenBottomCenter:
+            state = state.repositioned(to: RecordingOverlayAnchor(point: screenBottomCenterProvider(), source: .screenBottomCenter))
+        }
     }
 
     /// Manual close of a visible start error, e.g. from a click on the pill.
@@ -148,7 +197,13 @@ final class RecordingOverlayController {
 
     private func positionPanel(_ panel: NSPanel) {
         guard let anchor = state.anchor else { return }
-        let origin = NSPoint(x: anchor.point.x, y: anchor.point.y + 12)
-        panel.setFrameOrigin(origin)
+        switch anchor.source {
+        case .textCursor, .mousePointer:
+            panel.setFrameOrigin(NSPoint(x: anchor.point.x, y: anchor.point.y + 12))
+        case .screenBottomCenter:
+            // The anchor point is the desired horizontal center, not a left edge.
+            let origin = NSPoint(x: anchor.point.x - panel.frame.width / 2, y: anchor.point.y)
+            panel.setFrameOrigin(origin)
+        }
     }
 }

@@ -53,9 +53,11 @@ struct RecordingOverlayState: Equatable {
         self.errorElapsed = errorElapsed
     }
 
-    /// Applies one `MenuBarStatus` observation. `anchor` is only consulted when
-    /// transitioning from a non-recording phase into `.recording`, so the
-    /// anchor freezes at the moment recording starts and never moves after.
+    /// Applies one `MenuBarStatus` observation. `resolveAnchor` is only consulted when
+    /// transitioning from a non-recording phase into `.recording` (or into `.error`); while
+    /// already `.recording`/`.processing`, `repositioned(to:)` is what moves the anchor
+    /// (see `RecordingOverlayController.repositionIfNeeded()`), so this method's own anchor
+    /// handling here is a one-time resolution, not a freeze for the rest of the lifetime.
     ///
     /// A known recording-start error (`.error` observed while the overlay was still
     /// `.hidden`, i.e. recording never visibly began) surfaces as an `.error` phase.
@@ -98,6 +100,24 @@ struct RecordingOverlayState: Equatable {
             guard phase != .error else { return self }
             return .hidden
         }
+    }
+
+    /// Moves the anchor while `.recording` or `.processing`, keeping every other field
+    /// unchanged. Lets the overlay keep following the target app's text cursor (or
+    /// re-sample the active screen's bottom center) after the initial `applying()`
+    /// resolution, without disturbing level history, silence tracking, or phase.
+    /// A no-op outside those two phases.
+    func repositioned(to anchor: RecordingOverlayAnchor) -> RecordingOverlayState {
+        guard phase == .recording || phase == .processing else { return self }
+        guard anchor != self.anchor else { return self }
+        return RecordingOverlayState(
+            phase: phase,
+            anchor: anchor,
+            levelHistory: levelHistory,
+            silenceElapsed: silenceElapsed,
+            errorMessage: errorMessage,
+            errorElapsed: errorElapsed
+        )
     }
 
     func receivingLevel(_ level: Float, elapsed: TimeInterval = 0) -> RecordingOverlayState {

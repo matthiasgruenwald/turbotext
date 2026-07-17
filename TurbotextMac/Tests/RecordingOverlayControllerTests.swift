@@ -30,7 +30,7 @@ private final class FakeOverlayWorkflow: Workflow {
 }
 
 @MainActor
-private func makeOrchestratorWithWorkflow() -> (WorkflowOrchestrator, FakeOverlayWorkflow) {
+private func makeOrchestratorWithWorkflow(pasteTarget: PasteTarget? = nil) -> (WorkflowOrchestrator, FakeOverlayWorkflow) {
     var createdWorkflow: FakeOverlayWorkflow!
     let orchestrator = WorkflowOrchestrator(
         workflowFactory: { type, _ in
@@ -43,8 +43,12 @@ private func makeOrchestratorWithWorkflow() -> (WorkflowOrchestrator, FakeOverla
         frontmostPidProvider: { nil },
         writeToPasteboard: { _ in }
     )
-    orchestrator.start(.transcription, source: .manual, pasteTarget: nil)
+    orchestrator.start(.transcription, source: .manual, pasteTarget: pasteTarget)
     return (orchestrator, createdWorkflow)
+}
+
+private func makeFakePasteTarget(pid: pid_t) -> PasteTarget {
+    PasteTarget(bundleIdentifier: "com.example.target", processIdentifier: pid, application: NSRunningApplication.current)
 }
 
 @MainActor
@@ -285,5 +289,108 @@ final class RecordingOverlayControllerTests: XCTestCase {
 
         XCTAssertEqual(controller.state.phase, .recording, "recording keeps running while the hint is shown")
         XCTAssertTrue(controller.state.showsSilenceHint)
+    }
+
+    // MARK: - Target-app-bound tracking in .textCursor mode (#106)
+
+    func testTextCursorModeFollowsTheCapturedTargetAppsCaretAcrossTicks() {
+        let target = makeFakePasteTarget(pid: 4242)
+        let (orchestrator, workflow) = makeOrchestratorWithWorkflow(pasteTarget: target)
+        var caretRects: [pid_t: CGRect] = [4242: CGRect(x: 10, y: 10, width: 2, height: 16)]
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .textCursor },
+            anchorResolver: { self.anchor },
+            caretRectProvider: { caretRects[$0] },
+            levelProvider: { workflow.audioLevel }
+        )
+
+        controller.tick()
+        XCTAssertEqual(controller.state.anchor?.point, CGPoint(x: 10, y: 10))
+
+        caretRects[4242] = CGRect(x: 50, y: 60, width: 2, height: 16)
+        controller.tick()
+
+        XCTAssertEqual(controller.state.anchor?.point, CGPoint(x: 50, y: 60), "must follow the target app's caret as it moves")
+        XCTAssertEqual(controller.state.anchor?.source, .textCursor)
+    }
+
+    /// When the target app stops reporting a caret (e.g. focus moved to another app or
+    /// window), the overlay must stay put at the target app's last known position rather
+    /// than jumping to whatever the mouse or a different app's focus reports.
+    func testTextCursorModeFreezesAtLastKnownPositionWhenTargetAppLosesFocus() {
+        let target = makeFakePasteTarget(pid: 4242)
+        let (orchestrator, workflow) = makeOrchestratorWithWorkflow(pasteTarget: target)
+        var caretRect: CGRect? = CGRect(x: 10, y: 10, width: 2, height: 16)
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .textCursor },
+            anchorResolver: { self.anchor },
+            caretRectProvider: { _ in caretRect },
+            levelProvider: { workflow.audioLevel }
+        )
+
+        controller.tick()
+        XCTAssertEqual(controller.state.anchor?.point, CGPoint(x: 10, y: 10))
+
+        // Simulate focus switching away: the target app's pid no longer yields a caret rect.
+        caretRect = nil
+        controller.tick()
+        controller.tick()
+
+        XCTAssertEqual(controller.state.anchor?.point, CGPoint(x: 10, y: 10), "must stay at the target app's last known position")
+    }
+
+    func testTextCursorModeWithoutACapturedTargetKeepsTheFrozenInitialAnchor() {
+        let (orchestrator, workflow) = makeOrchestratorWithWorkflow(pasteTarget: nil)
+        var caretCallCount = 0
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .textCursor },
+            anchorResolver: { self.anchor },
+            caretRectProvider: { _ in caretCallCount += 1; return CGRect(x: 99, y: 99, width: 1, height: 1) },
+            levelProvider: { workflow.audioLevel }
+        )
+
+        controller.tick()
+        controller.tick()
+
+        XCTAssertEqual(controller.state.anchor, anchor, "with no captured target app there is nothing to bind to")
+        XCTAssertEqual(caretCallCount, 0, "the pid-bound caret provider must never be consulted without a target pid")
+    }
+
+    // MARK: - .screenBottomCenter positioning mode (#106)
+
+    func testScreenBottomCenterModePositionsAtTheProvidedScreenPoint() {
+        let (orchestrator, workflow) = makeOrchestratorWithWorkflow()
+        let bottomCenter = CGPoint(x: 640, y: 40)
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            screenBottomCenterProvider: { bottomCenter },
+            levelProvider: { workflow.audioLevel }
+        )
+
+        controller.tick()
+
+        XCTAssertEqual(controller.state.anchor?.point, bottomCenter)
+        XCTAssertEqual(controller.state.anchor?.source, .screenBottomCenter)
+    }
+
+    func testScreenBottomCenterModeReSamplesTheActiveScreenAcrossTicks() {
+        let (orchestrator, workflow) = makeOrchestratorWithWorkflow()
+        var bottomCenter = CGPoint(x: 640, y: 40)
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            screenBottomCenterProvider: { bottomCenter },
+            levelProvider: { workflow.audioLevel }
+        )
+
+        controller.tick()
+        bottomCenter = CGPoint(x: 1920, y: 40)
+        controller.tick()
+
+        XCTAssertEqual(controller.state.anchor?.point, bottomCenter, "must follow the active screen if it changes mid-recording")
     }
 }

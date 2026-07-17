@@ -28,4 +28,18 @@ final class RecordingOverlaySettingTests: XCTestCase {
 
         XCTAssertEqual(decoded.recordingOverlayMode, .off)
     }
+
+    func testAppSettingsRoundTripsRecordingOverlayModeScreenBottomCenter() throws {
+        var settings = AppSettings()
+        settings.recordingOverlayMode = .screenBottomCenter
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(decoded.recordingOverlayMode, .screenBottomCenter)
+    }
+
+    func testRecordingOverlayModeOffersAllThreePositioningChoices() {
+        XCTAssertEqual(Set(RecordingOverlayMode.allCases), [.off, .textCursor, .screenBottomCenter])
+    }
 }

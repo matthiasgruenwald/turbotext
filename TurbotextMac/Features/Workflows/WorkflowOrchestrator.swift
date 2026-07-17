@@ -73,6 +73,11 @@ final class WorkflowOrchestrator {
 
     private(set) var activeLaunchSource: WorkflowLaunchSource = .manual
     private var activePasteTarget: PasteTarget?
+
+    /// Process id of the app captured as the insertion target at workflow start, if any.
+    /// Read by `RecordingOverlayController` to keep the text-cursor overlay bound to that
+    /// specific app's caret even if focus moves to a different app or window meanwhile.
+    var activePasteTargetProcessIdentifier: pid_t? { activePasteTarget?.processIdentifier }
     private var menuBarStatusResetTask: Task<Void, Never>?
     private var workflowCleanupTask: Task<Void, Never>?
 

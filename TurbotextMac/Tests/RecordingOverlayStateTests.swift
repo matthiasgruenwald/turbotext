@@ -86,6 +86,48 @@ final class RecordingOverlayStateTests: XCTestCase {
         XCTAssertEqual(RecordingOverlayState.levelHistoryLimit, 30)
     }
 
+    // MARK: - Repositioning while recording/processing (#106 target-app binding)
+
+    func testRepositionedMovesTheAnchorWhileRecording() {
+        let recording = RecordingOverlayState.hidden.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+
+        let moved = recording.repositioned(to: mouseAnchor)
+
+        XCTAssertEqual(moved.anchor, mouseAnchor)
+        XCTAssertEqual(moved.phase, .recording)
+    }
+
+    func testRepositionedMovesTheAnchorWhileProcessing() {
+        let processing = RecordingOverlayState.hidden
+            .applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+            .applying(menuBarStatus: .processing(.transcription)) { self.anchor }
+
+        let moved = processing.repositioned(to: mouseAnchor)
+
+        XCTAssertEqual(moved.anchor, mouseAnchor)
+        XCTAssertEqual(moved.phase, .processing)
+    }
+
+    func testRepositionedIsANoOpOutsideRecordingOrProcessing() {
+        XCTAssertEqual(RecordingOverlayState.hidden.repositioned(to: mouseAnchor), .hidden)
+
+        let errored = RecordingOverlayState.hidden.applying(
+            menuBarStatus: .error(.transcription), resolveAnchor: { self.anchor }, resolveErrorMessage: { "boom" }
+        )
+        XCTAssertEqual(errored.repositioned(to: mouseAnchor).anchor, anchor)
+    }
+
+    func testRepositionedPreservesLevelHistoryAndSilenceTracking() {
+        let recording = RecordingOverlayState.hidden
+            .applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+            .receivingLevel(0.6, elapsed: 1)
+
+        let moved = recording.repositioned(to: mouseAnchor)
+
+        XCTAssertEqual(moved.levelHistory, [0.6])
+        XCTAssertEqual(moved.showsSilenceHint, recording.showsSilenceHint)
+    }
+
     // MARK: - Silence hint
 
     func testSilenceHintAppearsAfterFiveSecondsWithoutUsableSignal() {

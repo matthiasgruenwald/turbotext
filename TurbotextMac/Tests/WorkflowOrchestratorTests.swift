@@ -217,6 +217,40 @@ final class WorkflowOrchestratorTests: XCTestCase {
         XCTAssertEqual(orchestrator.menuBarStatus, .idle)
     }
 
+    // MARK: - Target app binding (activePasteTargetProcessIdentifier)
+
+    /// `RecordingOverlayController` reads this to bind the text-cursor overlay to the
+    /// specific app captured at start, independent of whichever app the user later focuses.
+    func testActivePasteTargetProcessIdentifierReflectsTheCapturedTarget() {
+        let box = WorkflowBox()
+        let orchestrator = makeOrchestrator(createdWorkflows: box)
+        let target = makeFakePasteTarget(pid: 777)
+
+        orchestrator.start(.transcription, source: .manual, pasteTarget: target)
+
+        XCTAssertEqual(orchestrator.activePasteTargetProcessIdentifier, 777)
+    }
+
+    func testActivePasteTargetProcessIdentifierIsNilWithoutACapturedTarget() {
+        let box = WorkflowBox()
+        let orchestrator = makeOrchestrator(createdWorkflows: box)
+
+        orchestrator.start(.transcription, source: .manual, pasteTarget: nil)
+
+        XCTAssertNil(orchestrator.activePasteTargetProcessIdentifier)
+    }
+
+    func testActivePasteTargetProcessIdentifierClearsOnReset() {
+        let box = WorkflowBox()
+        let orchestrator = makeOrchestrator(createdWorkflows: box)
+        let target = makeFakePasteTarget(pid: 777)
+
+        orchestrator.start(.transcription, source: .manual, pasteTarget: target)
+        orchestrator.reset()
+
+        XCTAssertNil(orchestrator.activePasteTargetProcessIdentifier)
+    }
+
     // MARK: - Paste retry-on-failure path
 
     func testPasteSucceedsImmediatelyWhenTargetAlreadyFrontmost() {
