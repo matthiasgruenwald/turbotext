@@ -18,6 +18,7 @@ final class AppState {
     let microphoneState: MicrophoneState
     private let localModelState: LocalModelState
     private let appleSpeechAvailabilityState: AppleSpeechAvailabilityState
+    private let rewriteConsentCoordinator: RewriteConsentCoordinating
 
     var activeWorkflow: (any Workflow)? { workflowLifecycle.activeWorkflow }
     var currentPhase: WorkflowPhase { workflowLifecycle.currentPhase }
@@ -116,7 +117,8 @@ final class AppState {
     }
 
     init(
-        groqTranscriptionProvider: GroqTranscriptionProvider? = nil
+        groqTranscriptionProvider: GroqTranscriptionProvider? = nil,
+        rewriteConsentCoordinator: RewriteConsentCoordinating? = nil
     ) {
         let groqTranscriptionProvider = groqTranscriptionProvider ?? GroqTranscriptionProvider()
         self.groqTranscriptionProvider = groqTranscriptionProvider
@@ -136,6 +138,10 @@ final class AppState {
             setHasAutoSelectedFastLocalModel: { settings.appSettings.hasAutoSelectedFastLocalModel = $0 }
         )
         self.appleSpeechAvailabilityState = AppleSpeechAvailabilityState()
+        self.rewriteConsentCoordinator = rewriteConsentCoordinator ?? RewriteConsentCoordinator(
+            getConsents: { settings.appSettings.rewriteConsents },
+            setConsents: { settings.appSettings.rewriteConsents = $0 }
+        )
 
         let lifecycle = WorkflowLifecycleManager()
         self.workflowLifecycle = lifecycle
@@ -299,7 +305,15 @@ final class AppState {
                 settings: textImprovementSettings,
                 language: transcriptionSettings.language,
                 providerMode: appSettings.rewritingProviderMode,
-                transcriber: defaultResolvedTranscriber
+                transcriber: defaultResolvedTranscriber,
+                improver: { [rewriteConsentCoordinator] text, settings, providerMode in
+                    try await LLMService.improveLocalFirst(
+                        text: text,
+                        settings: settings,
+                        providerMode: providerMode,
+                        consent: rewriteConsentCoordinator
+                    )
+                }
             )
         case .dampfAblassen:
             return SpokenRewriteWorkflow.dampfAblassen(
@@ -307,7 +321,15 @@ final class AppState {
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
                 providerMode: appSettings.rewritingProviderMode,
-                transcriber: defaultResolvedTranscriber
+                transcriber: defaultResolvedTranscriber,
+                rewriter: { [rewriteConsentCoordinator] text, settings, providerMode in
+                    try await LLMService.dampfAblassenLocalFirst(
+                        text: text,
+                        systemPrompt: settings.systemPrompt,
+                        providerMode: providerMode,
+                        consent: rewriteConsentCoordinator
+                    )
+                }
             )
         case .emojiText:
             return SpokenRewriteWorkflow.emojiText(
@@ -315,7 +337,15 @@ final class AppState {
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
                 providerMode: appSettings.rewritingProviderMode,
-                transcriber: defaultResolvedTranscriber
+                transcriber: defaultResolvedTranscriber,
+                rewriter: { [rewriteConsentCoordinator] text, settings, providerMode in
+                    try await LLMService.addEmojisLocalFirst(
+                        text: text,
+                        settings: settings,
+                        providerMode: providerMode,
+                        consent: rewriteConsentCoordinator
+                    )
+                }
             )
         }
     }

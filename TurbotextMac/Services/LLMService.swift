@@ -170,6 +170,95 @@ enum LLMService {
         )
     }
 
+    // MARK: - Local-first routing (#124)
+
+    static func improveLocalFirst(
+        text: String,
+        settings: TextImprovementSettings,
+        model: RewriteModel = .fastEdit,
+        providerMode: RewriteProviderMode = .auto,
+        hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
+        consent: RewriteConsentCoordinating
+    ) async throws -> String {
+        try await completeLocalFirst(
+            text: text,
+            systemPrompt: buildSystemPrompt(settings: settings),
+            workflow: .textImprover,
+            model: model,
+            temperature: 0.3,
+            providerMode: providerMode,
+            hasGroqKey: hasGroqKey,
+            consent: consent
+        )
+    }
+
+    static func dampfAblassenLocalFirst(
+        text: String,
+        systemPrompt: String,
+        model: RewriteModel = .rageMode,
+        providerMode: RewriteProviderMode = .auto,
+        hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
+        consent: RewriteConsentCoordinating
+    ) async throws -> String {
+        try await completeLocalFirst(
+            text: text,
+            systemPrompt: systemPrompt,
+            workflow: .dampfAblassen,
+            model: model,
+            temperature: 0.4,
+            providerMode: providerMode,
+            hasGroqKey: hasGroqKey,
+            consent: consent
+        )
+    }
+
+    static func addEmojisLocalFirst(
+        text: String,
+        settings: EmojiTextSettings,
+        model: RewriteModel = .fastEdit,
+        providerMode: RewriteProviderMode = .auto,
+        hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
+        consent: RewriteConsentCoordinating
+    ) async throws -> String {
+        try await completeLocalFirst(
+            text: text,
+            systemPrompt: buildEmojiSystemPrompt(density: settings.emojiDensity),
+            workflow: .emojiText,
+            model: model,
+            temperature: 0.3,
+            providerMode: providerMode,
+            hasGroqKey: hasGroqKey,
+            consent: consent
+        )
+    }
+
+    private static func completeLocalFirst(
+        text: String,
+        systemPrompt: String,
+        workflow: WorkflowType,
+        model: RewriteModel,
+        temperature: Double,
+        providerMode: RewriteProviderMode,
+        hasGroqKey: Bool,
+        consent: RewriteConsentCoordinating
+    ) async throws -> String {
+        let router = RewriteRouter(providerMode: providerMode, hasGroqKey: hasGroqKey)
+        return try await router.complete(
+            text: text,
+            systemPrompt: systemPrompt,
+            temperature: temperature,
+            workflow: workflow,
+            appleProvider: RewriteRouter.resolveAppleProvider(),
+            openAIProvider: OpenAIProvider(model: model),
+            groqProvider: GroqProvider(),
+            presentConsent: { reason, provider in
+                await consent.presentConsent(reason: reason, provider: provider)
+            },
+            readConsent: consent.readConsent,
+            writeConsent: consent.writeConsent
+        )
+    }
+
     private static func buildEmojiSystemPrompt(density: EmojiTextSettings.EmojiDensity) -> String {
         let densityInstruction: String
         switch density {

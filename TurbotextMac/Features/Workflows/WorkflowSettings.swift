@@ -13,6 +13,10 @@ struct AppSettings: Codable, Equatable {
     var autoFallbackToLocalOnOffline: Bool = false
     var rewritingProviderMode: RewriteProviderMode = .auto
     var recordingOverlayMode: RecordingOverlayMode = .screenBottomCenter
+    /// Per-workflow consent to route rewrites to a named online provider once on-device
+    /// rewriting fails (#124). Cleared for a workflow whenever its configured online
+    /// provider changes, so a fresh consent is required.
+    var rewriteConsents: [WorkflowType: OnlineProvider] = [:]
 
     enum CodingKeys: String, CodingKey {
         case hotkeyMode
@@ -25,6 +29,7 @@ struct AppSettings: Codable, Equatable {
         case autoFallbackToLocalOnOffline
         case rewritingProviderMode
         case recordingOverlayMode
+        case rewriteConsents
     }
 }
 
@@ -70,6 +75,10 @@ extension AppSettings {
             RecordingOverlayMode.self,
             forKey: .recordingOverlayMode
         ) ?? .screenBottomCenter
+        rewriteConsents = try container.decodeIfPresent(
+            [WorkflowType: OnlineProvider].self,
+            forKey: .rewriteConsents
+        ) ?? [:]
     }
 }
 
