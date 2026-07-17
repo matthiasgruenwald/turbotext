@@ -12,7 +12,7 @@ struct AppSettings: Codable, Equatable {
     var dockModeEnabled: Bool = true
     var autoFallbackToLocalOnOffline: Bool = false
     var rewritingProviderMode: RewriteProviderMode = .auto
-    var recordingOverlayMode: RecordingOverlayMode = .textCursor
+    var recordingOverlayMode: RecordingOverlayMode = .screenBottomCenter
 
     enum CodingKeys: String, CodingKey {
         case hotkeyMode
@@ -58,13 +58,12 @@ extension AppSettings {
         recordingOverlayMode = try container.decodeIfPresent(
             RecordingOverlayMode.self,
             forKey: .recordingOverlayMode
-        ) ?? .textCursor
+        ) ?? .screenBottomCenter
     }
 }
 
 enum RecordingOverlayMode: String, Codable, CaseIterable, Identifiable {
     case off
-    case textCursor
     case screenBottomCenter
 
     var id: String { rawValue }
@@ -72,8 +71,20 @@ enum RecordingOverlayMode: String, Codable, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .off: return "Aus"
-        case .textCursor: return "Textcursor"
-        case .screenBottomCenter: return "Bildschirmmitte unten"
+        case .screenBottomCenter: return "Unten mittig im Zielbildschirm"
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let rawValue = try decoder.singleValueContainer().decode(String.self)
+        if rawValue == "textCursor" {
+            self = .screenBottomCenter
+        } else if let mode = RecordingOverlayMode(rawValue: rawValue) {
+            self = mode
+        } else {
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: [], debugDescription: "Unbekannter Aufnahmeanzeige-Modus.")
+            )
         }
     }
 }

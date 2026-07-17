@@ -3,11 +3,11 @@ import XCTest
 
 final class RecordingOverlaySettingTests: XCTestCase {
 
-    func testAppSettingsDefaultsRecordingOverlayModeToTextCursor() {
-        XCTAssertEqual(AppSettings().recordingOverlayMode, .textCursor)
+    func testAppSettingsDefaultsRecordingOverlayModeToScreenBottomCenter() {
+        XCTAssertEqual(AppSettings().recordingOverlayMode, .screenBottomCenter)
     }
 
-    func testAppSettingsDecodingWithoutRecordingOverlayModeKeyDefaultsToTextCursor() throws {
+    func testAppSettingsDecodingWithoutRecordingOverlayModeKeyDefaultsToScreenBottomCenter() throws {
         let json = """
         {
             "hotkeyMode": "hold",
@@ -16,7 +16,19 @@ final class RecordingOverlaySettingTests: XCTestCase {
         """
         let data = Data(json.utf8)
         let settings = try JSONDecoder().decode(AppSettings.self, from: data)
-        XCTAssertEqual(settings.recordingOverlayMode, .textCursor)
+        XCTAssertEqual(settings.recordingOverlayMode, .screenBottomCenter)
+    }
+
+    func testAppSettingsMigratesTextCursorModeToScreenBottomCenter() throws {
+        let json = """
+        {
+            "recordingOverlayMode": "textCursor"
+        }
+        """
+
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(settings.recordingOverlayMode, .screenBottomCenter)
     }
 
     func testAppSettingsRoundTripsRecordingOverlayModeOff() throws {
@@ -39,7 +51,7 @@ final class RecordingOverlaySettingTests: XCTestCase {
         XCTAssertEqual(decoded.recordingOverlayMode, .screenBottomCenter)
     }
 
-    func testRecordingOverlayModeOffersAllThreePositioningChoices() {
-        XCTAssertEqual(Set(RecordingOverlayMode.allCases), [.off, .textCursor, .screenBottomCenter])
+    func testRecordingOverlayModeOffersTheTwoSupportedPositioningChoices() {
+        XCTAssertEqual(Set(RecordingOverlayMode.allCases), [.off, .screenBottomCenter])
     }
 }
