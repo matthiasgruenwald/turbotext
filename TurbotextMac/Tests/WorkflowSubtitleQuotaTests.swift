@@ -6,6 +6,7 @@ final class WorkflowSubtitleQuotaTests: XCTestCase {
 
     override func tearDown() {
         KeychainService.delete(key: .groqAPIKey)
+        KeychainService.delete(key: .openAIAPIKey)
         resetQuotaStore()
         super.tearDown()
     }
@@ -34,5 +35,15 @@ final class WorkflowSubtitleQuotaTests: XCTestCase {
         GroqFallbackManager.shared.reportRateLimitExceeded(resetAt: Date().addingTimeInterval(3600))
         let appState = AppState()
         XCTAssertEqual(appState.workflowSubtitle(for: .transcription), "Sprache rein. Landet in Zwischenablage.")
+    }
+
+    func testRewriteWorkflowsStayAvailableWhenAlwaysLocalTranscriptionIsEnabled() throws {
+        try KeychainService.save(key: .openAIAPIKey, value: "sk-test-key-1234567890")
+        let appState = AppState()
+        appState.appSettings.alwaysLocalTranscription = true
+
+        XCTAssertTrue(appState.isWorkflowAvailable(.textImprover))
+        XCTAssertTrue(appState.isWorkflowAvailable(.dampfAblassen))
+        XCTAssertTrue(appState.isWorkflowAvailable(.emojiText))
     }
 }

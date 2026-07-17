@@ -6,9 +6,9 @@ enum GroqFallbackBanner {
     static func content(
         fallbackActive: Bool,
         resetAt: Date?,
-        secureLocalModeEnabled: Bool
+        alwaysLocalTranscription: Bool
     ) -> (title: String, detail: String)? {
-        guard !secureLocalModeEnabled, fallbackActive else { return nil }
+        guard !alwaysLocalTranscription, fallbackActive else { return nil }
         var detail = "OpenAI Whisper aktiv."
         if let resetAt {
             let formatter = DateFormatter()

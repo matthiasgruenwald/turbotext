@@ -123,8 +123,8 @@ final class AppState {
         self.localModelState = LocalModelState(
             getSelectedModelName: { settings.appSettings.selectedLocalTranscriptionModelName },
             setSelectedModelName: { settings.appSettings.selectedLocalTranscriptionModelName = $0 },
-            getSecureLocalModeEnabled: { settings.appSettings.secureLocalModeEnabled },
-            setSecureLocalModeEnabled: { settings.appSettings.secureLocalModeEnabled = $0 },
+            getAlwaysLocalTranscription: { settings.appSettings.alwaysLocalTranscription },
+            setAlwaysLocalTranscription: { settings.appSettings.alwaysLocalTranscription = $0 },
             getHasAutoSelectedFastLocalModel: { settings.appSettings.hasAutoSelectedFastLocalModel },
             setHasAutoSelectedFastLocalModel: { settings.appSettings.hasAutoSelectedFastLocalModel = $0 }
         )
@@ -173,7 +173,7 @@ final class AppState {
             defer { self?.isCheckingGroqQuota = false }
             guard let self else { return }
             await groqTranscriptionProvider.checkGroqQuotaIfNeeded(
-                secureLocalModeEnabled: appSettings.secureLocalModeEnabled
+                alwaysLocalTranscription: appSettings.alwaysLocalTranscription
             )
         }
     }
@@ -201,13 +201,13 @@ final class AppState {
         return GroqFallbackBanner.content(
             fallbackActive: status.fallbackActive,
             resetAt: status.rateLimitResetAt,
-            secureLocalModeEnabled: appSettings.secureLocalModeEnabled
+            alwaysLocalTranscription: appSettings.alwaysLocalTranscription
         )
     }
 
     var onlineKeyHintBannerContent: (title: String, detail: String)? {
         OnlineKeyHintBanner.content(
-            secureLocalModeEnabled: appSettings.secureLocalModeEnabled,
+            alwaysLocalTranscription: appSettings.alwaysLocalTranscription,
             hasAnyAPIKey: KeychainService.load(key: .openAIAPIKey) != nil
                 || KeychainService.load(key: .groqAPIKey) != nil
         )
@@ -216,7 +216,7 @@ final class AppState {
     var transcriptionModeStatus: TranscriptionModeStatus {
         let status = groqTranscriptionProvider.quotaUIStatus
         return TranscriptionModeStatus(
-            secureLocalModeEnabled: appSettings.secureLocalModeEnabled,
+            alwaysLocalTranscription: appSettings.alwaysLocalTranscription,
             selectedLocalModelInstalled: selectedLocalModelIsInstalled,
             selectedLocalModelDisplayName: selectedLocalModelDisplayName,
             isDownloadingLocalModel: isDownloadingLocalModel,
@@ -234,9 +234,6 @@ final class AppState {
         case .localTranscription:
             return "Nur lokal. Kein Server."
         case .textImprover, .dampfAblassen, .emojiText:
-            if appSettings.secureLocalModeEnabled {
-                return "Im lokalen Modus pausiert."
-            }
             return type.subtitle
         }
     }
@@ -273,7 +270,7 @@ final class AppState {
     ) -> (any Workflow)? {
         switch type {
         case .transcription:
-            let backend = backendOverride ?? (appSettings.secureLocalModeEnabled ? .local : .remote)
+            let backend = backendOverride ?? (appSettings.alwaysLocalTranscription ? .local : .remote)
             return TranscriptionWorkflow(
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
@@ -342,11 +339,11 @@ final class AppState {
         case .localTranscription:
             return selectedLocalModelIsInstalled
         case .transcription:
-            return transcriptionModeStatus.secureLocalModeEnabled
+            return transcriptionModeStatus.alwaysLocalTranscription
                 ? transcriptionModeStatus.selectedLocalModelInstalled
                 : KeychainService.isConfigured
         case .textImprover, .dampfAblassen, .emojiText:
-            return !appSettings.secureLocalModeEnabled && KeychainService.isConfigured
+            return KeychainService.isConfigured
         }
     }
 
@@ -358,8 +355,8 @@ final class AppState {
         workflowLifecycle.reset()
     }
 
-    func enableSecureLocalMode() {
-        appSettings.secureLocalModeEnabled = true
+    func enableAlwaysLocalTranscription() {
+        appSettings.alwaysLocalTranscription = true
         if !selectedLocalModelIsInstalled {
             installSelectedLocalModel()
         }

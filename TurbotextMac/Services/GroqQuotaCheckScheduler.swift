@@ -6,11 +6,11 @@ import Foundation
 enum GroqQuotaCheckScheduler {
     static func shouldCheck(
         hasGroqKey: Bool,
-        secureLocalModeEnabled: Bool,
+        alwaysLocalTranscription: Bool,
         remainingAudioSeconds: Int?,
         fallbackActive: Bool
     ) -> Bool {
-        guard hasGroqKey, !secureLocalModeEnabled, !fallbackActive else { return false }
+        guard hasGroqKey, !alwaysLocalTranscription, !fallbackActive else { return false }
         return remainingAudioSeconds == nil
     }
 }

@@ -10,7 +10,7 @@ final class PrewarmObserverTests: XCTestCase {
 
         var old = AppSettings()
         var new = AppSettings()
-        new.secureLocalModeEnabled = true
+        new.alwaysLocalTranscription = true
 
         observer.handleSettingsChange(old: old, new: new)
 

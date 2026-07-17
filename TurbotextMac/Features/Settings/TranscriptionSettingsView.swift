@@ -24,9 +24,9 @@ struct TranscriptionSettingsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel(text: "Sicherer Lokaler Modus")
 
-                Toggle("Sicherer Lokaler Modus", isOn: $appState.appSettings.secureLocalModeEnabled)
+                Toggle("Sicherer Lokaler Modus", isOn: $appState.appSettings.alwaysLocalTranscription)
                     .toggleStyle(.switch)
-                    .onChange(of: appState.appSettings.secureLocalModeEnabled) { _, newValue in
+                    .onChange(of: appState.appSettings.alwaysLocalTranscription) { _, newValue in
                         if newValue && !appState.selectedLocalModelIsInstalled {
                             appState.installSelectedLocalModel()
                         }

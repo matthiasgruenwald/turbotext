@@ -6,7 +6,7 @@ final class GroqQuotaCheckSchedulerTests: XCTestCase {
     func testChecksWhenGroqKeyPresentAndQuotaUnknown() {
         XCTAssertTrue(GroqQuotaCheckScheduler.shouldCheck(
             hasGroqKey: true,
-            secureLocalModeEnabled: false,
+            alwaysLocalTranscription: false,
             remainingAudioSeconds: nil,
             fallbackActive: false
         ))
@@ -15,16 +15,16 @@ final class GroqQuotaCheckSchedulerTests: XCTestCase {
     func testSkipsWhenNoGroqKey() {
         XCTAssertFalse(GroqQuotaCheckScheduler.shouldCheck(
             hasGroqKey: false,
-            secureLocalModeEnabled: false,
+            alwaysLocalTranscription: false,
             remainingAudioSeconds: nil,
             fallbackActive: false
         ))
     }
 
-    func testSkipsWhenSecureLocalModeEnabled() {
+    func testSkipsWhenAlwaysLocalTranscription() {
         XCTAssertFalse(GroqQuotaCheckScheduler.shouldCheck(
             hasGroqKey: true,
-            secureLocalModeEnabled: true,
+            alwaysLocalTranscription: true,
             remainingAudioSeconds: nil,
             fallbackActive: false
         ))
@@ -33,7 +33,7 @@ final class GroqQuotaCheckSchedulerTests: XCTestCase {
     func testSkipsWhenQuotaAlreadyKnown() {
         XCTAssertFalse(GroqQuotaCheckScheduler.shouldCheck(
             hasGroqKey: true,
-            secureLocalModeEnabled: false,
+            alwaysLocalTranscription: false,
             remainingAudioSeconds: 600,
             fallbackActive: false
         ))
@@ -42,7 +42,7 @@ final class GroqQuotaCheckSchedulerTests: XCTestCase {
     func testSkipsWhenFallbackAlreadyActive() {
         XCTAssertFalse(GroqQuotaCheckScheduler.shouldCheck(
             hasGroqKey: true,
-            secureLocalModeEnabled: false,
+            alwaysLocalTranscription: false,
             remainingAudioSeconds: nil,
             fallbackActive: true
         ))

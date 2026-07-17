@@ -104,7 +104,7 @@ final class TranscriptionServiceTests: XCTestCase {
             }
         )
 
-        await provider.checkGroqQuotaIfNeeded(secureLocalModeEnabled: false)
+        await provider.checkGroqQuotaIfNeeded(alwaysLocalTranscription: false)
 
         XCTAssertEqual(GroqQuotaManager.shared.remainingAudioSeconds, 321)
     }
@@ -118,7 +118,7 @@ final class TranscriptionServiceTests: XCTestCase {
             }
         )
 
-        await provider.checkGroqQuotaIfNeeded(secureLocalModeEnabled: false)
+        await provider.checkGroqQuotaIfNeeded(alwaysLocalTranscription: false)
 
         XCTAssertTrue(GroqFallbackManager.shared.isActive)
         XCTAssertEqual(GroqFallbackManager.shared.rateLimitResetAt, resetAt)
@@ -133,7 +133,7 @@ final class TranscriptionServiceTests: XCTestCase {
             }
         )
 
-        await provider.checkGroqQuotaIfNeeded(secureLocalModeEnabled: false)
+        await provider.checkGroqQuotaIfNeeded(alwaysLocalTranscription: false)
 
         XCTAssertNil(GroqQuotaManager.shared.remainingAudioSeconds)
         XCTAssertFalse(GroqFallbackManager.shared.isActive)

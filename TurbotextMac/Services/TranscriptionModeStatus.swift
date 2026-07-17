@@ -5,7 +5,7 @@ enum TranscriptionModeIconTone: Equatable {
 }
 
 struct TranscriptionModeStatus: Equatable {
-    let secureLocalModeEnabled: Bool
+    let alwaysLocalTranscription: Bool
     let selectedLocalModelInstalled: Bool
     let selectedLocalModelDisplayName: String
     let isDownloadingLocalModel: Bool
@@ -15,24 +15,24 @@ struct TranscriptionModeStatus: Equatable {
     let groqQuotaUsedToday: String
 
     var menuBarCloudIndicator: MenuBarCloudIndicator {
-        if secureLocalModeEnabled { return .none }
+        if alwaysLocalTranscription { return .none }
         if hasGroqKey && !groqFallbackActive { return .groqReady }
         return .openAIFallback
     }
 
     var panelIconName: String {
-        if secureLocalModeEnabled { return "lock.shield.fill" }
+        if alwaysLocalTranscription { return "lock.shield.fill" }
         return groqFallbackActive ? "eurosign.circle" : "network"
     }
 
     var panelIconTone: TranscriptionModeIconTone {
-        if secureLocalModeEnabled { return .local }
+        if alwaysLocalTranscription { return .local }
         if hasGroqKey && !groqFallbackActive { return .groq }
         return .fallback
     }
 
     var panelTitle: String {
-        secureLocalModeEnabled ? "Lokal · kein Server" : "Online · \(onlineTitle)"
+        alwaysLocalTranscription ? "Lokal · kein Server" : "Online · \(onlineTitle)"
     }
 
     var onlineTitle: String {
@@ -40,7 +40,7 @@ struct TranscriptionModeStatus: Equatable {
     }
 
     var panelSubtitle: String {
-        if secureLocalModeEnabled {
+        if alwaysLocalTranscription {
             if isDownloadingLocalModel {
                 return localModelDownloadStatusText ?? "Lokales Modell wird geladen."
             }
@@ -61,7 +61,7 @@ struct TranscriptionModeStatus: Equatable {
     }
 
     var transcriptionWorkflowSubtitle: String {
-        if secureLocalModeEnabled {
+        if alwaysLocalTranscription {
             return selectedLocalModelInstalled
                 ? "Lokal: \(selectedLocalModelDisplayName)."
                 : "Lokales WhisperKit-Modell fehlt."

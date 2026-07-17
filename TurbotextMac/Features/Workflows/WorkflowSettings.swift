@@ -5,7 +5,7 @@ import Foundation
 struct AppSettings: Codable, Equatable {
     var hotkeyMode: HotkeyMode = .hold
     var hasSeenOnboarding: Bool = false
-    var secureLocalModeEnabled: Bool = false
+    var alwaysLocalTranscription: Bool = false
     var selectedLocalTranscriptionModelName: String = LocalTranscriptionService.recommendedFastModelName
     var hasAutoSelectedFastLocalModel: Bool = false
     var hasDismissedInputMonitoringHint: Bool = false
@@ -17,7 +17,7 @@ struct AppSettings: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case hotkeyMode
         case hasSeenOnboarding
-        case secureLocalModeEnabled
+        case alwaysLocalTranscription
         case selectedLocalTranscriptionModelName
         case hasAutoSelectedFastLocalModel
         case hasDismissedInputMonitoringHint
@@ -29,11 +29,22 @@ struct AppSettings: Codable, Equatable {
 }
 
 extension AppSettings {
+    /// Legacy key from before `secureLocalModeEnabled` was renamed to `alwaysLocalTranscription`
+    /// and decoupled from rewrite-workflow availability.
+    private enum LegacyCodingKeys: String, CodingKey {
+        case secureLocalModeEnabled
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         hotkeyMode = try container.decodeIfPresent(HotkeyMode.self, forKey: .hotkeyMode) ?? .hold
         hasSeenOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasSeenOnboarding) ?? false
-        secureLocalModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .secureLocalModeEnabled) ?? false
+        if let migrated = try container.decodeIfPresent(Bool.self, forKey: .alwaysLocalTranscription) {
+            alwaysLocalTranscription = migrated
+        } else {
+            let legacyContainer = try? decoder.container(keyedBy: LegacyCodingKeys.self)
+            alwaysLocalTranscription = (try legacyContainer?.decodeIfPresent(Bool.self, forKey: .secureLocalModeEnabled)) ?? false
+        }
         selectedLocalTranscriptionModelName = try container.decodeIfPresent(
             String.self,
             forKey: .selectedLocalTranscriptionModelName

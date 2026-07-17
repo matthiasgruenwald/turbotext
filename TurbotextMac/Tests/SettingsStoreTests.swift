@@ -33,7 +33,7 @@ final class SettingsStoreTests: XCTestCase {
 
         var app = AppSettings()
         app.hasSeenOnboarding = true
-        app.secureLocalModeEnabled = true
+        app.alwaysLocalTranscription = true
 
         var transcription = TranscriptionSettings()
         transcription.language = "de"
@@ -90,5 +90,39 @@ final class SettingsStoreTests: XCTestCase {
         let loaded = store.load()
 
         XCTAssertEqual(loaded.app, AppSettings())
+    }
+
+    func testAppSettingsDecodeMigratesLegacySecureLocalModeEnabledKey() throws {
+        let json = "{ \"secureLocalModeEnabled\": true }".data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
+        XCTAssertTrue(decoded.alwaysLocalTranscription)
+    }
+
+    func testAppSettingsDecodePrefersNewKeyOverLegacyKey() throws {
+        let json = "{ \"secureLocalModeEnabled\": true, \"alwaysLocalTranscription\": false }".data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
+        XCTAssertFalse(decoded.alwaysLocalTranscription)
+    }
+
+    func testLoadMigratesLegacySecureLocalModeEnabledKeyToAlwaysLocalTranscription() throws {
+        let store = SettingsStore(fileURL: fileURL)
+        store.save(
+            app: AppSettings(),
+            transcription: TranscriptionSettings(),
+            textImprovement: TextImprovementSettings(),
+            dampfAblassen: DampfAblassenSettings(),
+            emojiText: EmojiTextSettings()
+        )
+
+        var savedJSON = try String(contentsOf: fileURL, encoding: .utf8)
+        savedJSON = savedJSON.replacingOccurrences(
+            of: "\"alwaysLocalTranscription\":false",
+            with: "\"secureLocalModeEnabled\":true"
+        )
+        try savedJSON.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let loaded = SettingsStore(fileURL: fileURL).load()
+
+        XCTAssertTrue(loaded.app.alwaysLocalTranscription)
     }
 }

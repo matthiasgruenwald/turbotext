@@ -21,8 +21,8 @@ final class LocalModelState {
 
     private let getSelectedModelName: () -> String
     private let setSelectedModelName: (String) -> Void
-    private let getSecureLocalModeEnabled: () -> Bool
-    private let setSecureLocalModeEnabled: (Bool) -> Void
+    private let getAlwaysLocalTranscription: () -> Bool
+    private let setAlwaysLocalTranscription: (Bool) -> Void
     private let getHasAutoSelectedFastLocalModel: () -> Bool
     private let setHasAutoSelectedFastLocalModel: (Bool) -> Void
 
@@ -40,8 +40,8 @@ final class LocalModelState {
         },
         getSelectedModelName: @escaping () -> String,
         setSelectedModelName: @escaping (String) -> Void,
-        getSecureLocalModeEnabled: @escaping () -> Bool,
-        setSecureLocalModeEnabled: @escaping (Bool) -> Void,
+        getAlwaysLocalTranscription: @escaping () -> Bool,
+        setAlwaysLocalTranscription: @escaping (Bool) -> Void,
         getHasAutoSelectedFastLocalModel: @escaping () -> Bool,
         setHasAutoSelectedFastLocalModel: @escaping (Bool) -> Void
     ) {
@@ -54,8 +54,8 @@ final class LocalModelState {
         self.prepare = prepare
         self.getSelectedModelName = getSelectedModelName
         self.setSelectedModelName = setSelectedModelName
-        self.getSecureLocalModeEnabled = getSecureLocalModeEnabled
-        self.setSecureLocalModeEnabled = setSecureLocalModeEnabled
+        self.getAlwaysLocalTranscription = getAlwaysLocalTranscription
+        self.setAlwaysLocalTranscription = setAlwaysLocalTranscription
         self.getHasAutoSelectedFastLocalModel = getHasAutoSelectedFastLocalModel
         self.setHasAutoSelectedFastLocalModel = setHasAutoSelectedFastLocalModel
     }
@@ -97,7 +97,7 @@ final class LocalModelState {
     }
 
     func prewarmIfNeeded() {
-        guard getSecureLocalModeEnabled(),
+        guard getAlwaysLocalTranscription(),
               isModelInstalled(resolvedLocalModelName) else {
             return
         }
@@ -129,7 +129,7 @@ final class LocalModelState {
                 }
 
                 setSelectedModelName(installedURL.lastPathComponent)
-                setSecureLocalModeEnabled(true)
+                setAlwaysLocalTranscription(true)
                 downloadProgress = nil
                 downloadStatusText = "\(LocalTranscriptionModel.displayName(for: modelName)) ist installiert."
                 downloadErrorText = nil

@@ -287,21 +287,21 @@ struct MenuBarView: View {
                 // always-hit-testable wrapper instead of on the Toggle itself.
                 let isToggleDisabled = appState.isDownloadingLocalModel
                     || !OnlineModeToggle.isToggleEnabled(
-                        secureLocalModeEnabled: appState.appSettings.secureLocalModeEnabled,
+                        alwaysLocalTranscription: appState.appSettings.alwaysLocalTranscription,
                         localModelInstalled: selectedModelInstalled
                     )
                 Group {
                     Toggle("", isOn: Binding(
-                        get: { !appState.appSettings.secureLocalModeEnabled },
+                        get: { !appState.appSettings.alwaysLocalTranscription },
                         set: { requestedOnline in
-                            guard let next = OnlineModeToggle.nextSecureLocalModeEnabled(
+                            guard let next = OnlineModeToggle.nextAlwaysLocalTranscription(
                                 requestedOnline: requestedOnline,
                                 localModelInstalled: selectedModelInstalled
                             ) else { return }
                             if next {
-                                appState.enableSecureLocalMode()
+                                appState.enableAlwaysLocalTranscription()
                             } else {
-                                appState.appSettings.secureLocalModeEnabled = false
+                                appState.appSettings.alwaysLocalTranscription = false
                             }
                         }
                     ))
@@ -314,13 +314,13 @@ struct MenuBarView: View {
                 .contentShape(Rectangle())
                 .help(
                     OnlineModeToggle.disabledReason(
-                        secureLocalModeEnabled: appState.appSettings.secureLocalModeEnabled,
+                        alwaysLocalTranscription: appState.appSettings.alwaysLocalTranscription,
                         localModelInstalled: selectedModelInstalled
                     ) ?? ""
                 )
             }
 
-            if appState.appSettings.secureLocalModeEnabled {
+            if appState.appSettings.alwaysLocalTranscription {
                 HStack(spacing: 8) {
                     Text("Modell")
                         .font(.system(size: 10.5, weight: .medium))

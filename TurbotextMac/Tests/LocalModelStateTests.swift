@@ -6,7 +6,7 @@ final class LocalModelStateTests: XCTestCase {
 
     private final class Backing {
         var selectedModelName = "model-a"
-        var secureLocalModeEnabled = false
+        var alwaysLocalTranscription = false
         var hasAutoSelectedFastLocalModel = false
     }
 
@@ -33,8 +33,8 @@ final class LocalModelStateTests: XCTestCase {
             prepare: prepare,
             getSelectedModelName: { backing.selectedModelName },
             setSelectedModelName: { backing.selectedModelName = $0 },
-            getSecureLocalModeEnabled: { backing.secureLocalModeEnabled },
-            setSecureLocalModeEnabled: { backing.secureLocalModeEnabled = $0 },
+            getAlwaysLocalTranscription: { backing.alwaysLocalTranscription },
+            setAlwaysLocalTranscription: { backing.alwaysLocalTranscription = $0 },
             getHasAutoSelectedFastLocalModel: { backing.hasAutoSelectedFastLocalModel },
             setHasAutoSelectedFastLocalModel: { backing.hasAutoSelectedFastLocalModel = $0 }
         )
@@ -65,7 +65,7 @@ final class LocalModelStateTests: XCTestCase {
         XCTAssertFalse(state.isDownloading)
         XCTAssertNil(state.downloadErrorText)
         XCTAssertEqual(backing.selectedModelName, "downloaded-model")
-        XCTAssertTrue(backing.secureLocalModeEnabled)
+        XCTAssertTrue(backing.alwaysLocalTranscription)
         XCTAssertEqual(state.downloadStatusText, "\(LocalTranscriptionModel.displayName(for: "model-a")) ist installiert.")
     }
 
@@ -86,7 +86,7 @@ final class LocalModelStateTests: XCTestCase {
         XCTAssertNil(state.downloadProgress)
         XCTAssertNil(state.downloadStatusText)
         XCTAssertEqual(state.downloadErrorText, "boom")
-        XCTAssertFalse(backing.secureLocalModeEnabled)
+        XCTAssertFalse(backing.alwaysLocalTranscription)
     }
 
     func testInstallSelectedModelDoesNothingWhileAlreadyDownloading() async throws {
@@ -159,7 +159,7 @@ final class LocalModelStateTests: XCTestCase {
 
     func testPrewarmIfNeededCallsPrepareWhenSecureModeEnabledAndModelInstalled() async throws {
         let backing = Backing()
-        backing.secureLocalModeEnabled = true
+        backing.alwaysLocalTranscription = true
         var preparedModelName: String?
         let state = makeState(
             backing: backing,
@@ -177,7 +177,7 @@ final class LocalModelStateTests: XCTestCase {
 
     func testPrewarmIfNeededDoesNothingWhenSecureModeDisabled() async throws {
         let backing = Backing()
-        backing.secureLocalModeEnabled = false
+        backing.alwaysLocalTranscription = false
         var prepareCalled = false
         let state = makeState(
             backing: backing,
@@ -193,7 +193,7 @@ final class LocalModelStateTests: XCTestCase {
 
     func testPrewarmIfNeededDoesNothingWhenModelNotInstalled() async throws {
         let backing = Backing()
-        backing.secureLocalModeEnabled = true
+        backing.alwaysLocalTranscription = true
         var prepareCalled = false
         let state = makeState(
             backing: backing,

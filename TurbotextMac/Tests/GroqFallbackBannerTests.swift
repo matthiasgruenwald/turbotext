@@ -4,15 +4,15 @@ import XCTest
 final class GroqFallbackBannerTests: XCTestCase {
 
     func testContentNilWhenFallbackInactive() {
-        XCTAssertNil(GroqFallbackBanner.content(fallbackActive: false, resetAt: nil, secureLocalModeEnabled: false))
+        XCTAssertNil(GroqFallbackBanner.content(fallbackActive: false, resetAt: nil, alwaysLocalTranscription: false))
     }
 
     func testContentNilWhenSecureLocalModeActive() {
-        XCTAssertNil(GroqFallbackBanner.content(fallbackActive: true, resetAt: nil, secureLocalModeEnabled: true))
+        XCTAssertNil(GroqFallbackBanner.content(fallbackActive: true, resetAt: nil, alwaysLocalTranscription: true))
     }
 
     func testContentWithoutResetTimeWhenUnknown() {
-        let content = GroqFallbackBanner.content(fallbackActive: true, resetAt: nil, secureLocalModeEnabled: false)
+        let content = GroqFallbackBanner.content(fallbackActive: true, resetAt: nil, alwaysLocalTranscription: false)
         XCTAssertEqual(content?.title, "Groq-Kontingent aufgebraucht")
         XCTAssertEqual(content?.detail, "OpenAI Whisper aktiv.")
     }
@@ -26,7 +26,7 @@ final class GroqFallbackBannerTests: XCTestCase {
         components.minute = 30
         let resetAt = Calendar.current.date(from: components)!
 
-        let content = GroqFallbackBanner.content(fallbackActive: true, resetAt: resetAt, secureLocalModeEnabled: false)
+        let content = GroqFallbackBanner.content(fallbackActive: true, resetAt: resetAt, alwaysLocalTranscription: false)
 
         XCTAssertEqual(content?.title, "Groq-Kontingent aufgebraucht")
         XCTAssertEqual(content?.detail, "OpenAI Whisper aktiv. Groq zurück um 14:30.")
@@ -55,8 +55,8 @@ final class GroqFallbackBannerAppStateIntegrationTests: XCTestCase {
     func testAppStateReturnsNilWhenSecureLocalModeActive() {
         GroqFallbackManager.shared.reportRateLimitExceeded(resetAt: nil)
         let appState = AppState()
-        appState.appSettings.secureLocalModeEnabled = true
-        defer { appState.appSettings.secureLocalModeEnabled = false }
+        appState.appSettings.alwaysLocalTranscription = true
+        defer { appState.appSettings.alwaysLocalTranscription = false }
         XCTAssertNil(appState.groqFallbackBannerContent)
     }
 

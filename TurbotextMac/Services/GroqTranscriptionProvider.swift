@@ -113,11 +113,11 @@ final class GroqTranscriptionProvider {
         return fallbackWasActive ? .fallbackActivated(text) : .success(text)
     }
 
-    func checkGroqQuotaIfNeeded(secureLocalModeEnabled: Bool) async {
+    func checkGroqQuotaIfNeeded(alwaysLocalTranscription: Bool) async {
         guard let apiKey = groqKey() else { return }
         let shouldCheck = GroqQuotaCheckScheduler.shouldCheck(
             hasGroqKey: true,
-            secureLocalModeEnabled: secureLocalModeEnabled,
+            alwaysLocalTranscription: alwaysLocalTranscription,
             remainingAudioSeconds: quotaManager.remainingAudioSeconds,
             fallbackActive: fallbackManager.isActive
         )
