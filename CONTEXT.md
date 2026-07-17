@@ -10,6 +10,16 @@ Architekturentscheidungen (ADRs) liegen in `docs/adr/`, nicht in dieser Datei.
 
 ## Transkriptions-Backend
 
+**Apple-Gerätetranskription** — Apples auf macOS verfügbare, geräteinterne Spracherkennung, die Turbotext als potenzielle lokale Alternative zu WhisperKit bewertet. Sie verarbeitet Audiodaten ohne externen Transkriptionsdienst und benötigt kein separat herunterzuladendes Whisper-Modell.
+
+**Lokale DSGVO-konforme Verarbeitung** — Ein Transkriptionspfad, bei dem weder Audio, Transkript noch Analyse- oder Telemetriedaten das Gerät verlassen. Nur ein solcher Pfad darf in Turbotext als lokal und offline-fähig beworben werden.
+
+**Transkriptions-Backend-Wahl** — Nutzbare Auswahl zwischen Online-Transkription, Apple-Gerätetranskription und WhisperKit. Apple-Gerätetranskription soll zugleich automatischer lokaler Fallback sein, sofern kein anderer lokaler Pfad gewählt wurde.
+
+**Lokaler Rohtext mit Online-Nachbearbeitung** — Ein Sprach-Workflow, bei dem Apple-Gerätetranskription den Rohtext lokal erzeugt und ein nachfolgender KI-Schritt diesen online verändert. Der Online-Schritt muss für Nutzende deutlich erkennbar sein; der gesamte Workflow ist dadurch nicht offline-fähig.
+
+**Sprach-Workflow** — Besteht aus einer Transkriptionsstufe und optionalen, davon getrennten Nachbearbeitungsstufen. Die Transkriptions-Backend-Wahl gilt einheitlich für alle Sprach-Workflows.
+
 **GroqTranscriptionProvider** — Kapselt Groq-first-mit-OpenAI-Fallback-Routing sowie die intern gehaltenen `GroqQuotaManager`/`GroqFallbackManager`. `AppState` hält genau eine Instanz; Views lesen Quota/Fallback-Status ausschließlich über die berechnete Eigenschaft `quotaUIStatus` (statt die beiden Manager direkt anzusprechen).
 
 **Groq-Kontingent** — Tägliches Free-Tier-Budget bei Groq (Audio-Sekunden). Kommt aus HTTP-Response-Header `x-ratelimit-remaining-audio-seconds`; `x-ratelimit-reset-audio` ist optional und wird von Groq offenbar nur kurz vor Limit-Erreichen mitgeschickt. Wird persistent in `UserDefaults` via `GroqQuotaManager` gespeichert.
@@ -34,11 +44,11 @@ Architekturentscheidungen (ADRs) liegen in `docs/adr/`, nicht in dieser Datei.
 
 ## Mikrofon-System
 
-**Cursornahe Live-Wellenform** — Ein schwebendes Feedback-Fenster für jeden aufnehmenden Sprach-Workflow. Es erscheint am aktuellen Eingabecursor und nutzt den Mauszeiger als Fallback, falls die Ziel-App keine Cursorposition preisgibt. Es bleibt während einer Aufnahme am beim Start erfassten Einfügeziel und wechselt erst mit dem nächsten Start. Während der Aufnahme zeigt es einen fortlaufenden Verlauf des Mikrofonsignals statt nur eines Momentanpegels; nach Aufnahmeende wechselt es dort in einen Verarbeitungszustand und endet erst nach Einfügen oder Fehler.
+**Cursornahe Live-Wellenform** — Ein schwebendes Feedback-Fenster für jeden aufnehmenden Sprach-Workflow. Seine Einstellung bietet Aus, Textcursor (Standard) und unten mittig auf dem aktiven Bildschirm. Beim Start wird die Ziel-App als Einfügeziel festgehalten. Im Textcursor-Modus erscheint die Anzeige am aktuellen Textcursor dieser Ziel-App und folgt ihm während Aufnahme und Verarbeitung, damit erkennbar bleibt, wo das Ergebnis eingefügt würde und der Nutzer den Cursor gegebenenfalls zurücksetzen kann. Bei einem App- oder Fensterwechsel bleibt sie an der letzten Position der Ziel-App; Turbotext fügt das Ergebnis weiterhin dort ein. Nur wenn die Ziel-App keine Cursorposition preisgibt, verwendet sie die Mausposition als Fallback. Während der Aufnahme zeigt sie einen fortlaufenden Verlauf des Mikrofonsignals statt nur eines Momentanpegels; nach Aufnahmeende wechselt sie dort in einen Verarbeitungszustand und endet erst nach Einfügen oder Fehler.
 
 **Stillehinweis** — Ein nicht-blockierender Hinweis der cursornahen Live-Wellenform, wenn beim Aufnahmestart fünf Sekunden lang kein verwertbares Mikrofonsignal ankommt. Er beendet die Aufnahme nicht und diagnostiziert keine Ursache; bei anschließendem Signal verschwindet er wieder.
 
-**Aufnahmestartfehler** — Ein unmittelbarer, cursornahe angezeigter Fehlerzustand, wenn ein Sprach-Workflow keine Aufnahme starten kann. Er unterscheidet sich vom Stillehinweis und nennt eine verständliche Ursache, falls Turbotext sie kennt. Er bleibt etwa fünf, höchstens zehn Sekunden lesbar, kann manuell geschlossen werden und wird ausschließlich über das gewohnte Tastenkürzel erneut versucht.
+**Aufnahmestartfehler** — Ein unmittelbarer, cursornahe angezeigter Fehlerzustand, wenn ein Sprach-Workflow keine Aufnahme starten kann. Er unterscheidet sich vom Stillehinweis und nennt eine verständliche Ursache, falls Turbotext sie kennt. Er bleibt fünf Sekunden lesbar, kann manuell geschlossen werden und wird ausschließlich über das gewohnte Tastenkürzel erneut versucht.
 
 **Mikrofon-Favoritenliste** — vom Nutzer priorisierte Liste von Mikro-UIDs, persistiert in `UserDefaults`. Ersetzt NICHT den macOS-Systemstandard, sondern ist eine App-interne Auswahl. Beim App-Start und bei Gerätewechsel (`kAudioHardwarePropertyDevices`-Notification) wählt die App das höchstpriorisierte verfügbare Gerät aus der Liste. Ist kein Favorit verfügbar, fällt die App auf den macOS-Systemstandard zurück. Nutzer kann alternativ explizit "macOS-Standard verwenden" wählen (kein Override).
 
