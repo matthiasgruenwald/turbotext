@@ -84,7 +84,7 @@ final class RecordingOverlayControllerTests: XCTestCase {
     }
 
     func testScreenBottomCenterModeShowsRecordingStateOnSuccessfulStart() {
-        let (orchestrator, _) = makeOrchestratorWithWorkflow()
+        let (orchestrator, workflow) = makeOrchestratorWithWorkflow()
         let controller = RecordingOverlayController(
             orchestrator: orchestrator,
             modeProvider: { .screenBottomCenter },
@@ -119,7 +119,7 @@ final class RecordingOverlayControllerTests: XCTestCase {
     }
 
     func testLevelsAreSampledIntoHistoryWhileRecording() {
-        let (orchestrator, workflow) = makeOrchestratorWithWorkflow()
+        let (orchestrator, _) = makeOrchestratorWithWorkflow()
         var level: Float = 0.2
         let controller = RecordingOverlayController(
             orchestrator: orchestrator,
@@ -330,6 +330,22 @@ final class RecordingOverlayControllerTests: XCTestCase {
         controller.tick()
 
         XCTAssertEqual(controller.state.anchor?.point, CGPoint(x: 1_920, y: 40))
+    }
+
+    func testScreenBottomCenterModeFallsBackToThePrimaryScreenWhenTargetScreenIsUnavailable() {
+        let target = makeFakePasteTarget(pid: 4242)
+        let (orchestrator, workflow) = makeOrchestratorWithWorkflow(pasteTarget: target)
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            targetScreenBottomCenterProvider: { _ in nil },
+            screenBottomCenterProvider: { CGPoint(x: 640, y: 40) },
+            levelProvider: { workflow.audioLevel }
+        )
+
+        controller.tick()
+
+        XCTAssertEqual(controller.state.anchor?.point, CGPoint(x: 640, y: 40))
     }
 
     func testScreenBottomCenterModeKeepsTheInitialScreenAcrossTicks() {
