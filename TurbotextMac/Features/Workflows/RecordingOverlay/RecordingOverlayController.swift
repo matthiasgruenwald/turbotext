@@ -23,6 +23,7 @@ final class RecordingOverlayController {
 
     private(set) var state: RecordingOverlayState = .hidden
     private var panel: NSPanel?
+    private var hostingView: NSHostingView<RecordingOverlaySignalPillView>?
     private var pollTimer: Timer?
 
     /// Test-only escape hatch to assert real panel configuration (focus/space/interaction
@@ -154,10 +155,21 @@ final class RecordingOverlayController {
             errorMessage: state.errorMessage,
             onDismissError: { [weak self] in self?.dismissError() }
         )
-        let hostingView = NSHostingView(rootView: pill)
-        let fittingSize = hostingView.fittingSize
-        hostingView.frame = NSRect(origin: .zero, size: fittingSize)
-        panel.contentView = hostingView
+        // Reuse the hosting view and update rootView in place. Recreating it on
+        // every poll tick (10x/s while recording) tore down SwiftUI's AttributeGraph
+        // mid-transaction and crashed with EXC_BAD_ACCESS.
+        let activeHostingView: NSHostingView<RecordingOverlaySignalPillView>
+        if let hostingView {
+            hostingView.rootView = pill
+            activeHostingView = hostingView
+        } else {
+            let newHostingView = NSHostingView(rootView: pill)
+            hostingView = newHostingView
+            panel.contentView = newHostingView
+            activeHostingView = newHostingView
+        }
+        let fittingSize = activeHostingView.fittingSize
+        activeHostingView.frame = NSRect(origin: .zero, size: fittingSize)
         panel.setContentSize(fittingSize)
     }
 
