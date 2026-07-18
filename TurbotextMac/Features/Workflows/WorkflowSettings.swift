@@ -9,6 +9,7 @@ struct AppSettings: Codable, Equatable {
     var selectedLocalTranscriptionModelName: String = LocalTranscriptionService.recommendedFastModelName
     var hasAutoSelectedFastLocalModel: Bool = false
     var hasDismissedInputMonitoringHint: Bool = false
+    var hasSeenAppleSpeechMigrationHint: Bool = false
     var dockModeEnabled: Bool = true
     var autoFallbackToLocalOnOffline: Bool = false
     var rewritingProviderMode: RewriteProviderMode = .auto
@@ -25,6 +26,7 @@ struct AppSettings: Codable, Equatable {
         case selectedLocalTranscriptionModelName
         case hasAutoSelectedFastLocalModel
         case hasDismissedInputMonitoringHint
+        case hasSeenAppleSpeechMigrationHint
         case dockModeEnabled
         case autoFallbackToLocalOnOffline
         case rewritingProviderMode
@@ -61,6 +63,10 @@ extension AppSettings {
         hasDismissedInputMonitoringHint = try container.decodeIfPresent(
             Bool.self,
             forKey: .hasDismissedInputMonitoringHint
+        ) ?? false
+        hasSeenAppleSpeechMigrationHint = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .hasSeenAppleSpeechMigrationHint
         ) ?? false
         dockModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .dockModeEnabled) ?? true
         autoFallbackToLocalOnOffline = try container.decodeIfPresent(

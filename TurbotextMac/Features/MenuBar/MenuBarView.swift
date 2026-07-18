@@ -233,6 +233,12 @@ struct MenuBarView: View {
                     .padding(.bottom, 6)
             }
 
+            if let hint = appState.appleSpeechMigrationHintBannerContent {
+                appleSpeechMigrationHintBanner(title: hint.title, detail: hint.detail)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
+            }
+
             // Workflow list
             VStack(spacing: 0) {
                 ForEach(WorkflowType.mainMenuCases) { type in

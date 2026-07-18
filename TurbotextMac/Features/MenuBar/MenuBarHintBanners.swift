@@ -89,6 +89,24 @@ extension MenuBarView {
         }
     }
 
+    func appleSpeechMigrationHintBanner(title: String, detail: String) -> some View {
+        hintBanner(icon: "waveform.badge.checkmark", title: title, detail: detail) {
+            Button("Einstellungen öffnen") {
+                appState.requestedSettingsSection = .transcription
+                appState.page = .settings
+                appState.dismissAppleSpeechMigrationHintPermanently()
+            }
+            .font(.system(size: 10.5, weight: .medium))
+            .buttonStyle(SubtleButtonStyle())
+
+            Button("Nicht mehr anzeigen") {
+                appState.dismissAppleSpeechMigrationHintPermanently()
+            }
+            .font(.system(size: 10.5, weight: .medium))
+            .buttonStyle(SubtleButtonStyle())
+        }
+    }
+
     var installHintBanner: some View {
         hintBanner(
             icon: "externaldrive.badge.plus",

@@ -228,6 +228,22 @@ final class AppState {
         )
     }
 
+    var appleSpeechMigrationHintBannerContent: (title: String, detail: String)? {
+        AppleSpeechMigrationHintBanner.content(
+            isMacOS26OrLater: {
+                if #available(macOS 26, *) { return true }
+                return false
+            }(),
+            whisperKitModelInstalled: !LocalTranscriptionService.installedModels().isEmpty,
+            appleSpeechAvailable: isAppleSpeechAvailable,
+            hasSeenHint: appSettings.hasSeenAppleSpeechMigrationHint
+        )
+    }
+
+    func dismissAppleSpeechMigrationHintPermanently() {
+        appSettings.hasSeenAppleSpeechMigrationHint = true
+    }
+
     var transcriptionModeStatus: TranscriptionModeStatus {
         let status = groqTranscriptionProvider.quotaUIStatus
         return TranscriptionModeStatus(
