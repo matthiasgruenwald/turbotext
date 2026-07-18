@@ -65,8 +65,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
         recordingOverlayController = RecordingOverlayController(
             orchestrator: appState.workflowLifecycle.orchestrator,
-            modeProvider: { [weak appState] in appState?.appSettings.recordingOverlayMode ?? .off }
+            modeProvider: { [weak appState] in appState?.appSettings.recordingOverlayMode ?? .off },
+            completionLabelProvider: { [weak appState] in
+                guard appState?.appSettings.hideRewriteCompletionLabel == false else { return nil }
+                return appState?.workflowLifecycle.orchestrator.lastCompletionLabel
+            }
         )
+        recordingOverlayController.onCompletionLabelDismissed = { [weak appState] in
+            appState?.appSettings.hideRewriteCompletionLabel = true
+        }
         recordingOverlayController.start()
 
         DockModeService.apply(dockModeEnabled: appState.appSettings.dockModeEnabled)

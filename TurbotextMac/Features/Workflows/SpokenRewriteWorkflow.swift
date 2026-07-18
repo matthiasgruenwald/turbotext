@@ -24,6 +24,10 @@ final class SpokenRewriteWorkflow: Workflow {
     }
     var onOutput: WorkflowOutputHandler?
     var onPhaseChange: WorkflowPhaseChangeHandler?
+    /// See `Workflow.processingLabel` (#128) — resolved once rewrite processing begins.
+    private(set) var processingLabel: String?
+    /// See `Workflow.completionLabel` (#128) — set once the rewrite step completes.
+    private(set) var completionLabel: String?
 
     let pipeline: SpokenWorkflowPipeline
     private let customTerms: [String]
@@ -31,7 +35,8 @@ final class SpokenRewriteWorkflow: Workflow {
     private let transcriber: SpokenWorkflowPipeline.Transcriber
     private let rewritingMessage: String
     private let noSpeechSentinel: String?
-    private let rewrite: (String) async throws -> String
+    private let rewrite: (String) async throws -> RewriteStepResult
+    private let processingLabelResolver: () -> String?
     private var processingTask: Task<Void, Never>?
 
     init(
@@ -42,7 +47,8 @@ final class SpokenRewriteWorkflow: Workflow {
         noSpeechSentinel: String? = nil,
         pipeline: SpokenWorkflowPipeline? = nil,
         transcriber: @escaping SpokenWorkflowPipeline.Transcriber,
-        rewrite: @escaping (String) async throws -> String
+        processingLabelResolver: @escaping () -> String? = { nil },
+        rewrite: @escaping (String) async throws -> RewriteStepResult
     ) {
         self.type = type
         self.customTerms = customTerms
@@ -51,6 +57,7 @@ final class SpokenRewriteWorkflow: Workflow {
         self.noSpeechSentinel = noSpeechSentinel
         self.pipeline = pipeline ?? SpokenWorkflowPipeline()
         self.transcriber = transcriber
+        self.processingLabelResolver = processingLabelResolver
         self.rewrite = rewrite
     }
 
@@ -62,6 +69,8 @@ final class SpokenRewriteWorkflow: Workflow {
     // MARK: - Workflow Protocol
 
     func start() {
+        processingLabel = nil
+        completionLabel = nil
         switch pipeline.startRecording() {
         case .success:
             phase = .running("Aufnahme läuft ...")
@@ -89,6 +98,8 @@ final class SpokenRewriteWorkflow: Workflow {
         processingTask?.cancel()
         processingTask = nil
         pipeline.resetRecording()
+        processingLabel = nil
+        completionLabel = nil
         phase = .idle
     }
 
@@ -107,15 +118,20 @@ final class SpokenRewriteWorkflow: Workflow {
                 )
                 try Task.checkCancellation()
 
+                // Resolved before flipping `phase`: the `didSet` fires `onPhaseChange`
+                // synchronously and `WorkflowOrchestrator` reads `processingLabel` from
+                // within that same callback, so it must already hold the new value.
+                processingLabel = processingLabelResolver()
                 phase = .running(rewritingMessage)
                 let result = try await rewrite(rawText)
                 try Task.checkCancellation()
 
-                let cleanedResult = TranscriptionQualityService.cleanedTranscript(result)
+                let cleanedResult = TranscriptionQualityService.cleanedTranscript(result.text)
                 if let noSpeechSentinel, cleanedResult == noSpeechSentinel {
                     phase = .error("Keine Aufnahme erkannt.")
                     return
                 }
+                completionLabel = result.completionLabel
                 phase = .done(cleanedResult)
                 onOutput?(cleanedResult)
             } catch is CancellationError {
@@ -132,9 +148,9 @@ final class SpokenRewriteWorkflow: Workflow {
 // MARK: - Factory Methods
 
 extension SpokenRewriteWorkflow {
-    typealias Improver = (String, TextImprovementSettings, RewriteProviderMode) async throws -> String
-    typealias DampfAblassenRewriter = (String, DampfAblassenSettings, RewriteProviderMode) async throws -> String
-    typealias EmojiTextRewriter = (String, EmojiTextSettings, RewriteProviderMode) async throws -> String
+    typealias Improver = (String, TextImprovementSettings, RewriteProviderMode) async throws -> RewriteStepResult
+    typealias DampfAblassenRewriter = (String, DampfAblassenSettings, RewriteProviderMode) async throws -> RewriteStepResult
+    typealias EmojiTextRewriter = (String, EmojiTextSettings, RewriteProviderMode) async throws -> RewriteStepResult
 
     static func textImprovement(
         settings: TextImprovementSettings,
@@ -142,12 +158,14 @@ extension SpokenRewriteWorkflow {
         providerMode: RewriteProviderMode = .auto,
         pipeline: SpokenWorkflowPipeline? = nil,
         transcriber: @escaping SpokenWorkflowPipeline.Transcriber,
+        processingLabelResolver: @escaping () -> String? = { nil },
         improver: @escaping Improver = { text, settings, providerMode in
-            try await LLMService.improve(
+            let result = try await LLMService.improve(
                 text: text,
                 settings: settings,
                 providerMode: providerMode
             )
+            return RewriteStepResult(text: result, completionLabel: nil)
         }
     ) -> SpokenRewriteWorkflow {
         SpokenRewriteWorkflow(
@@ -157,6 +175,7 @@ extension SpokenRewriteWorkflow {
             rewritingMessage: "Text wird verbessert ...",
             pipeline: pipeline,
             transcriber: transcriber,
+            processingLabelResolver: processingLabelResolver,
             rewrite: { transcript in
                 try await improver(transcript, settings, providerMode)
             }
@@ -170,12 +189,14 @@ extension SpokenRewriteWorkflow {
         providerMode: RewriteProviderMode = .auto,
         pipeline: SpokenWorkflowPipeline? = nil,
         transcriber: @escaping SpokenWorkflowPipeline.Transcriber,
+        processingLabelResolver: @escaping () -> String? = { nil },
         rewriter: @escaping DampfAblassenRewriter = { text, settings, providerMode in
-            try await LLMService.dampfAblassen(
+            let result = try await LLMService.dampfAblassen(
                 text: text,
                 systemPrompt: settings.systemPrompt,
                 providerMode: providerMode
             )
+            return RewriteStepResult(text: result, completionLabel: nil)
         }
     ) -> SpokenRewriteWorkflow {
         SpokenRewriteWorkflow(
@@ -186,6 +207,7 @@ extension SpokenRewriteWorkflow {
             noSpeechSentinel: "KEINE_AUFNAHME_ERKANNT",
             pipeline: pipeline,
             transcriber: transcriber,
+            processingLabelResolver: processingLabelResolver,
             rewrite: { transcript in
                 try await rewriter(transcript, settings, providerMode)
             }
@@ -199,12 +221,14 @@ extension SpokenRewriteWorkflow {
         providerMode: RewriteProviderMode = .auto,
         pipeline: SpokenWorkflowPipeline? = nil,
         transcriber: @escaping SpokenWorkflowPipeline.Transcriber,
+        processingLabelResolver: @escaping () -> String? = { nil },
         rewriter: @escaping EmojiTextRewriter = { text, settings, providerMode in
-            try await LLMService.addEmojis(
+            let result = try await LLMService.addEmojis(
                 text: text,
                 settings: settings,
                 providerMode: providerMode
             )
+            return RewriteStepResult(text: result, completionLabel: nil)
         }
     ) -> SpokenRewriteWorkflow {
         SpokenRewriteWorkflow(
@@ -215,6 +239,7 @@ extension SpokenRewriteWorkflow {
             noSpeechSentinel: "KEINE_AUFNAHME_ERKANNT",
             pipeline: pipeline,
             transcriber: transcriber,
+            processingLabelResolver: processingLabelResolver,
             rewrite: { transcript in
                 try await rewriter(transcript, settings, providerMode)
             }

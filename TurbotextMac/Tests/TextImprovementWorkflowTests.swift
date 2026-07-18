@@ -29,7 +29,7 @@ final class TextImprovementWorkflowTests: XCTestCase {
             },
             improver: { text, _, _ in
                 improvedInput = text
-                return " Verbesserter Text "
+                return RewriteStepResult(text: " Verbesserter Text ", completionLabel: nil)
             }
         )
         workflow.onOutput = { text in
@@ -64,7 +64,7 @@ final class TextImprovementWorkflowTests: XCTestCase {
             improver: { _, _, _ in
                 improveStarted.fulfill()
                 await finishImprove.wait()
-                return "Verbesserter Text"
+                return RewriteStepResult(text: "Verbesserter Text", completionLabel: nil)
             }
         )
 

@@ -15,7 +15,14 @@ struct RecordingOverlaySignalPillView: View {
     let levelHistory: [Float]
     var showsSilenceHint: Bool = false
     var errorMessage: String?
+    /// Progressive Apple Speech transcript, shown while `.recording` (#128).
+    var partialTranscript: String?
+    /// Predicted rewrite routing, shown while `.processing` (#128).
+    var processingLabel: String?
+    /// Rewrite outcome, shown while `.completion` (#128).
+    var completionLabel: String?
     var onDismissError: () -> Void = {}
+    var onDismissCompletionLabel: () -> Void = {}
 
     var body: some View {
         content
@@ -27,8 +34,14 @@ struct RecordingOverlaySignalPillView: View {
             .shadow(color: .black.opacity(0.35), radius: 14, y: 8)
             .contentShape(Capsule())
             .onTapGesture {
-                guard phase == .error else { return }
-                onDismissError()
+                switch phase {
+                case .error:
+                    onDismissError()
+                case .completion:
+                    onDismissCompletionLabel()
+                default:
+                    break
+                }
             }
     }
 
@@ -45,6 +58,12 @@ struct RecordingOverlaySignalPillView: View {
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(.white)
                         .lineLimit(1)
+                } else if let partialTranscript, !partialTranscript.isEmpty {
+                    Text(partialTranscript)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .truncationMode(.head)
                 } else {
                     WaveformBars(levelHistory: levelHistory)
                         .frame(maxWidth: .infinity)
@@ -53,15 +72,25 @@ struct RecordingOverlaySignalPillView: View {
         case .processing:
             HStack(spacing: 12) {
                 ProgressView().controlSize(.small).tint(.white)
-                Text("Wird verarbeitet …")
+                Text(processingLabel ?? "Wird verarbeitet …")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.white)
+                    .lineLimit(1)
             }
         case .error:
             HStack(spacing: 12) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.yellow)
                 Text(errorMessage ?? "Aufnahme konnte nicht gestartet werden.")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+            }
+        case .completion:
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text(completionLabel ?? "")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.white)
                     .lineLimit(2)

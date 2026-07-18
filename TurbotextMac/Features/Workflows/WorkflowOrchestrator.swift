@@ -32,6 +32,15 @@ final class WorkflowOrchestrator {
     /// failure ("Kein Mikrofon verfügbar."). Read by `RecordingOverlayController` when
     /// it decides to surface a start error in the signal pill.
     private(set) var lastErrorMessage: String?
+    /// Progressive transcript from Apple Speech's partial-result callback (#128), updated
+    /// throughout recording. Read by `RecordingOverlayController` while `.recording`.
+    private(set) var lastPartialTranscript: String?
+    /// Snapshot of `Workflow.processingLabel` (#128), captured while the workflow is still
+    /// live so `RecordingOverlayController` can read it after the workflow resets.
+    private(set) var lastProcessingLabel: String?
+    /// Snapshot of `Workflow.completionLabel` (#128), captured right when the workflow's
+    /// rewrite step finishes — before the ~1s post-output cleanup nils out `activeWorkflow`.
+    private(set) var lastCompletionLabel: String?
     var menuBarStatus: MenuBarStatus = .idle {
         didSet {
             guard oldValue != menuBarStatus else { return }
@@ -110,6 +119,9 @@ final class WorkflowOrchestrator {
         workflowCleanupTask?.cancel()
         activeLaunchSource = source
         activePasteTarget = pasteTarget
+        lastPartialTranscript = nil
+        lastProcessingLabel = nil
+        lastCompletionLabel = nil
 
         workflow.onOutput = { [weak self] text in
             self?.handleWorkflowOutput(text)
@@ -190,6 +202,11 @@ final class WorkflowOrchestrator {
         }
     }
 
+    /// Records a fresh partial transcript from Apple Speech's progressive callback (#128).
+    func updatePartialTranscript(_ text: String) {
+        lastPartialTranscript = text
+    }
+
     // MARK: - Phase Handling
 
     private func handlePhaseChange(_ phase: WorkflowPhase, workflow: any Workflow) {
@@ -205,9 +222,13 @@ final class WorkflowOrchestrator {
             menuBarStatus = workflow.isRecording
                 ? .recording(workflow.type)
                 : .processing(workflow.type)
+            if !workflow.isRecording {
+                lastProcessingLabel = workflow.processingLabel
+            }
 
         case .done:
             menuBarStatus = .success(workflow.type)
+            lastCompletionLabel = workflow.completionLabel
 
         case .error(let message):
             lastErrorMessage = message

@@ -5,6 +5,9 @@ enum RecordingOverlayPhase: Equatable {
     case recording
     case processing
     case error
+    /// Shows the rewrite completion label for a few seconds after the result was
+    /// pasted (#128), independent of the underlying workflow having already reset.
+    case completion
 }
 
 /// Immutable snapshot of what the signal pill should show. Derived purely
@@ -16,6 +19,8 @@ struct RecordingOverlayState: Equatable {
     static let silenceHintDelay: TimeInterval = 5
     /// How long a known start error stays visible before it auto-dismisses.
     static let errorAutoDismissDelay: TimeInterval = 5
+    /// How long the rewrite completion label stays visible before it auto-dismisses.
+    static let completionAutoDismissDelay: TimeInterval = 3
     /// Normalized levels at or below this are treated as "no usable signal".
     static let silenceLevelThreshold: Float = 0.05
     /// Absorbs floating-point drift from repeatedly summing small poll intervals
@@ -28,6 +33,14 @@ struct RecordingOverlayState: Equatable {
     let silenceElapsed: TimeInterval
     let errorMessage: String?
     let errorElapsed: TimeInterval
+    /// Progressive Apple Speech transcript shown while `.recording` (#128). Always `nil`
+    /// for other transcription backends (WhisperKit/Groq) since nothing ever updates it.
+    let partialTranscript: String?
+    /// Resolved once when entering `.processing` (#128): "lokal" vs. "online mit ‹Anbieter›".
+    let processingLabel: String?
+    /// Shown while `.completion` (#128), e.g. "Text lokal verbessert · Apple Foundation Models".
+    let completionLabel: String?
+    let completionElapsed: TimeInterval
 
     static let hidden = RecordingOverlayState(
         phase: .hidden, anchor: nil, levelHistory: [], silenceElapsed: 0, errorMessage: nil, errorElapsed: 0
@@ -43,7 +56,11 @@ struct RecordingOverlayState: Equatable {
         levelHistory: [Float],
         silenceElapsed: TimeInterval = 0,
         errorMessage: String? = nil,
-        errorElapsed: TimeInterval = 0
+        errorElapsed: TimeInterval = 0,
+        partialTranscript: String? = nil,
+        processingLabel: String? = nil,
+        completionLabel: String? = nil,
+        completionElapsed: TimeInterval = 0
     ) {
         self.phase = phase
         self.anchor = anchor
@@ -51,6 +68,10 @@ struct RecordingOverlayState: Equatable {
         self.silenceElapsed = silenceElapsed
         self.errorMessage = errorMessage
         self.errorElapsed = errorElapsed
+        self.partialTranscript = partialTranscript
+        self.processingLabel = processingLabel
+        self.completionLabel = completionLabel
+        self.completionElapsed = completionElapsed
     }
 
     /// Applies one `MenuBarStatus` observation. `resolveAnchor` is only consulted when
@@ -72,7 +93,9 @@ struct RecordingOverlayState: Equatable {
     func applying(
         menuBarStatus: MenuBarStatus,
         resolveAnchor: () -> RecordingOverlayAnchor,
-        resolveErrorMessage: () -> String? = { nil }
+        resolveErrorMessage: () -> String? = { nil },
+        resolveProcessingLabel: () -> String? = { nil },
+        resolveCompletionLabel: () -> String? = { nil }
     ) -> RecordingOverlayState {
         switch menuBarStatus {
         case .recording:
@@ -80,7 +103,10 @@ struct RecordingOverlayState: Equatable {
             return RecordingOverlayState(phase: .recording, anchor: resolveAnchor(), levelHistory: [])
         case .processing, .success:
             guard phase == .recording || phase == .processing else { return self }
-            return RecordingOverlayState(phase: .processing, anchor: anchor, levelHistory: levelHistory)
+            return RecordingOverlayState(
+                phase: .processing, anchor: anchor, levelHistory: levelHistory,
+                processingLabel: processingLabel ?? resolveProcessingLabel()
+            )
         case .error:
             switch phase {
             case .hidden:
@@ -91,12 +117,23 @@ struct RecordingOverlayState: Equatable {
                 // Ignore: this is the orchestrator repeating the still-ongoing error on
                 // every poll, not a distinguishable new attempt (see doc comment above).
                 return self
-            case .recording, .processing:
+            case .recording, .processing, .completion:
                 return .hidden
             }
         case .idle:
-            guard phase != .error else { return self }
-            return .hidden
+            switch phase {
+            case .error, .completion:
+                // `.error` waits for its own timer/manual dismiss; `.completion` likewise
+                // (see below) — a repeated `.idle` observation must not cut either short.
+                return self
+            case .processing:
+                guard let label = resolveCompletionLabel() else { return .hidden }
+                return RecordingOverlayState(
+                    phase: .completion, anchor: anchor, levelHistory: levelHistory, completionLabel: label
+                )
+            case .hidden, .recording:
+                return .hidden
+            }
         }
     }
 
@@ -105,7 +142,21 @@ struct RecordingOverlayState: Equatable {
         let clamped = min(max(level, 0), 1)
         let nextHistory = Array((levelHistory + [clamped]).suffix(Self.levelHistoryLimit))
         let nextSilence = clamped > Self.silenceLevelThreshold ? 0 : silenceElapsed + elapsed
-        return RecordingOverlayState(phase: phase, anchor: anchor, levelHistory: nextHistory, silenceElapsed: nextSilence)
+        return RecordingOverlayState(
+            phase: phase, anchor: anchor, levelHistory: nextHistory, silenceElapsed: nextSilence,
+            partialTranscript: partialTranscript
+        )
+    }
+
+    /// Applies a fresh partial transcript from Apple Speech's progressive callback (#128).
+    /// Ignored outside `.recording` — the field is meaningless once processing/rewriting begins.
+    func receivingPartialTranscript(_ text: String) -> RecordingOverlayState {
+        guard phase == .recording else { return self }
+        guard text != partialTranscript else { return self }
+        return RecordingOverlayState(
+            phase: phase, anchor: anchor, levelHistory: levelHistory, silenceElapsed: silenceElapsed,
+            partialTranscript: text
+        )
     }
 
     /// Advances the auto-dismiss countdown for a visible error. Returns `.hidden` once
@@ -122,6 +173,25 @@ struct RecordingOverlayState: Equatable {
     /// User-initiated close of a visible error, independent of the auto-dismiss timer.
     func dismissingError() -> RecordingOverlayState {
         guard phase == .error else { return self }
+        return .hidden
+    }
+
+    /// Advances the auto-dismiss countdown for a visible completion label. Returns
+    /// `.hidden` once `completionAutoDismissDelay` has elapsed.
+    func advancingCompletion(by elapsed: TimeInterval) -> RecordingOverlayState {
+        guard phase == .completion else { return self }
+        let nextElapsed = completionElapsed + elapsed
+        guard nextElapsed + Self.elapsedTimeTolerance < Self.completionAutoDismissDelay else { return .hidden }
+        return RecordingOverlayState(
+            phase: phase, anchor: anchor, levelHistory: levelHistory,
+            completionLabel: completionLabel, completionElapsed: nextElapsed
+        )
+    }
+
+    /// User-initiated dismissal of a visible completion label (#128), independent of the
+    /// auto-dismiss timer — also used to permanently disable the label going forward.
+    func dismissingCompletion() -> RecordingOverlayState {
+        guard phase == .completion else { return self }
         return .hidden
     }
 }

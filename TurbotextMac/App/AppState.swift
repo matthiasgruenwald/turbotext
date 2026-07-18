@@ -334,6 +334,7 @@ final class AppState {
                 language: transcriptionSettings.language,
                 providerMode: appSettings.rewritingProviderMode,
                 transcriber: defaultResolvedTranscriber,
+                processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
                 improver: { [rewriteConsentCoordinator] text, settings, providerMode in
                     try await LLMService.improveLocalFirst(
                         text: text,
@@ -350,6 +351,7 @@ final class AppState {
                 language: transcriptionSettings.language,
                 providerMode: appSettings.rewritingProviderMode,
                 transcriber: defaultResolvedTranscriber,
+                processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
                 rewriter: { [rewriteConsentCoordinator] text, settings, providerMode in
                     try await LLMService.dampfAblassenLocalFirst(
                         text: text,
@@ -366,6 +368,7 @@ final class AppState {
                 language: transcriptionSettings.language,
                 providerMode: appSettings.rewritingProviderMode,
                 transcriber: defaultResolvedTranscriber,
+                processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
                 rewriter: { [rewriteConsentCoordinator] text, settings, providerMode in
                     try await LLMService.addEmojisLocalFirst(
                         text: text,
@@ -376,6 +379,16 @@ final class AppState {
                 }
             )
         }
+    }
+
+    /// Predicted processing-label routing for the signal pill (#128): known synchronously
+    /// from Apple provider availability and the configured online provider.
+    private func rewriteProcessingLabel() -> String {
+        RewriteRouter.processingLabel(
+            appleProviderAvailable: RewriteRouter.resolveAppleProvider() != nil,
+            providerMode: appSettings.rewritingProviderMode,
+            hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil
+        )
     }
 
     /// The resolved transcriber for the three rewrite workflows, which never carry a
@@ -404,7 +417,12 @@ final class AppState {
         )
         switch resolution {
         case .appleSpeech:
-            return (AppleSpeechAvailability.makeTranscriber() ?? transcriber(for: .local), .local)
+            let appleTranscriber = AppleSpeechAvailability.makeTranscriber(
+                partialTranscriptHandler: { [weak self] text in
+                    Task { @MainActor in self?.workflowLifecycle.orchestrator.updatePartialTranscript(text) }
+                }
+            )
+            return (appleTranscriber ?? transcriber(for: .local), .local)
         case .remote:
             return (transcriber(for: .remote), .remote)
         case .whisperKit:

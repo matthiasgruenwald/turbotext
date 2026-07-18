@@ -28,6 +28,8 @@ struct AppleFoundationModelsProvider: LLMProvider {
         SystemLanguageModel.default.availability == .available
     }
 
+    var modelName: String { "Apple Foundation Models" }
+
     func complete(text: String, systemPrompt: String, temperature: Double) async throws -> String {
         guard Self.isAvailable else {
             throw AppleRewriteError.unavailable

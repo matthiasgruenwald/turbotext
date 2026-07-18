@@ -7,6 +7,7 @@ final class RewriteRouterTests: XCTestCase {
     private struct FakeProvider: LLMProvider {
         let result: Result<String, Error>
         var onCalled: (() -> Void)?
+        var modelName: String = "fake-model"
 
         func complete(text: String, systemPrompt: String, temperature: Double) async throws -> String {
             onCalled?()
@@ -297,5 +298,89 @@ final class RewriteRouterTests: XCTestCase {
 
         XCTAssertEqual(result, "unveraendert")
         XCTAssertNil(store.consents[.dampfAblassen])
+    }
+
+    // MARK: - Outcome / completion label (#128)
+
+    func testCompleteWithOutcomeReportsLocalOnAppleSuccess() async throws {
+        let consentSpy = ConsentSpy()
+        let store = ConsentStore()
+
+        let result = try await makeRouter().completeWithOutcome(
+            text: "hallo welt",
+            systemPrompt: "system",
+            temperature: 0.3,
+            workflow: .textImprover,
+            appleProvider: FakeProvider(result: .success("Lokal-Ergebnis"), modelName: "Apple Foundation Models"),
+            openAIProvider: FakeProvider(result: .success("OpenAI-Ergebnis")),
+            groqProvider: FakeProvider(result: .success("Groq-Ergebnis")),
+            presentConsent: consentSpy.present,
+            readConsent: store.read,
+            writeConsent: store.write
+        )
+
+        XCTAssertEqual(result.text, "Lokal-Ergebnis")
+        XCTAssertEqual(result.outcome, .local(model: "Apple Foundation Models"))
+        XCTAssertEqual(result.outcome.completionLabel, "Text lokal verbessert · Apple Foundation Models")
+    }
+
+    func testCompleteWithOutcomeReportsOnlineProviderAndModelWhenAppleUnavailable() async throws {
+        let consentSpy = ConsentSpy()
+        let store = ConsentStore()
+
+        let result = try await makeRouter(providerMode: .auto, hasGroqKey: true).completeWithOutcome(
+            text: "hallo welt",
+            systemPrompt: "system",
+            temperature: 0.3,
+            workflow: .textImprover,
+            appleProvider: nil,
+            openAIProvider: FakeProvider(result: .success("OpenAI-Ergebnis"), modelName: "gpt-4o"),
+            groqProvider: FakeProvider(result: .success("Groq-Ergebnis"), modelName: "openai/gpt-oss-120b"),
+            presentConsent: consentSpy.present,
+            readConsent: store.read,
+            writeConsent: store.write
+        )
+
+        XCTAssertEqual(result.outcome, .online(provider: .groq, model: "openai/gpt-oss-120b"))
+        XCTAssertEqual(result.outcome.completionLabel, "Text online verbessert · Groq · openai/gpt-oss-120b")
+    }
+
+    func testCompleteWithOutcomeReportsRawTextInsertedWithNoCompletionLabel() async throws {
+        let consentSpy = ConsentSpy()
+        consentSpy.decision = .insertRawText
+        let store = ConsentStore()
+
+        let result = try await makeRouter().completeWithOutcome(
+            text: "roher text",
+            systemPrompt: "system",
+            temperature: 0.3,
+            workflow: .textImprover,
+            appleProvider: FakeProvider(result: .failure(AppleRewriteError.contextWindowExceeded)),
+            openAIProvider: FakeProvider(result: .success("OpenAI-Ergebnis")),
+            groqProvider: FakeProvider(result: .success("Groq-Ergebnis")),
+            presentConsent: consentSpy.present,
+            readConsent: store.read,
+            writeConsent: store.write
+        )
+
+        XCTAssertEqual(result.outcome, .rawTextInserted)
+        XCTAssertNil(result.outcome.completionLabel)
+    }
+
+    // MARK: - Processing label (#128)
+
+    func testProcessingLabelReportsLocalWhenAppleAvailable() {
+        let label = RewriteRouter.processingLabel(appleProviderAvailable: true, providerMode: .auto, hasGroqKey: true)
+        XCTAssertEqual(label, "Nachbearbeitung läuft – lokal auf diesem Mac")
+    }
+
+    func testProcessingLabelReportsOnlineProviderWhenAppleUnavailable() {
+        let label = RewriteRouter.processingLabel(appleProviderAvailable: false, providerMode: .auto, hasGroqKey: true)
+        XCTAssertEqual(label, "Nachbearbeitung läuft online mit Groq")
+    }
+
+    func testProcessingLabelReportsOpenAIWhenNoGroqKey() {
+        let label = RewriteRouter.processingLabel(appleProviderAvailable: false, providerMode: .auto, hasGroqKey: false)
+        XCTAssertEqual(label, "Nachbearbeitung läuft online mit OpenAI")
     }
 }

@@ -54,4 +54,30 @@ final class RecordingOverlaySettingTests: XCTestCase {
     func testRecordingOverlayModeOffersTheTwoSupportedPositioningChoices() {
         XCTAssertEqual(Set(RecordingOverlayMode.allCases), [.off, .screenBottomCenter])
     }
+
+    // MARK: - Rewrite completion label (#128)
+
+    func testAppSettingsDefaultsHideRewriteCompletionLabelToFalse() {
+        XCTAssertFalse(AppSettings().hideRewriteCompletionLabel)
+    }
+
+    func testAppSettingsDecodingWithoutHideRewriteCompletionLabelKeyDefaultsToFalse() throws {
+        let json = """
+        {
+            "hotkeyMode": "hold"
+        }
+        """
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        XCTAssertFalse(settings.hideRewriteCompletionLabel)
+    }
+
+    func testAppSettingsRoundTripsHideRewriteCompletionLabel() throws {
+        var settings = AppSettings()
+        settings.hideRewriteCompletionLabel = true
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertTrue(decoded.hideRewriteCompletionLabel)
+    }
 }

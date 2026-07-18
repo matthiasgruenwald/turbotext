@@ -13,6 +13,7 @@ final class LLMServiceTests: XCTestCase {
     private struct FakeProvider: LLMProvider {
         let result: Result<String, Error>
         var onCalled: (() -> Void)?
+        var modelName: String = "fake-model"
 
         func complete(text: String, systemPrompt: String, temperature: Double) async throws -> String {
             onCalled?()

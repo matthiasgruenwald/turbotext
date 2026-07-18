@@ -28,7 +28,7 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
             },
             rewriter: { text, _, _ in
                 rewrittenInput = text
-                return " Sachlicher Text "
+                return RewriteStepResult(text: " Sachlicher Text ", completionLabel: nil)
             }
         )
         workflow.onOutput = { text in
@@ -72,7 +72,7 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
             },
             rewriter: { text, _, _ in
                 rewrittenInput = text
-                return " Text mit Emoji 🙂 "
+                return RewriteStepResult(text: " Text mit Emoji 🙂 ", completionLabel: nil)
             }
         )
         workflow.onOutput = { text in
@@ -107,7 +107,7 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
             },
             rewriter: { _, _, _ in
                 XCTFail("Cancelled workflow should not rewrite")
-                return "ignored"
+                return RewriteStepResult(text: "ignored", completionLabel: nil)
             }
         )
 
@@ -140,7 +140,7 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
             rewriter: { _, _, _ in
                 rewriteStarted.fulfill()
                 await finishRewrite.wait()
-                return "Sachlicher Text"
+                return RewriteStepResult(text: "Sachlicher Text", completionLabel: nil)
             }
         )
 
@@ -167,7 +167,7 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
             rewriter: { _, _, _ in
                 rewriteStarted.fulfill()
                 await finishRewrite.wait()
-                return "Text mit Emoji 🙂"
+                return RewriteStepResult(text: "Text mit Emoji 🙂", completionLabel: nil)
             }
         )
 
@@ -179,6 +179,37 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
         await finishRewrite.open()
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(workflow.phase, .idle, "phase must stay .idle, not be overwritten by the late-arriving rewrite result")
+    }
+
+    // MARK: - Processing label (#128)
+
+    /// Regression: `processingLabel` must already hold its resolved value by the time
+    /// `onPhaseChange` fires for the rewrite `.running` phase — `WorkflowOrchestrator`
+    /// reads it synchronously from within that same callback.
+    func testProcessingLabelIsResolvedBeforeTheRewritePhaseChangeFires() async throws {
+        let audioURL = try makeTemporaryAudioFile(prefix: "dampf-processing-label")
+        let recorder = FakeRewriteRecorder(isRecording: true, duration: 1.0, recordingURL: audioURL)
+        let outputReady = expectation(description: "output")
+        var observedLabelDuringRewritePhase: String??
+
+        let workflow = SpokenRewriteWorkflow.dampfAblassen(
+            settings: DampfAblassenSettings(systemPrompt: "Bitte sachlich."),
+            pipeline: SpokenWorkflowPipeline(recorder: recorder),
+            transcriber: { _, _, _, _ in "Rohtext" },
+            processingLabelResolver: { "Nachbearbeitung läuft – lokal auf diesem Mac" },
+            rewriter: { text, _, _ in RewriteStepResult(text: text, completionLabel: nil) }
+        )
+        workflow.onPhaseChange = { phase in
+            if case .running("Wird umformuliert ...") = phase {
+                observedLabelDuringRewritePhase = workflow.processingLabel
+            }
+        }
+        workflow.onOutput = { _ in outputReady.fulfill() }
+
+        workflow.stop()
+
+        await fulfillment(of: [outputReady], timeout: 1)
+        XCTAssertEqual(observedLabelDuringRewritePhase, "Nachbearbeitung läuft – lokal auf diesem Mac")
     }
 
     private func makeTemporaryAudioFile(prefix: String) throws -> URL {

@@ -18,6 +18,9 @@ struct AppSettings: Codable, Equatable {
     /// rewriting fails (#124). Cleared for a workflow whenever its configured online
     /// provider changes, so a fresh consent is required.
     var rewriteConsents: [WorkflowType: OnlineProvider] = [:]
+    /// Permanently hides the ~3s post-insert rewrite completion label in the signal pill
+    /// (#128), e.g. after the user dismisses it once from the pill itself.
+    var hideRewriteCompletionLabel: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case hotkeyMode
@@ -32,6 +35,7 @@ struct AppSettings: Codable, Equatable {
         case rewritingProviderMode
         case recordingOverlayMode
         case rewriteConsents
+        case hideRewriteCompletionLabel
     }
 }
 
@@ -85,6 +89,10 @@ extension AppSettings {
             [WorkflowType: OnlineProvider].self,
             forKey: .rewriteConsents
         ) ?? [:]
+        hideRewriteCompletionLabel = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .hideRewriteCompletionLabel
+        ) ?? false
     }
 }
 

@@ -207,6 +207,106 @@ final class RecordingOverlayStateTests: XCTestCase {
         XCTAssertEqual(errored.dismissingError(), .hidden)
     }
 
+    // MARK: - Partial transcript (#128)
+
+    func testPartialTranscriptUpdatesWhileRecording() {
+        let recording = RecordingOverlayState.hidden.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+        let updated = recording.receivingPartialTranscript("Hallo")
+
+        XCTAssertEqual(updated.partialTranscript, "Hallo")
+        XCTAssertEqual(updated.phase, .recording)
+    }
+
+    func testPartialTranscriptIsIgnoredOutsideRecording() {
+        let processing = RecordingOverlayState(phase: .processing, anchor: anchor, levelHistory: [])
+        XCTAssertEqual(processing.receivingPartialTranscript("Hallo"), processing)
+    }
+
+    func testPartialTranscriptResetsOnNewRecording() {
+        let firstRecording = RecordingOverlayState.hidden
+            .applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+            .receivingPartialTranscript("Alter Text")
+        let processing = firstRecording.applying(menuBarStatus: .processing(.transcription)) { self.anchor }
+        let idle = processing.applying(menuBarStatus: .idle) { self.anchor }
+        let secondRecording = idle.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+
+        XCTAssertNil(secondRecording.partialTranscript)
+    }
+
+    // MARK: - Processing label (#128)
+
+    func testProcessingLabelIsResolvedOnceEnteringProcessing() {
+        var resolveCount = 0
+        let recording = RecordingOverlayState.hidden.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+        let processing = recording.applying(
+            menuBarStatus: .processing(.transcription),
+            resolveAnchor: { self.anchor },
+            resolveProcessingLabel: {
+                resolveCount += 1
+                return "Nachbearbeitung läuft – lokal auf diesem Mac"
+            }
+        )
+        let stillProcessing = processing.applying(
+            menuBarStatus: .processing(.transcription),
+            resolveAnchor: { self.anchor },
+            resolveProcessingLabel: {
+                resolveCount += 1
+                return "should not be used"
+            }
+        )
+
+        XCTAssertEqual(processing.processingLabel, "Nachbearbeitung läuft – lokal auf diesem Mac")
+        XCTAssertEqual(stillProcessing.processingLabel, "Nachbearbeitung läuft – lokal auf diesem Mac")
+        XCTAssertEqual(resolveCount, 1)
+    }
+
+    // MARK: - Completion label (#128)
+
+    func testIdleAfterProcessingWithCompletionLabelShowsCompletionPhase() {
+        let recording = RecordingOverlayState.hidden.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+        let processing = recording.applying(menuBarStatus: .processing(.transcription)) { self.anchor }
+        let completion = processing.applying(
+            menuBarStatus: .idle,
+            resolveAnchor: { self.anchor },
+            resolveCompletionLabel: { "Text lokal verbessert · Apple Foundation Models" }
+        )
+
+        XCTAssertEqual(completion.phase, .completion)
+        XCTAssertEqual(completion.completionLabel, "Text lokal verbessert · Apple Foundation Models")
+    }
+
+    func testIdleAfterProcessingWithoutCompletionLabelHidesAsBefore() {
+        let recording = RecordingOverlayState.hidden.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+        let processing = recording.applying(menuBarStatus: .processing(.transcription)) { self.anchor }
+        let idle = processing.applying(menuBarStatus: .idle) { self.anchor }
+
+        XCTAssertEqual(idle, .hidden)
+    }
+
+    func testCompletionAutoDismissesAfterThreeSeconds() {
+        var state = RecordingOverlayState(phase: .completion, anchor: anchor, levelHistory: [], completionLabel: "done")
+        for _ in 0..<29 {
+            state = state.advancingCompletion(by: 0.1)
+        }
+        XCTAssertEqual(state.phase, .completion, "must stay visible for the full 3s")
+
+        state = state.advancingCompletion(by: 0.1)
+        XCTAssertEqual(state, .hidden)
+    }
+
+    func testRepeatedIdleObservationDoesNotHideCompletionEarly() {
+        let completion = RecordingOverlayState(phase: .completion, anchor: anchor, levelHistory: [], completionLabel: "done")
+        let stillCompletion = completion.applying(menuBarStatus: .idle) { self.anchor }
+
+        XCTAssertEqual(stillCompletion.phase, .completion)
+        XCTAssertEqual(stillCompletion.completionLabel, "done")
+    }
+
+    func testCompletionCanBeDismissedManuallyBeforeTheTimerElapses() {
+        let completion = RecordingOverlayState(phase: .completion, anchor: anchor, levelHistory: [], completionLabel: "done")
+        XCTAssertEqual(completion.dismissingCompletion(), .hidden)
+    }
+
     func testErrorMidRecordingStillHidesImmediately() {
         // Errors after recording visibly began (e.g. a later transcription failure) are
         // out of this issue's scope and keep the pre-existing hide-immediately behavior.

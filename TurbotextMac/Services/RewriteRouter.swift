@@ -33,6 +33,27 @@ enum RewriteConsentReason: Equatable {
     }
 }
 
+/// Which path actually completed a rewrite (#128), and the completion label to show in
+/// the signal pill roughly 3s after the result is pasted.
+enum RewriteOutcome: Equatable {
+    case local(model: String)
+    case online(provider: OnlineProvider, model: String)
+    /// Raw, unmodified text was inserted (user declined the consent dialog) — nothing
+    /// was actually improved, so no completion label is shown.
+    case rawTextInserted
+
+    var completionLabel: String? {
+        switch self {
+        case .local(let model):
+            return "Text lokal verbessert · \(model)"
+        case .online(let provider, let model):
+            return "Text online verbessert · \(provider.displayName) · \(model)"
+        case .rawTextInserted:
+            return nil
+        }
+    }
+}
+
 /// Local-first routing for the three rewrite workflows: prefers Apple's on-device
 /// Foundation Models provider, and only reaches out online after explicit, per-workflow
 /// user consent. Delegates to the unchanged `ProviderRouter` whenever on-device rewriting
@@ -65,6 +86,21 @@ struct RewriteRouter {
         providerMode == .auto && hasGroqKey ? .groq : .openAI
     }
 
+    /// Predicted routing path, shown in the signal pill while a rewrite is processing
+    /// (#128) — known synchronously since it only depends on Apple provider availability
+    /// and the configured online provider, not on the (async) call's actual outcome.
+    static func processingLabel(
+        appleProviderAvailable: Bool,
+        providerMode: RewriteProviderMode,
+        hasGroqKey: Bool
+    ) -> String {
+        guard appleProviderAvailable else {
+            let provider = configuredOnlineProvider(providerMode: providerMode, hasGroqKey: hasGroqKey)
+            return "Nachbearbeitung läuft online mit \(provider.displayName)"
+        }
+        return "Nachbearbeitung läuft – lokal auf diesem Mac"
+    }
+
     func complete(
         text: String,
         systemPrompt: String,
@@ -77,6 +113,25 @@ struct RewriteRouter {
         readConsent: @escaping ConsentReader,
         writeConsent: @escaping ConsentWriter
     ) async throws -> String {
+        try await completeWithOutcome(
+            text: text, systemPrompt: systemPrompt, temperature: temperature, workflow: workflow,
+            appleProvider: appleProvider, openAIProvider: openAIProvider, groqProvider: groqProvider,
+            presentConsent: presentConsent, readConsent: readConsent, writeConsent: writeConsent
+        ).text
+    }
+
+    func completeWithOutcome(
+        text: String,
+        systemPrompt: String,
+        temperature: Double,
+        workflow: WorkflowType,
+        appleProvider: LLMProvider?,
+        openAIProvider: LLMProvider,
+        groqProvider: LLMProvider,
+        presentConsent: @escaping ConsentPresenter,
+        readConsent: @escaping ConsentReader,
+        writeConsent: @escaping ConsentWriter
+    ) async throws -> (text: String, outcome: RewriteOutcome) {
         guard let appleProvider else {
             return try await fallbackToExistingRouter(
                 text: text, systemPrompt: systemPrompt, temperature: temperature,
@@ -85,7 +140,8 @@ struct RewriteRouter {
         }
 
         do {
-            return try await appleProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+            let result = try await appleProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+            return (result, .local(model: appleProvider.modelName))
         } catch let error as AppleRewriteError {
             switch error {
             case .unavailable:
@@ -115,14 +171,15 @@ struct RewriteRouter {
         temperature: Double,
         openAIProvider: LLMProvider,
         groqProvider: LLMProvider
-    ) async throws -> String {
-        try await ProviderRouter(providerMode: providerMode, hasGroqKey: hasGroqKey).complete(
+    ) async throws -> (text: String, outcome: RewriteOutcome) {
+        let outcome = try await ProviderRouter(providerMode: providerMode, hasGroqKey: hasGroqKey).completeWithOutcome(
             text: text,
             systemPrompt: systemPrompt,
             temperature: temperature,
             openAIProvider: openAIProvider,
             groqProvider: groqProvider
         )
+        return (outcome.text, .online(provider: outcome.provider, model: outcome.model))
     }
 
     private func resolveViaConsent(
@@ -136,7 +193,7 @@ struct RewriteRouter {
         presentConsent: @escaping ConsentPresenter,
         readConsent: @escaping ConsentReader,
         writeConsent: @escaping ConsentWriter
-    ) async throws -> String {
+    ) async throws -> (text: String, outcome: RewriteOutcome) {
         let expectedProvider = Self.configuredOnlineProvider(providerMode: providerMode, hasGroqKey: hasGroqKey)
 
         if let stored = readConsent(workflow) {
@@ -154,7 +211,7 @@ struct RewriteRouter {
 
         switch await presentConsent(reason, expectedProvider) {
         case .insertRawText:
-            return text
+            return (text, .rawTextInserted)
         case .continueOnline(let remember):
             if remember { writeConsent(workflow, expectedProvider) }
             return try await completeOnline(
@@ -178,20 +235,23 @@ struct RewriteRouter {
         groqProvider: LLMProvider,
         presentConsent: @escaping ConsentPresenter,
         writeConsent: @escaping ConsentWriter
-    ) async throws -> String {
+    ) async throws -> (text: String, outcome: RewriteOutcome) {
         switch provider {
         case .openAI:
-            return try await openAIProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+            let result = try await openAIProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+            return (result, .online(provider: .openAI, model: openAIProvider.modelName))
         case .groq:
             do {
-                return try await groqProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+                let result = try await groqProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+                return (result, .online(provider: .groq, model: groqProvider.modelName))
             } catch {
                 switch await presentConsent(.onlineProviderFailed(.groq), .openAI) {
                 case .insertRawText:
-                    return text
+                    return (text, .rawTextInserted)
                 case .continueOnline(let remember):
                     if remember { writeConsent(workflow, .openAI) }
-                    return try await openAIProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+                    let result = try await openAIProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+                    return (result, .online(provider: .openAI, model: openAIProvider.modelName))
                 }
             }
         }

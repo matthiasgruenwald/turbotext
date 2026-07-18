@@ -20,6 +20,9 @@ final class RecordingOverlayController {
     private let anchorResolver: () -> RecordingOverlayAnchor
     private let levelProvider: () -> Float?
     private let errorMessageProvider: () -> String?
+    private let partialTranscriptProvider: () -> String?
+    private let processingLabelProvider: () -> String?
+    private let completionLabelProvider: () -> String?
 
     private(set) var state: RecordingOverlayState = .hidden
     private var panel: NSPanel?
@@ -37,7 +40,10 @@ final class RecordingOverlayController {
         targetScreenBottomCenterProvider: @escaping (pid_t) -> CGPoint? = RecordingOverlayAnchorResolver.targetWindowBottomCenter,
         screenBottomCenterProvider: @escaping () -> CGPoint = { RecordingOverlayAnchorResolver.primaryScreenBottomCenter() },
         levelProvider: (() -> Float?)? = nil,
-        errorMessageProvider: (() -> String?)? = nil
+        errorMessageProvider: (() -> String?)? = nil,
+        partialTranscriptProvider: (() -> String?)? = nil,
+        processingLabelProvider: (() -> String?)? = nil,
+        completionLabelProvider: (() -> String?)? = nil
     ) {
         self.orchestrator = orchestrator
         self.modeProvider = modeProvider
@@ -53,6 +59,9 @@ final class RecordingOverlayController {
         }
         self.levelProvider = levelProvider ?? { [weak orchestrator] in orchestrator?.activeWorkflow?.audioLevel }
         self.errorMessageProvider = errorMessageProvider ?? { [weak orchestrator] in orchestrator?.lastErrorMessage }
+        self.partialTranscriptProvider = partialTranscriptProvider ?? { [weak orchestrator] in orchestrator?.lastPartialTranscript }
+        self.processingLabelProvider = processingLabelProvider ?? { [weak orchestrator] in orchestrator?.lastProcessingLabel }
+        self.completionLabelProvider = completionLabelProvider ?? { [weak orchestrator] in orchestrator?.lastCompletionLabel }
     }
 
     func start() {
@@ -79,7 +88,9 @@ final class RecordingOverlayController {
         state = state.applying(
             menuBarStatus: orchestrator.menuBarStatus,
             resolveAnchor: anchorResolver,
-            resolveErrorMessage: errorMessageProvider
+            resolveErrorMessage: errorMessageProvider,
+            resolveProcessingLabel: processingLabelProvider,
+            resolveCompletionLabel: completionLabelProvider
         )
 
         switch state.phase {
@@ -87,8 +98,13 @@ final class RecordingOverlayController {
             if let level = levelProvider() {
                 state = state.receivingLevel(level, elapsed: Self.pollInterval)
             }
+            if let partialTranscript = partialTranscriptProvider() {
+                state = state.receivingPartialTranscript(partialTranscript)
+            }
         case .processing:
             break
+        case .completion:
+            state = state.advancingCompletion(by: Self.pollInterval)
         case .error:
             state = state.advancingError(by: Self.pollInterval)
         case .hidden:
@@ -107,6 +123,19 @@ final class RecordingOverlayController {
         render()
     }
 
+    /// Manual dismissal of a visible completion label, e.g. from a click on the pill.
+    /// Callers wire `onCompletionLabelDismissed` to persist the "don't show again" choice.
+    func dismissCompletionLabel() {
+        guard state.phase == .completion else { return }
+        state = state.dismissingCompletion()
+        render()
+        onCompletionLabelDismissed?()
+    }
+
+    /// Fired when the user dismisses a visible completion label, so the host can persist
+    /// `AppSettings.hideRewriteCompletionLabel` (#128).
+    var onCompletionLabelDismissed: (() -> Void)?
+
     private func applyHiddenAndReset() {
         guard state.phase != .hidden else { return }
         state = .hidden
@@ -117,12 +146,12 @@ final class RecordingOverlayController {
         switch state.phase {
         case .hidden:
             panel?.orderOut(nil)
-        case .recording, .processing, .error:
+        case .recording, .processing, .error, .completion:
             let activePanel = panel ?? makePanel()
             panel = activePanel
-            // Only the error pill accepts clicks (manual dismiss); every other state
-            // must stay click-through so it never steals input from the target app.
-            activePanel.ignoresMouseEvents = state.phase != .error
+            // The error and completion pills accept clicks (manual dismiss); every other
+            // state must stay click-through so it never steals input from the target app.
+            activePanel.ignoresMouseEvents = state.phase != .error && state.phase != .completion
             updateContent(of: activePanel)
             positionPanel(activePanel)
             activePanel.orderFrontRegardless()
@@ -153,7 +182,11 @@ final class RecordingOverlayController {
             levelHistory: state.levelHistory,
             showsSilenceHint: state.showsSilenceHint,
             errorMessage: state.errorMessage,
-            onDismissError: { [weak self] in self?.dismissError() }
+            partialTranscript: state.partialTranscript,
+            processingLabel: state.processingLabel,
+            completionLabel: state.completionLabel,
+            onDismissError: { [weak self] in self?.dismissError() },
+            onDismissCompletionLabel: { [weak self] in self?.dismissCompletionLabel() }
         )
         // Reuse the hosting view and update rootView in place. Recreating it on
         // every poll tick (10x/s while recording) tore down SwiftUI's AttributeGraph

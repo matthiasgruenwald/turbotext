@@ -21,7 +21,7 @@ enum GroqLLMError: LocalizedError {
 }
 
 enum GroqLLMService {
-    private static let model = "openai/gpt-oss-120b"
+    static let model = "openai/gpt-oss-120b"
     private static let client = OpenAICompatibleClient(
         chatCompletionsURL: URL(string: "https://api.groq.com/openai/v1/chat/completions")!
     )

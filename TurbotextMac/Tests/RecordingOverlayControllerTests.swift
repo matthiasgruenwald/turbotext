@@ -291,6 +291,115 @@ final class RecordingOverlayControllerTests: XCTestCase {
         XCTAssertTrue(controller.state.showsSilenceHint)
     }
 
+    // MARK: - Partial transcript (#128)
+
+    func testPartialTranscriptAppearsWhileRecording() {
+        let (orchestrator, _) = makeOrchestratorWithWorkflow()
+        var partial = "Hallo"
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { 0 },
+            partialTranscriptProvider: { partial }
+        )
+
+        controller.tick()
+        XCTAssertEqual(controller.state.partialTranscript, "Hallo")
+
+        partial = "Hallo Welt"
+        controller.tick()
+        XCTAssertEqual(controller.state.partialTranscript, "Hallo Welt")
+    }
+
+    func testPartialTranscriptStaysNilWithoutAppleSpeech() {
+        let (orchestrator, _) = makeOrchestratorWithWorkflow()
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { 0 },
+            partialTranscriptProvider: { nil }
+        )
+
+        controller.tick()
+
+        XCTAssertNil(controller.state.partialTranscript)
+    }
+
+    // MARK: - Processing / completion labels (#128)
+
+    func testProcessingLabelIsShownWhileProcessing() {
+        let (orchestrator, workflow) = makeOrchestratorWithWorkflow()
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { workflow.audioLevel },
+            processingLabelProvider: { "Nachbearbeitung läuft – lokal auf diesem Mac" }
+        )
+        controller.tick()
+
+        workflow.isRecording = false
+        workflow.phase = .running("Wird verarbeitet ...")
+        controller.tick()
+
+        XCTAssertEqual(controller.state.phase, .processing)
+        XCTAssertEqual(controller.state.processingLabel, "Nachbearbeitung läuft – lokal auf diesem Mac")
+    }
+
+    func testCompletionLabelAppearsAfterProcessingAndAutoDismissesAfterThreeSeconds() {
+        let (orchestrator, workflow) = makeOrchestratorWithWorkflow()
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { workflow.audioLevel },
+            completionLabelProvider: { "Text lokal verbessert · Apple Foundation Models" }
+        )
+        controller.tick()
+        workflow.isRecording = false
+        workflow.phase = .running("Wird verarbeitet ...")
+        controller.tick()
+
+        orchestrator.reset()
+        controller.tick()
+
+        XCTAssertEqual(controller.state.phase, .completion)
+        XCTAssertEqual(controller.state.completionLabel, "Text lokal verbessert · Apple Foundation Models")
+
+        for _ in 0..<30 {
+            controller.tick()
+        }
+        XCTAssertEqual(controller.state, .hidden)
+    }
+
+    func testDismissCompletionLabelHidesOverlayAndFiresCallback() {
+        let (orchestrator, workflow) = makeOrchestratorWithWorkflow()
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { workflow.audioLevel },
+            completionLabelProvider: { "Text lokal verbessert · Apple Foundation Models" }
+        )
+        var dismissed = false
+        controller.onCompletionLabelDismissed = { dismissed = true }
+
+        controller.tick()
+        workflow.isRecording = false
+        workflow.phase = .running("Wird verarbeitet ...")
+        controller.tick()
+        orchestrator.reset()
+        controller.tick()
+        XCTAssertEqual(controller.state.phase, .completion)
+
+        controller.dismissCompletionLabel()
+
+        XCTAssertEqual(controller.state, .hidden)
+        XCTAssertTrue(dismissed)
+    }
+
     // MARK: - Target-screen positioning
 
     func testScreenBottomCenterModeFallsBackToThePrimaryScreenWithoutACapturedTarget() {
