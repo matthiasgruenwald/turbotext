@@ -98,6 +98,18 @@ final class AppState {
         GroqOnboardingState.resolve(hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil)
     }
 
+    /// Whether a rewrite consent is currently stored for `workflow` (#127), so
+    /// `WorkflowsSettingsView` can offer to reset it.
+    func hasRewriteConsent(for workflow: WorkflowType) -> Bool {
+        rewriteConsentCoordinator.readConsent(workflow) != nil
+    }
+
+    /// Clears the stored rewrite consent for `workflow`, requiring a fresh confirmation
+    /// the next time an on-device rewrite needs to fall back online (#127).
+    func resetRewriteConsent(for workflow: WorkflowType) {
+        rewriteConsentCoordinator.writeConsent(workflow, nil)
+    }
+
     func openMicrophoneSettings() {
         requestedSettingsSection = .transcription
         page = .settings

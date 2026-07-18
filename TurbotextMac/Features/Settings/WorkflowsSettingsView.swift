@@ -77,6 +77,10 @@ struct WorkflowsSettingsView: View {
                     }
             }
 
+            if TokenLimitHint.isVisible {
+                tokenLimitHintText
+            }
+
             // Context
             VStack(alignment: .leading, spacing: 8) {
                 Text("Kontext")
@@ -104,6 +108,8 @@ struct WorkflowsSettingsView: View {
                         }
                     }
             }
+
+            rewriteConsentResetButton(for: .textImprover)
         }
     }
 
@@ -138,6 +144,12 @@ struct WorkflowsSettingsView: View {
                         }
                     }
             }
+
+            if TokenLimitHint.isVisible {
+                tokenLimitHintText
+            }
+
+            rewriteConsentResetButton(for: .dampfAblassen)
         }
     }
 
@@ -158,6 +170,28 @@ struct WorkflowsSettingsView: View {
                 }
                 .pickerStyle(.segmented)
             }
+
+            rewriteConsentResetButton(for: .emojiText)
+        }
+    }
+
+    // MARK: Rewrite-Einwilligung (#127)
+
+    private var tokenLimitHintText: some View {
+        Text(TokenLimitHint.text)
+            .font(.system(size: 10.5))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private func rewriteConsentResetButton(for workflow: WorkflowType) -> some View {
+        if appState.hasRewriteConsent(for: workflow) {
+            Button("Online-Fallback erneut bestätigen") {
+                appState.resetRewriteConsent(for: workflow)
+            }
+            .buttonStyle(.link)
+            .font(.system(size: 11))
         }
     }
 
