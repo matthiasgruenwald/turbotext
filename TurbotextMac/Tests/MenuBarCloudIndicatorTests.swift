@@ -6,7 +6,7 @@ final class MenuBarCloudIndicatorTests: XCTestCase {
     func testNoneWhileLocalModeEnabled() {
         XCTAssertEqual(localStatus.menuBarCloudIndicator, .none)
         XCTAssertEqual(localStatus.panelTitle, "Lokal · kein Server")
-        XCTAssertEqual(localStatus.panelSubtitle, "Verarbeitung auf diesem Gerät mit Whisper Turbo.")
+        XCTAssertEqual(localStatus.panelSubtitle, "Verarbeitung auf diesem Gerät mit Apple-Gerätetranskription.")
     }
 
     func testGroqReadyWhenKeyPresentAndNotFallenBack() {

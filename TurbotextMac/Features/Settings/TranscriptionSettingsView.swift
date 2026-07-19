@@ -15,8 +15,11 @@ struct TranscriptionSettingsView: View {
         LocalTranscriptionService.modelOptions()
     }
 
-    private var noLocalBackendReady: Bool {
-        !appState.isAppleSpeechAvailable && !appState.selectedLocalModelIsInstalled
+    private var selectedLocalBackendReady: Bool {
+        switch appState.selectedLocalTranscriptionBackend {
+        case .appleSpeech: return appState.isAppleSpeechAvailable
+        case .whisperKit: return appState.selectedLocalModelIsInstalled
+        }
     }
 
     var body: some View {
@@ -30,14 +33,15 @@ struct TranscriptionSettingsView: View {
 
                 Toggle("Immer lokal transkribieren", isOn: $appState.appSettings.alwaysLocalTranscription)
                     .toggleStyle(.switch)
-                    .disabled(!appState.isAppleSpeechAvailable)
+                    .disabled(!selectedLocalBackendReady)
                     .onChange(of: appState.appSettings.alwaysLocalTranscription) { _, newValue in
                         if newValue {
                             appState.enableAlwaysLocalTranscription()
                         }
                     }
 
-                if let hintText = AppleSpeechUnavailableHint.text(for: appState.appleSpeechAvailabilityStatus) {
+                if appState.selectedLocalTranscriptionBackend == .appleSpeech,
+                   let hintText = AppleSpeechUnavailableHint.text(for: appState.appleSpeechAvailabilityStatus) {
                     Text(hintText)
                         .font(.system(size: 10.5))
                         .foregroundStyle(.secondary)
@@ -51,7 +55,7 @@ struct TranscriptionSettingsView: View {
                 }
                 .controlSize(.small)
 
-                if appState.isInstallingAppleSpeechAssets {
+                if appState.selectedLocalTranscriptionBackend == .appleSpeech, appState.isInstallingAppleSpeechAssets {
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
@@ -59,14 +63,16 @@ struct TranscriptionSettingsView: View {
                             .font(.system(size: 10.5))
                             .foregroundStyle(.secondary)
                     }
-                } else if appState.appleSpeechAvailabilityStatus == .assetsNotInstalled {
+                } else if appState.selectedLocalTranscriptionBackend == .appleSpeech,
+                          appState.appleSpeechAvailabilityStatus == .assetsNotInstalled {
                     Button("Deutsche Apple-Sprachassets laden") {
                         appState.installAppleSpeechAssets()
                     }
                     .controlSize(.small)
                 }
 
-                if let errorText = appState.appleSpeechAssetInstallationErrorText {
+                if appState.selectedLocalTranscriptionBackend == .appleSpeech,
+                   let errorText = appState.appleSpeechAssetInstallationErrorText {
                     Text(errorText)
                         .font(.system(size: 10.5))
                         .foregroundStyle(.red)
@@ -75,10 +81,10 @@ struct TranscriptionSettingsView: View {
 
                 Toggle("Bei Internetausfall automatisch lokal transkribieren", isOn: $appState.appSettings.autoFallbackToLocalOnOffline)
                     .toggleStyle(.switch)
-                    .disabled(noLocalBackendReady)
+                    .disabled(!selectedLocalBackendReady)
 
-                if noLocalBackendReady {
-                    Text("Erfordert Apple-Gerätetranskription oder ein installiertes WhisperKit-Modell.")
+                if !selectedLocalBackendReady {
+                    Text("Erfordert das ausgewählte lokale Transkriptionssystem.")
                         .font(.system(size: 10.5))
                         .foregroundStyle(.secondary)
                 }

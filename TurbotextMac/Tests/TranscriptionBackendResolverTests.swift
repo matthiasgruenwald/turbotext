@@ -69,16 +69,17 @@ final class TranscriptionBackendResolverTests: XCTestCase {
         XCTAssertEqual(result, .remote)
     }
 
-    func testAlwaysLocalWithoutAppleSpeechFallsThroughToRemoteWhenOnline() {
+    func testAlwaysLocalWithUnavailableAppleSpeechDoesNotFallThroughToRemoteWhenOnline() {
         let result = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: true,
+            selectedLocalBackend: .appleSpeech,
             appleSpeechAvailable: false,
             isOnline: true,
             autoFallbackToLocalOnOffline: false,
             legacyWhisperKitRequested: false,
             whisperKitModelInstalled: false
         )
-        XCTAssertEqual(result, .remote)
+        XCTAssertEqual(result, .unavailable)
     }
 
     // MARK: Rule 3 — offline auto-fallback to Apple Speech

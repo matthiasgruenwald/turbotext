@@ -288,6 +288,7 @@ struct MenuBarView: View {
                 let isToggleDisabled = appState.isDownloadingLocalModel
                     || !OnlineModeToggle.isToggleEnabled(
                         alwaysLocalTranscription: appState.appSettings.alwaysLocalTranscription,
+                        selectedLocalBackend: appState.selectedLocalTranscriptionBackend,
                         localModelInstalled: selectedModelInstalled,
                         appleSpeechAvailable: appState.isAppleSpeechAvailable
                     )
@@ -297,6 +298,7 @@ struct MenuBarView: View {
                         set: { requestedOnline in
                             guard let next = OnlineModeToggle.nextAlwaysLocalTranscription(
                                 requestedOnline: requestedOnline,
+                                selectedLocalBackend: appState.selectedLocalTranscriptionBackend,
                                 localModelInstalled: selectedModelInstalled,
                                 appleSpeechAvailable: appState.isAppleSpeechAvailable
                             ) else { return }
@@ -317,6 +319,7 @@ struct MenuBarView: View {
                 .help(
                     OnlineModeToggle.disabledReason(
                         alwaysLocalTranscription: appState.appSettings.alwaysLocalTranscription,
+                        selectedLocalBackend: appState.selectedLocalTranscriptionBackend,
                         localModelInstalled: selectedModelInstalled,
                         appleSpeechAvailable: appState.isAppleSpeechAvailable
                     ) ?? ""

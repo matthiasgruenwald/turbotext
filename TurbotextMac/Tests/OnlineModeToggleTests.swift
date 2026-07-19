@@ -8,13 +8,23 @@ final class OnlineModeToggleTests: XCTestCase {
         XCTAssertEqual(result, false)
     }
 
-    func testRequestingOfflineEnablesLocalModeWhenModelInstalled() {
-        let result = OnlineModeToggle.nextAlwaysLocalTranscription(requestedOnline: false, localModelInstalled: true)
+    func testRequestingOfflineEnablesLocalModeWhenSelectedWhisperKitModelIsInstalled() {
+        let result = OnlineModeToggle.nextAlwaysLocalTranscription(
+            requestedOnline: false,
+            selectedLocalBackend: .whisperKit,
+            localModelInstalled: true,
+            appleSpeechAvailable: false
+        )
         XCTAssertEqual(result, true)
     }
 
-    func testRequestingOfflineIsBlockedWhenModelNotInstalled() {
-        let result = OnlineModeToggle.nextAlwaysLocalTranscription(requestedOnline: false, localModelInstalled: false)
+    func testRequestingOfflineIsBlockedWhenSelectedAppleSpeechAssetsAreUnavailable() {
+        let result = OnlineModeToggle.nextAlwaysLocalTranscription(
+            requestedOnline: false,
+            selectedLocalBackend: .appleSpeech,
+            localModelInstalled: true,
+            appleSpeechAvailable: false
+        )
         XCTAssertNil(result)
     }
 
@@ -22,22 +32,43 @@ final class OnlineModeToggleTests: XCTestCase {
         XCTAssertFalse(OnlineModeToggle.isToggleEnabled(alwaysLocalTranscription: false, localModelInstalled: false))
     }
 
-    func testToggleEnabledWhileOnlineAndModelInstalled() {
-        XCTAssertTrue(OnlineModeToggle.isToggleEnabled(alwaysLocalTranscription: false, localModelInstalled: true))
+    func testToggleEnabledWhileOnlineAndSelectedWhisperKitModelInstalled() {
+        XCTAssertTrue(OnlineModeToggle.isToggleEnabled(
+            alwaysLocalTranscription: false,
+            selectedLocalBackend: .whisperKit,
+            localModelInstalled: true
+        ))
+    }
+
+    func testToggleIsDisabledWhenSelectedWhisperKitModelIsMissingDespiteAvailableAppleSpeech() {
+        XCTAssertFalse(OnlineModeToggle.isToggleEnabled(
+            alwaysLocalTranscription: false,
+            selectedLocalBackend: .whisperKit,
+            localModelInstalled: false,
+            appleSpeechAvailable: true
+        ))
     }
 
     func testToggleAlwaysEnabledWhileOffline() {
         XCTAssertTrue(OnlineModeToggle.isToggleEnabled(alwaysLocalTranscription: true, localModelInstalled: false))
-        XCTAssertTrue(OnlineModeToggle.isToggleEnabled(alwaysLocalTranscription: true, localModelInstalled: true))
+        XCTAssertTrue(OnlineModeToggle.isToggleEnabled(
+            alwaysLocalTranscription: true,
+            selectedLocalBackend: .whisperKit,
+            localModelInstalled: true
+        ))
     }
 
-    func testDisabledReasonExplainsMissingModelWhileOnline() {
+    func testDisabledReasonExplainsMissingAppleAssetsWhileOnline() {
         let reason = OnlineModeToggle.disabledReason(alwaysLocalTranscription: false, localModelInstalled: false)
-        XCTAssertEqual(reason, "Lokales Modell muss erst installiert werden, um offline zu wechseln.")
+        XCTAssertEqual(reason, "Apple-Sprachassets müssen erst installiert werden, um offline zu wechseln.")
     }
 
     func testDisabledReasonIsNilWhenToggleEnabled() {
-        XCTAssertNil(OnlineModeToggle.disabledReason(alwaysLocalTranscription: false, localModelInstalled: true))
+        XCTAssertNil(OnlineModeToggle.disabledReason(
+            alwaysLocalTranscription: false,
+            selectedLocalBackend: .whisperKit,
+            localModelInstalled: true
+        ))
         XCTAssertNil(OnlineModeToggle.disabledReason(alwaysLocalTranscription: true, localModelInstalled: false))
     }
 }
