@@ -44,6 +44,28 @@ struct TranscriptionSettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                if appState.isInstallingAppleSpeechAssets {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Deutsche Apple-Sprachassets werden installiert …")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.secondary)
+                    }
+                } else if appState.appleSpeechAvailabilityStatus == .assetsNotInstalled {
+                    Button("Deutsche Apple-Sprachassets laden") {
+                        appState.installAppleSpeechAssets()
+                    }
+                    .controlSize(.small)
+                }
+
+                if let errorText = appState.appleSpeechAssetInstallationErrorText {
+                    Text(errorText)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 Toggle("Bei Internetausfall automatisch lokal transkribieren", isOn: $appState.appSettings.autoFallbackToLocalOnOffline)
                     .toggleStyle(.switch)
                     .disabled(noLocalBackendReady)

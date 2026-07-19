@@ -12,6 +12,20 @@ enum AppleSpeechAvailabilityStatus: Equatable {
     var isAvailable: Bool { self == .available }
 }
 
+enum AppleSpeechAssetInstallationError: LocalizedError, Equatable {
+    case requestUnavailable
+    case unsupportedOS
+
+    var errorDescription: String? {
+        switch self {
+        case .requestUnavailable:
+            return "Die Apple-Sprachassets können auf diesem Mac derzeit nicht zur Installation reserviert werden."
+        case .unsupportedOS:
+            return "Apple-Gerätetranskription erfordert macOS 26 oder neuer."
+        }
+    }
+}
+
 @available(macOS 26, *)
 enum AppleSpeechTranscriptionError: LocalizedError, Equatable {
     case assetsNotInstalled
@@ -41,9 +55,13 @@ enum AppleSpeechTranscriptionService {
     static let locale = Locale(identifier: "de-DE")
     static let minimumOSVersion = OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
 
+    static func makeDictationTranscriber() -> DictationTranscriber {
+        DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
+    }
+
     static var isAvailable: Bool {
         get async {
-            let transcriber = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
+            let transcriber = makeDictationTranscriber()
             let status = await AssetInventory.status(forModules: [transcriber])
             return availabilityStatus(
                 osSupportsAppleSpeech: ProcessInfo.processInfo.isOperatingSystemAtLeast(minimumOSVersion),
@@ -75,13 +93,22 @@ enum AppleSpeechTranscriptionService {
 
     static var availabilityStatus: AppleSpeechAvailabilityStatus {
         get async {
-            let transcriber = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
+            let transcriber = makeDictationTranscriber()
             let assetStatus = await AssetInventory.status(forModules: [transcriber])
             return availabilityStatus(
                 osSupportsAppleSpeech: ProcessInfo.processInfo.isOperatingSystemAtLeast(minimumOSVersion),
                 assetStatus: assetStatus
             )
         }
+    }
+
+    static func installAssets() async throws -> AppleSpeechAvailabilityStatus {
+        let transcriber = makeDictationTranscriber()
+        guard let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) else {
+            throw AppleSpeechAssetInstallationError.requestUnavailable
+        }
+        try await request.downloadAndInstall()
+        return await availabilityStatus
     }
 
     /// Transkribiert eine Audiodatei lokal auf dem Gerät. `customTerms` und
@@ -95,7 +122,7 @@ enum AppleSpeechTranscriptionService {
         language: String,
         partialTranscriptHandler: ((String) -> Void)? = nil
     ) async throws -> String {
-        let transcriber = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
+        let transcriber = makeDictationTranscriber()
         let status = await AssetInventory.status(forModules: [transcriber])
         guard status == .installed else {
             throw AppleSpeechTranscriptionError.assetsNotInstalled

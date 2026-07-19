@@ -17,6 +17,13 @@ enum AppleSpeechAvailability {
         }
     }
 
+    static func installAssets() async throws -> AppleSpeechAvailabilityStatus {
+        guard #available(macOS 26, *) else {
+            throw AppleSpeechAssetInstallationError.unsupportedOS
+        }
+        return try await AppleSpeechTranscriptionService.installAssets()
+    }
+
     static func makeTranscriber(
         partialTranscriptHandler: ((String) -> Void)? = nil
     ) -> SpokenWorkflowPipeline.Transcriber? {

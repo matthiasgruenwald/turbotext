@@ -92,6 +92,8 @@ final class AppState {
     /// (`TranscriptionFallbackResolver`) can prefer Apple Speech over WhisperKit too (#123).
     var isAppleSpeechAvailable: Bool { appleSpeechAvailabilityState.isAvailable }
     var appleSpeechAvailabilityStatus: AppleSpeechAvailabilityStatus { appleSpeechAvailabilityState.status }
+    var isInstallingAppleSpeechAssets: Bool { appleSpeechAvailabilityState.isInstallingAssets }
+    var appleSpeechAssetInstallationErrorText: String? { appleSpeechAvailabilityState.assetInstallationErrorText }
     var shouldShowOnboarding: Bool {
         !isConfigured && !appSettings.hasSeenOnboarding
     }
@@ -255,6 +257,10 @@ final class AppState {
 
     func dismissAppleSpeechMigrationHintPermanently() {
         appSettings.hasSeenAppleSpeechMigrationHint = true
+    }
+
+    func installAppleSpeechAssets() {
+        appleSpeechAvailabilityState.installAssets()
     }
 
     var transcriptionModeStatus: TranscriptionModeStatus {
