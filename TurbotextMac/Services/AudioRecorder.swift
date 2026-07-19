@@ -6,10 +6,13 @@ import Observation
 
 @Observable
 final class AudioRecorder: NSObject {
+    static let usableSignalThreshold: Float = -47.5
+
     var isRecording = false
     var recordingURL: URL?
     var errorMessage: String?
     var audioLevel: Float = 0
+    private(set) var hasUsableSignal = false
     var lastRecordingDuration: TimeInterval = 0
 
     private let engine = AVAudioEngine()
@@ -35,6 +38,7 @@ final class AudioRecorder: NSObject {
         errorMessage = nil
         lastRecordingDuration = 0
         recordingURL = nil
+        hasUsableSignal = false
         if let currentFileURL {
             try? FileManager.default.removeItem(at: currentFileURL)
         }
@@ -130,7 +134,12 @@ final class AudioRecorder: NSObject {
 
     private func handleBuffer(_ buffer: AVAudioPCMBuffer) {
         meteredPeakLevel = Self.peakLevel(of: buffer)
+        hasUsableSignal = hasUsableSignal || Self.isUsableSignal(meteredPeakLevel)
         try? outputFile?.write(from: buffer)
+    }
+
+    static func isUsableSignal(_ peakLevel: Float) -> Bool {
+        peakLevel > usableSignalThreshold
     }
 
     private static func peakLevel(of buffer: AVAudioPCMBuffer) -> Float {

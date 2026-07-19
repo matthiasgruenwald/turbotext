@@ -5,11 +5,16 @@ protocol SpokenWorkflowRecording: AnyObject {
     var recordingURL: URL? { get }
     var errorMessage: String? { get }
     var audioLevel: Float { get }
+    var hasUsableSignal: Bool { get }
     var lastRecordingDuration: TimeInterval { get }
 
     func startRecording()
     func stopRecording()
     func discardRecording()
+}
+
+extension SpokenWorkflowRecording {
+    var hasUsableSignal: Bool { true }
 }
 
 extension AudioRecorder: SpokenWorkflowRecording {}
@@ -24,6 +29,7 @@ final class SpokenWorkflowPipeline {
     enum Error: Swift.Error, Equatable, LocalizedError {
         case noRecording
         case noSpeech
+        case noUsableMicrophoneSignal
 
         var errorDescription: String? {
             switch self {
@@ -31,6 +37,8 @@ final class SpokenWorkflowPipeline {
                 return "Keine Aufnahme vorhanden."
             case .noSpeech:
                 return "Keine Aufnahme erkannt."
+            case .noUsableMicrophoneSignal:
+                return "Kein verwertbares Mikrofonsignal erkannt."
             }
         }
     }
@@ -56,6 +64,10 @@ final class SpokenWorkflowPipeline {
 
     func stopRecording() -> Result<Recording, Error> {
         recorder.stopRecording()
+        guard recorder.hasUsableSignal else {
+            recorder.discardRecording()
+            return .failure(.noUsableMicrophoneSignal)
+        }
         guard !TranscriptionQualityService.shouldRejectRecording(duration: recorder.lastRecordingDuration) else {
             recorder.discardRecording()
             return .failure(.noSpeech)

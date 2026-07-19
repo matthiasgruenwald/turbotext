@@ -48,6 +48,18 @@ final class SpokenWorkflowPipelineTests: XCTestCase {
         XCTAssertEqual(recorder.discardCount, 1)
     }
 
+    func testStopRejectsSilentRecordingAndDiscardsIt() {
+        let recorder = FakeSpokenRecorder(isRecording: true, duration: 8)
+        recorder.hasUsableSignal = false
+        let pipeline = SpokenWorkflowPipeline(recorder: recorder)
+
+        let result = pipeline.stopRecording()
+
+        XCTAssertEqual(result, .failure(.noUsableMicrophoneSignal))
+        XCTAssertEqual(recorder.stopCount, 1)
+        XCTAssertEqual(recorder.discardCount, 1)
+    }
+
     func testTranscribeSkipsVocabularyHintsForVeryShortAcceptedRecordingAndCleansFile() async throws {
         let audioURL = try makeTemporaryAudioFile()
         let pipeline = SpokenWorkflowPipeline(recorder: FakeSpokenRecorder())
@@ -118,6 +130,7 @@ private final class FakeSpokenRecorder: SpokenWorkflowRecording {
     var recordingURL: URL?
     var errorMessage: String?
     var audioLevel: Float = 0
+    var hasUsableSignal = true
     var lastRecordingDuration: TimeInterval
     var stopCount = 0
     var discardCount = 0

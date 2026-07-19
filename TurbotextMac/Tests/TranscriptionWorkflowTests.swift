@@ -100,6 +100,20 @@ final class TranscriptionWorkflowTests: XCTestCase {
         XCTAssertEqual(workflow.phase, .running("Aufnahme läuft ..."))
     }
 
+    func testSilentRecordingFailsWithoutStartingTranscription() {
+        let recorder = FakeTranscriptionRecorder(isRecording: true, duration: 8, recordingURL: URL(fileURLWithPath: "/tmp/silent.m4a"))
+        recorder.hasUsableSignal = false
+        let workflow = makeWorkflow(recorder: recorder, transcribe: { _, _, _, _ in
+            XCTFail("silent recordings must not be sent for transcription")
+            return "unused"
+        })
+
+        workflow.stop()
+
+        XCTAssertEqual(workflow.phase, .error("Kein verwertbares Mikrofonsignal erkannt."))
+        XCTAssertEqual(recorder.discardCount, 1)
+    }
+
     // MARK: - Helpers
 
     private func makeWorkflow(
@@ -129,6 +143,7 @@ private final class FakeTranscriptionRecorder: SpokenWorkflowRecording {
     var recordingURL: URL?
     var errorMessage: String?
     var audioLevel: Float = 0
+    var hasUsableSignal = true
     var lastRecordingDuration: TimeInterval
     /// When set, `startRecording()` fails deterministically (like a real "no microphone"
     /// or Core Audio start failure) instead of flipping `isRecording` on.
@@ -155,7 +170,10 @@ private final class FakeTranscriptionRecorder: SpokenWorkflowRecording {
 
     func discardRecording() {
         recordingURL = nil
+        discardCount += 1
     }
+
+    private(set) var discardCount = 0
 }
 
 private actor AsyncGate {

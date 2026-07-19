@@ -46,4 +46,9 @@ final class AudioRecorderDeviceSelectionTests: XCTestCase {
         )
         XCTAssertNil(resolved)
     }
+
+    func testUsableSignalMatchesRecordingOverlayThreshold() {
+        XCTAssertFalse(AudioRecorder.isUsableSignal(-47.5))
+        XCTAssertTrue(AudioRecorder.isUsableSignal(-47.4))
+    }
 }
