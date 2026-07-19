@@ -4,10 +4,16 @@ import Foundation
 /// callers below the OS floor — and the resolver/tests — don't need `@available` guards
 /// sprinkled through call sites.
 enum AppleSpeechAvailability {
+    static var status: AppleSpeechAvailabilityStatus {
+        get async {
+            guard #available(macOS 26, *) else { return .unsupportedOS }
+            return await AppleSpeechTranscriptionService.availabilityStatus
+        }
+    }
+
     static var isAvailable: Bool {
         get async {
-            guard #available(macOS 26, *) else { return false }
-            return await AppleSpeechTranscriptionService.isAvailable
+            await status.isAvailable
         }
     }
 

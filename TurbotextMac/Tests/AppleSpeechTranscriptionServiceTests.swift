@@ -31,6 +31,30 @@ final class AppleSpeechTranscriptionServiceTests: XCTestCase {
         )
     }
 
+    func testAvailabilityStatusExplainsTheReasonAppleSpeechIsUnavailable() {
+        XCTAssertEqual(
+            AppleSpeechTranscriptionService.availabilityStatus(
+                osSupportsAppleSpeech: false,
+                assetStatus: .installed
+            ),
+            .unsupportedOS
+        )
+        XCTAssertEqual(
+            AppleSpeechTranscriptionService.availabilityStatus(
+                osSupportsAppleSpeech: true,
+                assetStatus: .supported
+            ),
+            .assetsNotInstalled
+        )
+        XCTAssertEqual(
+            AppleSpeechTranscriptionService.availabilityStatus(
+                osSupportsAppleSpeech: true,
+                assetStatus: .downloading
+            ),
+            .assetsDownloading
+        )
+    }
+
     func testLiveIsAvailableMatchesRealAssetStatus() async {
         let transcriber = DictationTranscriber(
             locale: AppleSpeechTranscriptionService.locale,

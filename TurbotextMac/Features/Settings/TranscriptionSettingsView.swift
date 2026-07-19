@@ -37,7 +37,7 @@ struct TranscriptionSettingsView: View {
                         }
                     }
 
-                if let hintText = AppleSpeechUnavailableHint.text(isAvailable: appState.isAppleSpeechAvailable) {
+                if let hintText = AppleSpeechUnavailableHint.text(for: appState.appleSpeechAvailabilityStatus) {
                     Text(hintText)
                         .font(.system(size: 10.5))
                         .foregroundStyle(.secondary)

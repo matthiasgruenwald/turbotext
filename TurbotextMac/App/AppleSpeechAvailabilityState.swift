@@ -6,17 +6,18 @@ import Observation
 @Observable
 @MainActor
 final class AppleSpeechAvailabilityState {
-    private(set) var isAvailable = false
-    private let checkAvailability: () async -> Bool
+    private(set) var status: AppleSpeechAvailabilityStatus = .assetsNotInstalled
+    private let checkStatus: () async -> AppleSpeechAvailabilityStatus
 
-    init(checkAvailability: @escaping () async -> Bool = { await AppleSpeechAvailability.isAvailable }) {
-        self.checkAvailability = checkAvailability
+    var isAvailable: Bool { status.isAvailable }
+
+    init(checkStatus: @escaping () async -> AppleSpeechAvailabilityStatus = { await AppleSpeechAvailability.status }) {
+        self.checkStatus = checkStatus
     }
 
     func refresh() {
-        Task { @MainActor [weak self, checkAvailability] in
-            let available = await checkAvailability()
-            self?.isAvailable = available
+        Task { @MainActor [weak self, checkStatus] in
+            self?.status = await checkStatus()
         }
     }
 }

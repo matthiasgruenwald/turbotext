@@ -2,6 +2,16 @@ import AVFAudio
 import Foundation
 import Speech
 
+enum AppleSpeechAvailabilityStatus: Equatable {
+    case available
+    case unsupportedOS
+    case assetsNotInstalled
+    case assetsDownloading
+    case germanAssetsUnsupported
+
+    var isAvailable: Bool { self == .available }
+}
+
 @available(macOS 26, *)
 enum AppleSpeechTranscriptionError: LocalizedError, Equatable {
     case assetsNotInstalled
@@ -35,17 +45,43 @@ enum AppleSpeechTranscriptionService {
         get async {
             let transcriber = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
             let status = await AssetInventory.status(forModules: [transcriber])
-            return isAvailable(
+            return availabilityStatus(
                 osSupportsAppleSpeech: ProcessInfo.processInfo.isOperatingSystemAtLeast(minimumOSVersion),
                 assetStatus: status
-            )
+            ).isAvailable
         }
     }
 
     /// Reine Entscheidungslogik, getrennt von den Speech-APIs, damit sie ohne
     /// installierte Sprachassets oder eine macOS-26-Maschine testbar bleibt.
     static func isAvailable(osSupportsAppleSpeech: Bool, assetStatus: AssetInventory.Status) -> Bool {
-        osSupportsAppleSpeech && assetStatus == .installed
+        availabilityStatus(osSupportsAppleSpeech: osSupportsAppleSpeech, assetStatus: assetStatus).isAvailable
+    }
+
+    static func availabilityStatus(
+        osSupportsAppleSpeech: Bool,
+        assetStatus: AssetInventory.Status
+    ) -> AppleSpeechAvailabilityStatus {
+        guard osSupportsAppleSpeech else { return .unsupportedOS }
+
+        switch assetStatus {
+        case .installed: return .available
+        case .supported: return .assetsNotInstalled
+        case .downloading: return .assetsDownloading
+        case .unsupported: return .germanAssetsUnsupported
+        @unknown default: return .germanAssetsUnsupported
+        }
+    }
+
+    static var availabilityStatus: AppleSpeechAvailabilityStatus {
+        get async {
+            let transcriber = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
+            let assetStatus = await AssetInventory.status(forModules: [transcriber])
+            return availabilityStatus(
+                osSupportsAppleSpeech: ProcessInfo.processInfo.isOperatingSystemAtLeast(minimumOSVersion),
+                assetStatus: assetStatus
+            )
+        }
     }
 
     /// Transkribiert eine Audiodatei lokal auf dem Gerät. `customTerms` und
@@ -67,7 +103,7 @@ enum AppleSpeechTranscriptionService {
 
         do {
             let audioFile = try AVAudioFile(forReading: audioURL)
-            let analyzer = try await SpeechAnalyzer(inputAudioFile: audioFile, modules: [transcriber])
+            let analyzer = SpeechAnalyzer(modules: [transcriber])
 
             let collectingTask = Task {
                 var finalText = ""

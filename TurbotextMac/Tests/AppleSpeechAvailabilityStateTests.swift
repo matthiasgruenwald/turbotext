@@ -4,12 +4,12 @@ import XCTest
 @MainActor
 final class AppleSpeechAvailabilityStateTests: XCTestCase {
     func testStartsFalseBeforeRefresh() {
-        let state = AppleSpeechAvailabilityState(checkAvailability: { true })
+        let state = AppleSpeechAvailabilityState(checkStatus: { .available })
         XCTAssertFalse(state.isAvailable)
     }
 
     func testRefreshAdoptsTheCheckedValue() async {
-        let state = AppleSpeechAvailabilityState(checkAvailability: { true })
+        let state = AppleSpeechAvailabilityState(checkStatus: { .available })
         state.refresh()
 
         for _ in 0..<50 where !state.isAvailable {
@@ -20,7 +20,7 @@ final class AppleSpeechAvailabilityStateTests: XCTestCase {
     }
 
     func testRefreshCanAdoptFalse() async {
-        let state = AppleSpeechAvailabilityState(checkAvailability: { false })
+        let state = AppleSpeechAvailabilityState(checkStatus: { .assetsNotInstalled })
         state.refresh()
 
         // Give the task a moment to run; result should settle on false either way.

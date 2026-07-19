@@ -91,6 +91,7 @@ final class AppState {
     /// Exposed so `TurbotextMacApp`'s hotkey-time offline-fallback decision
     /// (`TranscriptionFallbackResolver`) can prefer Apple Speech over WhisperKit too (#123).
     var isAppleSpeechAvailable: Bool { appleSpeechAvailabilityState.isAvailable }
+    var appleSpeechAvailabilityStatus: AppleSpeechAvailabilityStatus { appleSpeechAvailabilityState.status }
     var shouldShowOnboarding: Bool {
         !isConfigured && !appSettings.hasSeenOnboarding
     }

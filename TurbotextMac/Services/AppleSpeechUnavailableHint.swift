@@ -4,8 +4,22 @@ import Foundation
 /// when Apple-Gerätetranskription isn't available (macOS < 26, or required assets
 /// aren't installed — see `AppleSpeechAvailability`/`AppleSpeechAvailabilityState`).
 enum AppleSpeechUnavailableHint {
+    static func text(for status: AppleSpeechAvailabilityStatus) -> String? {
+        switch status {
+        case .available:
+            return nil
+        case .unsupportedOS:
+            return "Apple-Gerätetranskription erfordert macOS 26 oder neuer."
+        case .assetsNotInstalled:
+            return "Die deutschen Sprachassets für Apple-Gerätetranskription sind nicht installiert."
+        case .assetsDownloading:
+            return "Die deutschen Sprachassets für Apple-Gerätetranskription werden noch installiert."
+        case .germanAssetsUnsupported:
+            return "Deutsche Sprachassets für Apple-Gerätetranskription werden auf diesem Mac nicht unterstützt."
+        }
+    }
+
     static func text(isAvailable: Bool) -> String? {
-        guard !isAvailable else { return nil }
-        return "Apple-Gerätetranskription erfordert macOS 26 oder neuer sowie installierte Spracherkennungs-Assets. Bis dahin steht nur WhisperKit (Legacy) zur Verfügung."
+        text(for: isAvailable ? .available : .assetsNotInstalled)
     }
 }
