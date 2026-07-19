@@ -5,7 +5,7 @@ final class MenuBarCloudIndicatorTests: XCTestCase {
 
     func testNoneWhileLocalModeEnabled() {
         XCTAssertEqual(localStatus.menuBarCloudIndicator, .none)
-        XCTAssertEqual(localStatus.panelTitle, "Lokal · kein Server")
+        XCTAssertEqual(localStatus.panelTitle, "Lokal · Apple")
         XCTAssertEqual(localStatus.panelSubtitle, "Verarbeitung auf diesem Gerät mit Apple-Gerätetranskription.")
     }
 
@@ -41,7 +41,9 @@ final class MenuBarCloudIndicatorTests: XCTestCase {
             localModelDownloadStatusText: nil,
             hasGroqKey: true,
             groqFallbackActive: false,
-            groqQuotaUsedToday: "5 min"
+            groqQuotaUsedToday: "5 min",
+            isOnline: true,
+            autoFallbackToLocalOnOffline: false
         )
     }
 
@@ -56,7 +58,9 @@ final class MenuBarCloudIndicatorTests: XCTestCase {
             localModelDownloadStatusText: nil,
             hasGroqKey: hasGroqKey,
             groqFallbackActive: groqFallbackActive,
-            groqQuotaUsedToday: "5 min"
+            groqQuotaUsedToday: "5 min",
+            isOnline: true,
+            autoFallbackToLocalOnOffline: false
         )
     }
 }

@@ -263,7 +263,9 @@ final class AppState {
             localModelDownloadStatusText: localModelDownloadStatusText,
             hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil,
             groqFallbackActive: status.fallbackActive,
-            groqQuotaUsedToday: status.formattedUsedToday
+            groqQuotaUsedToday: status.formattedUsedToday,
+            isOnline: networkPingService.status != .red,
+            autoFallbackToLocalOnOffline: appSettings.autoFallbackToLocalOnOffline
         )
     }
 

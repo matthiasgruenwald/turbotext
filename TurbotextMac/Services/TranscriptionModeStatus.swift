@@ -15,6 +15,24 @@ struct TranscriptionModeStatus: Equatable {
     let hasGroqKey: Bool
     let groqFallbackActive: Bool
     let groqQuotaUsedToday: String
+    let isOnline: Bool
+    let autoFallbackToLocalOnOffline: Bool
+
+    private var resolvedBackend: ResolvedTranscriptionBackend {
+        TranscriptionBackendResolver.resolve(
+            alwaysLocalTranscription: alwaysLocalTranscription,
+            selectedLocalBackend: selectedLocalBackend,
+            appleSpeechAvailable: appleSpeechAvailable,
+            isOnline: isOnline,
+            autoFallbackToLocalOnOffline: autoFallbackToLocalOnOffline,
+            legacyWhisperKitRequested: false,
+            whisperKitModelInstalled: selectedLocalModelInstalled
+        )
+    }
+
+    private var usesOfflineFallback: Bool {
+        !alwaysLocalTranscription && !isOnline && autoFallbackToLocalOnOffline && resolvedBackend == .appleSpeech
+    }
 
     var menuBarCloudIndicator: MenuBarCloudIndicator {
         if alwaysLocalTranscription { return .none }
@@ -34,7 +52,18 @@ struct TranscriptionModeStatus: Equatable {
     }
 
     var panelTitle: String {
-        alwaysLocalTranscription ? "Lokal · kein Server" : "Online · \(onlineTitle)"
+        switch resolvedBackend {
+        case .appleSpeech where usesOfflineFallback:
+            return "Offline-Fallback · Apple"
+        case .appleSpeech:
+            return "Lokal · Apple"
+        case .whisperKit:
+            return "Lokal · WhisperKit"
+        case .unavailable:
+            return "Lokal · nicht nutzbar"
+        case .remote:
+            return "Online · \(onlineTitle)"
+        }
     }
 
     var onlineTitle: String {
@@ -42,43 +71,47 @@ struct TranscriptionModeStatus: Equatable {
     }
 
     var panelSubtitle: String {
-        if alwaysLocalTranscription {
-            if selectedLocalBackend == .appleSpeech {
-                return appleSpeechAvailable
-                    ? "Verarbeitung auf diesem Gerät mit Apple-Gerätetranskription."
-                    : "Apple-Gerätetranskription ist nicht verfügbar."
-            }
-            if isDownloadingLocalModel {
+        switch resolvedBackend {
+        case .appleSpeech:
+            return usesOfflineFallback
+                ? "Offline-Fallback: Apple-Gerätetranskription auf diesem Gerät."
+                : "Verarbeitung auf diesem Gerät mit Apple-Gerätetranskription."
+        case .whisperKit:
+            return "Verarbeitung auf diesem Gerät mit \(selectedLocalModelDisplayName)."
+        case .unavailable:
+            if selectedLocalBackend == .whisperKit, isDownloadingLocalModel {
                 return localModelDownloadStatusText ?? "Lokales Modell wird geladen."
             }
-            if selectedLocalModelInstalled {
-                return "Verarbeitung auf diesem Gerät mit \(selectedLocalModelDisplayName)."
-            }
-            return "\(selectedLocalModelDisplayName) ist noch nicht installiert."
-        }
-
-        if hasGroqKey {
+            return unavailableLocalBackendText
+        case .remote where hasGroqKey:
             if groqFallbackActive {
                 return "Über Server verarbeitet · Groq-Kontingent aufgebraucht, jetzt OpenAI Whisper."
             }
             return "Über Server verarbeitet · heute \(groqQuotaUsedToday) Groq-Kontingent genutzt."
+        case .remote:
+            return "Über Server verarbeitet via OpenAI Whisper."
         }
-
-        return "Über Server verarbeitet via OpenAI Whisper."
     }
 
     var transcriptionWorkflowSubtitle: String {
-        if alwaysLocalTranscription {
-            if selectedLocalBackend == .appleSpeech {
-                return appleSpeechAvailable
-                    ? "Lokal: Apple-Gerätetranskription."
-                    : "Apple-Gerätetranskription ist nicht verfügbar."
-            }
-            return selectedLocalModelInstalled
-                ? "Lokal: \(selectedLocalModelDisplayName)."
-                : "Lokales WhisperKit-Modell fehlt."
+        switch resolvedBackend {
+        case .appleSpeech:
+            return usesOfflineFallback
+                ? "Offline-Fallback: Apple-Gerätetranskription."
+                : "Lokal: Apple-Gerätetranskription."
+        case .whisperKit:
+            return "Lokal: \(selectedLocalModelDisplayName)."
+        case .unavailable:
+            return unavailableLocalBackendText
+        case .remote:
+            return "Sprache rein. Landet in Zwischenablage."
         }
-        return "Sprache rein. Landet in Zwischenablage."
+    }
+
+    private var unavailableLocalBackendText: String {
+        selectedLocalBackend == .appleSpeech
+            ? "Apple-Gerätetranskription ist nicht nutzbar."
+            : "\(selectedLocalModelDisplayName) ist nicht nutzbar, weil es nicht installiert ist."
     }
 
     func localInstallStatusText(installedModelCount: Int) -> String {
