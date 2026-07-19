@@ -91,6 +91,10 @@ final class AppState {
     /// Exposed so `TurbotextMacApp`'s hotkey-time offline-fallback decision
     /// (`TranscriptionFallbackResolver`) can prefer Apple Speech over WhisperKit too (#123).
     var isAppleSpeechAvailable: Bool { appleSpeechAvailabilityState.isAvailable }
+    var selectedLocalTranscriptionBackend: LocalTranscriptionBackend {
+        get { appSettings.selectedLocalTranscriptionBackend }
+        set { appSettings.selectedLocalTranscriptionBackend = newValue }
+    }
     var appleSpeechAvailabilityStatus: AppleSpeechAvailabilityStatus { appleSpeechAvailabilityState.status }
     var isInstallingAppleSpeechAssets: Bool { appleSpeechAvailabilityState.isInstallingAssets }
     var appleSpeechAssetInstallationErrorText: String? { appleSpeechAvailabilityState.assetInstallationErrorText }
@@ -267,6 +271,8 @@ final class AppState {
         let status = groqTranscriptionProvider.quotaUIStatus
         return TranscriptionModeStatus(
             alwaysLocalTranscription: appSettings.alwaysLocalTranscription,
+            selectedLocalBackend: selectedLocalTranscriptionBackend,
+            appleSpeechAvailable: isAppleSpeechAvailable,
             selectedLocalModelInstalled: selectedLocalModelIsInstalled,
             selectedLocalModelDisplayName: selectedLocalModelDisplayName,
             isDownloadingLocalModel: isDownloadingLocalModel,
@@ -416,6 +422,7 @@ final class AppState {
     ) -> (transcriber: SpokenWorkflowPipeline.Transcriber, backend: TranscriptionBackend) {
         let resolution = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: appSettings.alwaysLocalTranscription,
+            selectedLocalBackend: selectedLocalTranscriptionBackend,
             appleSpeechAvailable: appleSpeechAvailabilityState.isAvailable,
             isOnline: networkPingService.status != .red,
             autoFallbackToLocalOnOffline: appSettings.autoFallbackToLocalOnOffline,
@@ -429,11 +436,19 @@ final class AppState {
                     Task { @MainActor in self?.workflowLifecycle.orchestrator.updatePartialTranscript(text) }
                 }
             )
-            return (appleTranscriber ?? transcriber(for: .local), .local)
+            return (appleTranscriber ?? unavailableTranscriber, .local)
         case .remote:
             return (transcriber(for: .remote), .remote)
         case .whisperKit:
             return (transcriber(for: .local), .local)
+        case .unavailable:
+            return (unavailableTranscriber, .local)
+        }
+    }
+
+    private var unavailableTranscriber: SpokenWorkflowPipeline.Transcriber {
+        { _, _, _, _ in
+            throw LocalTranscriptionUnavailableError.selectedBackendUnavailable
         }
     }
 
@@ -468,7 +483,10 @@ final class AppState {
             guard transcriptionModeStatus.alwaysLocalTranscription else {
                 return KeychainService.isConfigured
             }
-            return appleSpeechAvailabilityState.isAvailable || transcriptionModeStatus.selectedLocalModelInstalled
+            switch selectedLocalTranscriptionBackend {
+            case .appleSpeech: return appleSpeechAvailabilityState.isAvailable
+            case .whisperKit: return transcriptionModeStatus.selectedLocalModelInstalled
+            }
         case .textImprover, .dampfAblassen, .emojiText:
             return KeychainService.isConfigured
         }
@@ -485,7 +503,7 @@ final class AppState {
     func enableAlwaysLocalTranscription() {
         appSettings.alwaysLocalTranscription = true
         appleSpeechAvailabilityState.refresh()
-        if !selectedLocalModelIsInstalled {
+        if selectedLocalTranscriptionBackend == .whisperKit, !selectedLocalModelIsInstalled {
             installSelectedLocalModel()
         }
     }

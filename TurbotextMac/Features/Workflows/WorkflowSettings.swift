@@ -7,6 +7,7 @@ struct AppSettings: Codable, Equatable {
     var hasSeenOnboarding: Bool = false
     var alwaysLocalTranscription: Bool = false
     var selectedLocalTranscriptionModelName: String = LocalTranscriptionService.recommendedFastModelName
+    var selectedLocalTranscriptionBackend: LocalTranscriptionBackend = .appleSpeech
     var hasAutoSelectedFastLocalModel: Bool = false
     var hasDismissedInputMonitoringHint: Bool = false
     var hasSeenAppleSpeechMigrationHint: Bool = false
@@ -27,6 +28,7 @@ struct AppSettings: Codable, Equatable {
         case hasSeenOnboarding
         case alwaysLocalTranscription
         case selectedLocalTranscriptionModelName
+        case selectedLocalTranscriptionBackend
         case hasAutoSelectedFastLocalModel
         case hasDismissedInputMonitoringHint
         case hasSeenAppleSpeechMigrationHint
@@ -60,6 +62,10 @@ extension AppSettings {
             String.self,
             forKey: .selectedLocalTranscriptionModelName
         ) ?? LocalTranscriptionService.recommendedFastModelName
+        selectedLocalTranscriptionBackend = try container.decodeIfPresent(
+            LocalTranscriptionBackend.self,
+            forKey: .selectedLocalTranscriptionBackend
+        ) ?? .appleSpeech
         hasAutoSelectedFastLocalModel = try container.decodeIfPresent(
             Bool.self,
             forKey: .hasAutoSelectedFastLocalModel
@@ -93,6 +99,20 @@ extension AppSettings {
             Bool.self,
             forKey: .hideRewriteCompletionLabel
         ) ?? false
+    }
+}
+
+enum LocalTranscriptionBackend: String, Codable, CaseIterable, Identifiable {
+    case appleSpeech
+    case whisperKit
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .appleSpeech: return "Apple-Gerätetranskription"
+        case .whisperKit: return "WhisperKit"
+        }
     }
 }
 

@@ -233,12 +233,6 @@ struct MenuBarView: View {
                     .padding(.bottom, 6)
             }
 
-            if let hint = appState.appleSpeechMigrationHintBannerContent {
-                appleSpeechMigrationHintBanner(title: hint.title, detail: hint.detail)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 6)
-            }
-
             // Workflow list
             VStack(spacing: 0) {
                 ForEach(WorkflowType.mainMenuCases) { type in
@@ -294,7 +288,8 @@ struct MenuBarView: View {
                 let isToggleDisabled = appState.isDownloadingLocalModel
                     || !OnlineModeToggle.isToggleEnabled(
                         alwaysLocalTranscription: appState.appSettings.alwaysLocalTranscription,
-                        localModelInstalled: selectedModelInstalled
+                        localModelInstalled: selectedModelInstalled,
+                        appleSpeechAvailable: appState.isAppleSpeechAvailable
                     )
                 Group {
                     Toggle("", isOn: Binding(
@@ -302,7 +297,8 @@ struct MenuBarView: View {
                         set: { requestedOnline in
                             guard let next = OnlineModeToggle.nextAlwaysLocalTranscription(
                                 requestedOnline: requestedOnline,
-                                localModelInstalled: selectedModelInstalled
+                                localModelInstalled: selectedModelInstalled,
+                                appleSpeechAvailable: appState.isAppleSpeechAvailable
                             ) else { return }
                             if next {
                                 appState.enableAlwaysLocalTranscription()
@@ -321,23 +317,24 @@ struct MenuBarView: View {
                 .help(
                     OnlineModeToggle.disabledReason(
                         alwaysLocalTranscription: appState.appSettings.alwaysLocalTranscription,
-                        localModelInstalled: selectedModelInstalled
+                        localModelInstalled: selectedModelInstalled,
+                        appleSpeechAvailable: appState.isAppleSpeechAvailable
                     ) ?? ""
                 )
             }
 
             if appState.appSettings.alwaysLocalTranscription {
                 HStack(spacing: 8) {
-                    Text("Modell")
+                    Text("System")
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundStyle(.secondary)
 
                     Picker("", selection: Binding(
-                        get: { appState.selectedLocalModelName },
-                        set: { appState.appSettings.selectedLocalTranscriptionModelName = $0 }
+                        get: { appState.selectedLocalTranscriptionBackend },
+                        set: { appState.selectedLocalTranscriptionBackend = $0 }
                     )) {
-                        ForEach(modelOptions) { model in
-                            Text(model.shortDisplayName).tag(model.id)
+                        ForEach(LocalTranscriptionBackend.allCases) { backend in
+                            Text(backend.displayName).tag(backend)
                         }
                     }
                     .labelsHidden()
@@ -346,17 +343,30 @@ struct MenuBarView: View {
                     .disabled(appState.isDownloadingLocalModel)
                 }
 
-                if let progress = appState.localModelDownloadProgress {
+                if appState.selectedLocalTranscriptionBackend == .whisperKit, let progress = appState.localModelDownloadProgress {
                     VStack(alignment: .leading, spacing: 4) {
                         ProgressView(value: progress)
                         Text(appState.localModelDownloadStatusText ?? "Modell wird geladen...")
                             .font(.system(size: 10.5))
                             .foregroundStyle(.secondary)
                     }
-                } else if !selectedModelInstalled {
+                } else if appState.selectedLocalTranscriptionBackend == .whisperKit && !selectedModelInstalled {
                     Button(appState.localModelDownloadButtonTitle) {
                         appState.installSelectedLocalModel()
                     }
+                    .controlSize(.small)
+                }
+
+                if appState.selectedLocalTranscriptionBackend == .whisperKit {
+                    Picker("WhisperKit-Modell", selection: Binding(
+                        get: { appState.selectedLocalModelName },
+                        set: { appState.appSettings.selectedLocalTranscriptionModelName = $0 }
+                    )) {
+                        ForEach(modelOptions) { model in
+                            Text(model.shortDisplayName).tag(model.id)
+                        }
+                    }
+                    .labelsHidden()
                     .controlSize(.small)
                 }
 

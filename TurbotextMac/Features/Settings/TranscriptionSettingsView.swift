@@ -28,7 +28,7 @@ struct TranscriptionSettingsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel(text: "Lokale Transkription")
 
-                Toggle("Immer lokal transkribieren – Apple-Gerätetranskription", isOn: $appState.appSettings.alwaysLocalTranscription)
+                Toggle("Immer lokal transkribieren", isOn: $appState.appSettings.alwaysLocalTranscription)
                     .toggleStyle(.switch)
                     .disabled(!appState.isAppleSpeechAvailable)
                     .onChange(of: appState.appSettings.alwaysLocalTranscription) { _, newValue in
@@ -43,6 +43,13 @@ struct TranscriptionSettingsView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                Picker("Transkriptionssystem", selection: $appState.selectedLocalTranscriptionBackend) {
+                    ForEach(LocalTranscriptionBackend.allCases) { backend in
+                        Text(backend.displayName).tag(backend)
+                    }
+                }
+                .controlSize(.small)
 
                 if appState.isInstallingAppleSpeechAssets {
                     HStack(spacing: 8) {
@@ -92,7 +99,8 @@ struct TranscriptionSettingsView: View {
                         Spacer()
                     }
 
-                    HStack(spacing: 8) {
+                    if appState.selectedLocalTranscriptionBackend == .whisperKit {
+                        HStack(spacing: 8) {
                         Text("Lokales Modell")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
@@ -108,16 +116,17 @@ struct TranscriptionSettingsView: View {
                         .labelsHidden()
                         .controlSize(.small)
                         .disabled(appState.isDownloadingLocalModel)
+                        }
                     }
 
-                    if let progress = appState.localModelDownloadProgress {
+                    if appState.selectedLocalTranscriptionBackend == .whisperKit, let progress = appState.localModelDownloadProgress {
                         VStack(alignment: .leading, spacing: 4) {
                             ProgressView(value: progress)
                             Text(appState.localModelDownloadStatusText ?? "Modell wird geladen...")
                                 .font(.system(size: 10.5))
                                 .foregroundStyle(.secondary)
                         }
-                    } else {
+                    } else if appState.selectedLocalTranscriptionBackend == .whisperKit {
                         HStack(spacing: 10) {
                             Button(appState.localModelDownloadButtonTitle) {
                                 appState.installSelectedLocalModel()

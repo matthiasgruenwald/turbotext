@@ -33,6 +33,8 @@ final class MenuBarCloudIndicatorTests: XCTestCase {
     private var localStatus: TranscriptionModeStatus {
         TranscriptionModeStatus(
             alwaysLocalTranscription: true,
+            selectedLocalBackend: .appleSpeech,
+            appleSpeechAvailable: true,
             selectedLocalModelInstalled: true,
             selectedLocalModelDisplayName: "Whisper Turbo",
             isDownloadingLocalModel: false,
@@ -46,6 +48,8 @@ final class MenuBarCloudIndicatorTests: XCTestCase {
     private func remoteStatus(hasGroqKey: Bool, groqFallbackActive: Bool) -> TranscriptionModeStatus {
         TranscriptionModeStatus(
             alwaysLocalTranscription: false,
+            selectedLocalBackend: .appleSpeech,
+            appleSpeechAvailable: false,
             selectedLocalModelInstalled: false,
             selectedLocalModelDisplayName: "Whisper Turbo",
             isDownloadingLocalModel: false,

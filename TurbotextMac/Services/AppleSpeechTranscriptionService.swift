@@ -26,6 +26,14 @@ enum AppleSpeechAssetInstallationError: LocalizedError, Equatable {
     }
 }
 
+enum LocalTranscriptionUnavailableError: LocalizedError {
+    case selectedBackendUnavailable
+
+    var errorDescription: String? {
+        "Die gewählte lokale Transkription ist nicht verfügbar."
+    }
+}
+
 @available(macOS 26, *)
 enum AppleSpeechTranscriptionError: LocalizedError, Equatable {
     case assetsNotInstalled

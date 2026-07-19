@@ -29,6 +29,32 @@ final class TranscriptionBackendResolverTests: XCTestCase {
         XCTAssertEqual(result, .appleSpeech)
     }
 
+    func testAlwaysLocalWithWhisperKitSelectedPicksWhisperKit() {
+        let result = TranscriptionBackendResolver.resolve(
+            alwaysLocalTranscription: true,
+            selectedLocalBackend: .whisperKit,
+            appleSpeechAvailable: true,
+            isOnline: true,
+            autoFallbackToLocalOnOffline: false,
+            legacyWhisperKitRequested: false,
+            whisperKitModelInstalled: true
+        )
+        XCTAssertEqual(result, .whisperKit)
+    }
+
+    func testAlwaysLocalWithUnavailableAppleSpeechDoesNotSilentlyUseRemote() {
+        let result = TranscriptionBackendResolver.resolve(
+            alwaysLocalTranscription: true,
+            selectedLocalBackend: .appleSpeech,
+            appleSpeechAvailable: false,
+            isOnline: true,
+            autoFallbackToLocalOnOffline: false,
+            legacyWhisperKitRequested: false,
+            whisperKitModelInstalled: true
+        )
+        XCTAssertEqual(result, .unavailable)
+    }
+
     // MARK: Rule 2 — online wins once Apple Speech isn't forced/available
 
     func testOnlinePicksRemoteWhenAlwaysLocalIsOff() {

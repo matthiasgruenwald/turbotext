@@ -6,6 +6,8 @@ enum TranscriptionModeIconTone: Equatable {
 
 struct TranscriptionModeStatus: Equatable {
     let alwaysLocalTranscription: Bool
+    let selectedLocalBackend: LocalTranscriptionBackend
+    let appleSpeechAvailable: Bool
     let selectedLocalModelInstalled: Bool
     let selectedLocalModelDisplayName: String
     let isDownloadingLocalModel: Bool
@@ -41,6 +43,11 @@ struct TranscriptionModeStatus: Equatable {
 
     var panelSubtitle: String {
         if alwaysLocalTranscription {
+            if selectedLocalBackend == .appleSpeech {
+                return appleSpeechAvailable
+                    ? "Verarbeitung auf diesem Gerät mit Apple-Gerätetranskription."
+                    : "Apple-Gerätetranskription ist nicht verfügbar."
+            }
             if isDownloadingLocalModel {
                 return localModelDownloadStatusText ?? "Lokales Modell wird geladen."
             }
@@ -62,6 +69,11 @@ struct TranscriptionModeStatus: Equatable {
 
     var transcriptionWorkflowSubtitle: String {
         if alwaysLocalTranscription {
+            if selectedLocalBackend == .appleSpeech {
+                return appleSpeechAvailable
+                    ? "Lokal: Apple-Gerätetranskription."
+                    : "Apple-Gerätetranskription ist nicht verfügbar."
+            }
             return selectedLocalModelInstalled
                 ? "Lokal: \(selectedLocalModelDisplayName)."
                 : "Lokales WhisperKit-Modell fehlt."

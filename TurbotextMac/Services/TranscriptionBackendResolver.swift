@@ -5,6 +5,7 @@ enum ResolvedTranscriptionBackend: Equatable {
     case appleSpeech
     case remote
     case whisperKit
+    case unavailable
 }
 
 /// Chooses which transcription backend a spoken workflow (Transkription, Turbotext+,
@@ -18,14 +19,20 @@ enum ResolvedTranscriptionBackend: Equatable {
 enum TranscriptionBackendResolver {
     static func resolve(
         alwaysLocalTranscription: Bool,
+        selectedLocalBackend: LocalTranscriptionBackend = .appleSpeech,
         appleSpeechAvailable: Bool,
         isOnline: Bool,
         autoFallbackToLocalOnOffline: Bool,
         legacyWhisperKitRequested: Bool,
         whisperKitModelInstalled: Bool
     ) -> ResolvedTranscriptionBackend {
-        if alwaysLocalTranscription && appleSpeechAvailable {
-            return .appleSpeech
+        if alwaysLocalTranscription {
+            switch selectedLocalBackend {
+            case .appleSpeech:
+                return appleSpeechAvailable ? .appleSpeech : .unavailable
+            case .whisperKit:
+                return whisperKitModelInstalled ? .whisperKit : .unavailable
+            }
         }
         if isOnline {
             return .remote
