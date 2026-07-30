@@ -535,6 +535,11 @@ final class AppState {
         guard let value = KeychainService.load(key: key), !value.isEmpty else {
             return ""
         }
+        // Masked keys are otherwise indistinguishable, and mistaking a simulated run for a
+        // configured one wastes debugging time.
+        if KeychainService.isSimulatingCredentials {
+            return "SIM \u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}"
+        }
         if value.count > 8 {
             return String(value.prefix(4)) + " \u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}"
         }
