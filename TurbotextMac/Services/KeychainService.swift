@@ -20,7 +20,27 @@ enum KeychainService {
         ? "app.turbotext.preview.credentials.tests"
         : "app.turbotext.preview.credentials"
 
+    private static let simulatedStore: SimulatedCredentialsStore? = {
+        let processInfo = ProcessInfo.processInfo
+        guard isRunningTests || SimulatedCredentialsStore.isActive(
+            arguments: processInfo.arguments,
+            environment: processInfo.environment
+        ) else {
+            return nil
+        }
+        return SimulatedCredentialsStore(
+            values: SimulatedCredentialsStore.seedValues(environment: processInfo.environment)
+        )
+    }()
+
+    static var isSimulatingCredentials: Bool { simulatedStore != nil }
+
     static func save(key: KeychainKey, value: String) throws {
+        if let simulatedStore {
+            simulatedStore.save(value, for: key)
+            return
+        }
+
         let data = Data(value.utf8)
         var query = baseQuery(for: key)
         query[kSecValueData as String] = data
@@ -45,6 +65,10 @@ enum KeychainService {
     }
 
     static func load(key: KeychainKey) -> String? {
+        if let simulatedStore {
+            return simulatedStore.load(key)
+        }
+
         var query = baseQuery(for: key)
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         query[kSecReturnData as String] = true
@@ -63,6 +87,11 @@ enum KeychainService {
     }
 
     static func delete(key: KeychainKey) {
+        if let simulatedStore {
+            simulatedStore.delete(key)
+            return
+        }
+
         SecItemDelete(baseQuery(for: key) as CFDictionary)
     }
 

@@ -8,6 +8,7 @@ RUN_AFTER=true
 INSTALL_APP=false
 BUILD_CONFIGURATION="Release"
 UNIVERSAL_ARCHS="arm64 x86_64"
+SIMULATED_KEYS=false
 
 for arg in "$@"; do
     case "$arg" in
@@ -26,9 +27,12 @@ for arg in "$@"; do
         --release)
             BUILD_CONFIGURATION="Release"
             ;;
+        --simulated-keys)
+            SIMULATED_KEYS=true
+            ;;
         *)
             echo "Unbekannte Option: $arg"
-            echo "Verwendung: ./build.sh [--install] [--no-run] [--release] [--debug]"
+            echo "Verwendung: ./build.sh [--install] [--no-run] [--release] [--debug] [--simulated-keys]"
             exit 1
             ;;
     esac
@@ -64,6 +68,23 @@ verify_universal_app() {
     fi
 
     echo "✅ Universal Binary verifiziert: $archs"
+}
+
+# Ad-hoc signing produces a new code signing identity on every build, so the Keychain stops
+# recognising the rebuilt app and asks for the keychain password again. Setting
+# TURBOTEXT_SIGN_IDENTITY to a self-signed certificate keeps the identity stable across builds
+# and stops the repeated prompt. See README, "Keychain prompt on every rebuild".
+sign_app() {
+    local app_path="$1"
+
+    if [ -n "${TURBOTEXT_SIGN_IDENTITY:-}" ]; then
+        echo "🔏 Signiere lokale Development-App mit '$TURBOTEXT_SIGN_IDENTITY'. Dieses Artefakt ist nicht notarisiert."
+        codesign --force --sign "$TURBOTEXT_SIGN_IDENTITY" "$app_path" 2>&1
+        return
+    fi
+
+    echo "🔏 Signiere lokale Development-App ad-hoc. Dieses Artefakt ist nicht notarisiert."
+    codesign --force --sign - "$app_path" 2>&1
 }
 
 ensure_xcodebuild_available() {
@@ -148,8 +169,7 @@ cp -f "$PROJECT_DIR/Resources/menubar_icon@2x.png" "$RESOURCES_DIR/" 2>/dev/null
 DEST="$SCRIPT_DIR/Turbotext.app"
 rm -rf "$DEST"
 cp -R "$APP_PATH" "$DEST"
-echo "🔏 Signiere lokale Development-App ad-hoc. Dieses Artefakt ist nicht notarisiert."
-codesign --force --sign - "$DEST" 2>&1
+sign_app "$DEST"
 verify_universal_app "$DEST"
 
 RUN_TARGET="$DEST"
@@ -164,8 +184,7 @@ if [ "$INSTALL_APP" = true ]; then
     fi
     rm -rf "$INSTALL_DEST"
     cp -R "$DEST" "$INSTALL_DEST"
-    echo "🔏 Signiere lokale Development-App ad-hoc. Dieses Artefakt ist nicht notarisiert."
-    codesign --force --sign - "$INSTALL_DEST" 2>&1
+    sign_app "$INSTALL_DEST"
     verify_universal_app "$INSTALL_DEST"
     RUN_TARGET="$INSTALL_DEST"
 fi
@@ -192,6 +211,11 @@ echo ""
 
 # Optional: direkt starten
 if [ "$RUN_AFTER" = true ]; then
-    echo "🚀 Starte Turbotext ..."
-    open "$RUN_TARGET"
+    if [ "$SIMULATED_KEYS" = true ]; then
+        echo "🚀 Starte Turbotext mit simulierten API-Keys (kein Keychain-Zugriff) ..."
+        open "$RUN_TARGET" --args --simulated-credentials
+    else
+        echo "🚀 Starte Turbotext ..."
+        open "$RUN_TARGET"
+    fi
 fi
