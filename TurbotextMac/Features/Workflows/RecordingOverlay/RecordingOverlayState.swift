@@ -8,6 +8,27 @@ enum RecordingOverlayPhase: Equatable {
     /// Shows the rewrite completion label for a few seconds after the result was
     /// pasted (#128), independent of the underlying workflow having already reset.
     case completion
+    /// Engine failure during live dictation after rescued segments were pasted
+    /// (ADR 0005). Unlike `.error` it never auto-dismisses — the text was inserted
+    /// without final post-processing, so the user must acknowledge it actively.
+    case bergungError
+}
+
+/// Structured live-dictate transcript shown by the pill while `.recording` (#150):
+/// finalized, smoothed text plus the volatile tail Apple Speech still rewrites.
+struct LiveTranscriptDisplay: Equatable {
+    var finalText = ""
+    var volatileText = ""
+    var isSmoothingActive = false
+    var maxLines = 1
+
+    var isEmpty: Bool { finalText.isEmpty && volatileText.isEmpty }
+
+    var displayText: String {
+        if volatileText.isEmpty { return finalText }
+        if finalText.isEmpty { return volatileText }
+        return finalText + " " + volatileText
+    }
 }
 
 /// Immutable snapshot of what the signal pill should show. Derived purely
@@ -33,9 +54,9 @@ struct RecordingOverlayState: Equatable {
     let silenceElapsed: TimeInterval
     let errorMessage: String?
     let errorElapsed: TimeInterval
-    /// Progressive Apple Speech transcript shown while `.recording` (#128). Always `nil`
-    /// for other transcription backends (WhisperKit/Groq) since nothing ever updates it.
-    let partialTranscript: String?
+    /// Structured live-dictate transcript shown while `.recording` (#150). Always `nil`
+    /// for non-streaming backends (WhisperKit/Groq) since nothing ever updates it.
+    let liveTranscriptDisplay: LiveTranscriptDisplay?
     /// Resolved once when entering `.processing` (#128): "lokal" vs. "online mit ‹Anbieter›".
     let processingLabel: String?
     /// Shown while `.completion` (#128), e.g. "Text lokal verbessert · Apple Foundation Models".
@@ -48,7 +69,9 @@ struct RecordingOverlayState: Equatable {
     )
 
     var showsSilenceHint: Bool {
-        phase == .recording && silenceElapsed + Self.elapsedTimeTolerance >= Self.silenceHintDelay
+        phase == .recording
+            && (liveTranscriptDisplay?.isEmpty ?? true)
+            && silenceElapsed + Self.elapsedTimeTolerance >= Self.silenceHintDelay
     }
 
     init(
@@ -58,7 +81,7 @@ struct RecordingOverlayState: Equatable {
         silenceElapsed: TimeInterval = 0,
         errorMessage: String? = nil,
         errorElapsed: TimeInterval = 0,
-        partialTranscript: String? = nil,
+        liveTranscriptDisplay: LiveTranscriptDisplay? = nil,
         processingLabel: String? = nil,
         completionLabel: String? = nil,
         completionElapsed: TimeInterval = 0,
@@ -70,7 +93,7 @@ struct RecordingOverlayState: Equatable {
         self.silenceElapsed = silenceElapsed
         self.errorMessage = errorMessage
         self.errorElapsed = errorElapsed
-        self.partialTranscript = partialTranscript
+        self.liveTranscriptDisplay = liveTranscriptDisplay
         self.processingLabel = processingLabel
         self.completionLabel = completionLabel
         self.completionElapsed = completionElapsed
@@ -116,7 +139,7 @@ struct RecordingOverlayState: Equatable {
                 return RecordingOverlayState(
                     phase: .error, anchor: resolveAnchor(), levelHistory: [], errorMessage: resolveErrorMessage()
                 )
-            case .error:
+            case .error, .bergungError:
                 // Ignore: this is the orchestrator repeating the still-ongoing error on
                 // every poll, not a distinguishable new attempt (see doc comment above).
                 return self
@@ -125,9 +148,10 @@ struct RecordingOverlayState: Equatable {
             }
         case .idle:
             switch phase {
-            case .error, .completion:
+            case .error, .completion, .bergungError:
                 // `.error` waits for its own timer/manual dismiss; `.completion` likewise
-                // (see below) — a repeated `.idle` observation must not cut either short.
+                // (see below); `.bergungError` waits for manual dismiss only — a repeated
+                // `.idle` observation must not cut any of them short.
                 return self
             case .processing:
                 guard let label = resolveCompletionLabel() else { return .hidden }
@@ -147,19 +171,19 @@ struct RecordingOverlayState: Equatable {
         let nextSilence = clamped > Self.silenceLevelThreshold ? 0 : silenceElapsed + elapsed
         return RecordingOverlayState(
             phase: phase, anchor: anchor, levelHistory: nextHistory, silenceElapsed: nextSilence,
-            partialTranscript: partialTranscript,
+            liveTranscriptDisplay: liveTranscriptDisplay,
             signalReceived: signalReceived || clamped > Self.silenceLevelThreshold
         )
     }
 
-    /// Applies a fresh partial transcript from Apple Speech's progressive callback (#128).
+    /// Applies a fresh structured live transcript from the streaming callback (#150).
     /// Ignored outside `.recording` — the field is meaningless once processing/rewriting begins.
-    func receivingPartialTranscript(_ text: String) -> RecordingOverlayState {
+    func receivingLiveTranscript(_ display: LiveTranscriptDisplay) -> RecordingOverlayState {
         guard phase == .recording else { return self }
-        guard text != partialTranscript else { return self }
+        guard display != liveTranscriptDisplay else { return self }
         return RecordingOverlayState(
             phase: phase, anchor: anchor, levelHistory: levelHistory, silenceElapsed: silenceElapsed,
-            partialTranscript: text
+            liveTranscriptDisplay: display, signalReceived: signalReceived
         )
     }
 
@@ -177,6 +201,21 @@ struct RecordingOverlayState: Equatable {
     /// User-initiated close of a visible error, independent of the auto-dismiss timer.
     func dismissingError() -> RecordingOverlayState {
         guard phase == .error else { return self }
+        return .hidden
+    }
+
+    /// Enters the persistent rescue-failure state after an engine error mid-dictation
+    /// inserted the rescued segments (ADR 0005). Only live recording can be rescued.
+    func enteringBergungError(message: String?) -> RecordingOverlayState {
+        guard phase == .recording else { return self }
+        return RecordingOverlayState(
+            phase: .bergungError, anchor: anchor, levelHistory: levelHistory, errorMessage: message
+        )
+    }
+
+    /// User-initiated close of the rescue-failure state — the only way it ends.
+    func dismissingBergungError() -> RecordingOverlayState {
+        guard phase == .bergungError else { return self }
         return .hidden
     }
 

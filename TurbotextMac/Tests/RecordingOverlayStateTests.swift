@@ -118,6 +118,36 @@ final class RecordingOverlayStateTests: XCTestCase {
         XCTAssertEqual(state.phase, .recording, "the hint is an overlay-only indicator; recording itself is unaffected")
     }
 
+    func testSilenceHintIsSuppressedWhileLiveTranscriptHasVolatileText() {
+        var state = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+            .receivingLiveTranscript(LiveTranscriptDisplay(volatileText: "Hallo"))
+        for _ in 0..<60 {
+            state = state.receivingLevel(0, elapsed: 0.1)
+        }
+
+        XCTAssertFalse(state.showsSilenceHint)
+    }
+
+    func testSilenceHintIsSuppressedWhileLiveTranscriptHasFinalText() {
+        var state = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+            .receivingLiveTranscript(LiveTranscriptDisplay(finalText: "Bereits fest."))
+        for _ in 0..<60 {
+            state = state.receivingLevel(0, elapsed: 0.1)
+        }
+
+        XCTAssertFalse(state.showsSilenceHint)
+    }
+
+    func testSilenceHintAppearsDespiteEmptyLiveTranscriptDisplay() {
+        var state = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+            .receivingLiveTranscript(LiveTranscriptDisplay())
+        for _ in 0..<50 {
+            state = state.receivingLevel(0, elapsed: 0.1)
+        }
+
+        XCTAssertTrue(state.showsSilenceHint)
+    }
+
     // MARK: - Known start errors
 
     func testKnownStartErrorFromHiddenSurfacesInErrorPhaseWithMessage() {
@@ -207,30 +237,143 @@ final class RecordingOverlayStateTests: XCTestCase {
         XCTAssertEqual(errored.dismissingError(), .hidden)
     }
 
-    // MARK: - Partial transcript (#128)
+    // MARK: - Live transcript display (#150)
 
-    func testPartialTranscriptUpdatesWhileRecording() {
+    func testLiveTranscriptDisplayUpdatesWhileRecording() {
         let recording = RecordingOverlayState.hidden.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
-        let updated = recording.receivingPartialTranscript("Hallo")
+        let updated = recording.receivingLiveTranscript(LiveTranscriptDisplay(volatileText: "Hallo"))
 
-        XCTAssertEqual(updated.partialTranscript, "Hallo")
+        XCTAssertEqual(updated.liveTranscriptDisplay?.volatileText, "Hallo")
         XCTAssertEqual(updated.phase, .recording)
     }
 
-    func testPartialTranscriptIsIgnoredOutsideRecording() {
-        let processing = RecordingOverlayState(phase: .processing, anchor: anchor, levelHistory: [])
-        XCTAssertEqual(processing.receivingPartialTranscript("Hallo"), processing)
+    func testLiveTranscriptDisplayCarriesAllFields() {
+        let recording = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+        let display = LiveTranscriptDisplay(
+            finalText: "Fester Satz.", volatileText: "schwankt", isSmoothingActive: true, maxLines: 3
+        )
+
+        let updated = recording.receivingLiveTranscript(display)
+
+        XCTAssertEqual(updated.liveTranscriptDisplay, display)
     }
 
-    func testPartialTranscriptResetsOnNewRecording() {
+    func testIdenticalLiveTranscriptDisplayIsANoOp() {
+        let recording = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+        let display = LiveTranscriptDisplay(finalText: "A", volatileText: "B")
+
+        let updated = recording.receivingLiveTranscript(display)
+        let again = updated.receivingLiveTranscript(display)
+
+        XCTAssertEqual(again, updated)
+    }
+
+    func testLiveTranscriptDisplayIsIgnoredOutsideRecording() {
+        let processing = RecordingOverlayState(phase: .processing, anchor: anchor, levelHistory: [])
+        XCTAssertEqual(processing.receivingLiveTranscript(LiveTranscriptDisplay(volatileText: "Hallo")), processing)
+    }
+
+    func testLiveTranscriptDisplaySurvivesLevelUpdates() {
+        let recording = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+            .receivingLiveTranscript(LiveTranscriptDisplay(volatileText: "Hallo"))
+
+        let updated = recording.receivingLevel(0.6, elapsed: 0.1)
+
+        XCTAssertEqual(updated.liveTranscriptDisplay?.volatileText, "Hallo")
+    }
+
+    func testLiveTranscriptDisplayResetsOnNewRecording() {
         let firstRecording = RecordingOverlayState.hidden
             .applying(menuBarStatus: .recording(.transcription)) { self.anchor }
-            .receivingPartialTranscript("Alter Text")
+            .receivingLiveTranscript(LiveTranscriptDisplay(finalText: "Alter Text"))
         let processing = firstRecording.applying(menuBarStatus: .processing(.transcription)) { self.anchor }
         let idle = processing.applying(menuBarStatus: .idle) { self.anchor }
         let secondRecording = idle.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
 
-        XCTAssertNil(secondRecording.partialTranscript)
+        XCTAssertNil(secondRecording.liveTranscriptDisplay)
+    }
+
+    func testLiveTranscriptDisplayTextJoinsFinalAndVolatile() {
+        XCTAssertEqual(LiveTranscriptDisplay(finalText: "a", volatileText: "b").displayText, "a b")
+        XCTAssertEqual(LiveTranscriptDisplay(finalText: "a").displayText, "a")
+        XCTAssertEqual(LiveTranscriptDisplay(volatileText: "b").displayText, "b")
+        XCTAssertEqual(LiveTranscriptDisplay().displayText, "")
+    }
+
+    func testLiveTranscriptDisplayIsEmptyOnlyWithoutAnyText() {
+        XCTAssertTrue(LiveTranscriptDisplay().isEmpty)
+        XCTAssertFalse(LiveTranscriptDisplay(finalText: "a").isEmpty)
+        XCTAssertFalse(LiveTranscriptDisplay(volatileText: "b").isEmpty)
+    }
+
+    // MARK: - Bergung error (#150)
+
+    func testBergungErrorEntersFromRecordingWithMessage() {
+        let recording = RecordingOverlayState.hidden.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+
+        let bergung = recording.enteringBergungError(message: "Engine-Fehler")
+
+        XCTAssertEqual(bergung.phase, .bergungError)
+        XCTAssertEqual(bergung.anchor, anchor)
+        XCTAssertEqual(bergung.errorMessage, "Engine-Fehler")
+    }
+
+    func testBergungErrorIsOnlyEnteredFromRecording() {
+        XCTAssertEqual(RecordingOverlayState.hidden.enteringBergungError(message: "x"), .hidden)
+
+        let processing = RecordingOverlayState(phase: .processing, anchor: anchor, levelHistory: [])
+        XCTAssertEqual(processing.enteringBergungError(message: "x"), processing)
+    }
+
+    func testBergungErrorNeverAutoDismisses() {
+        let recording = RecordingOverlayState.hidden.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+        var state = recording.enteringBergungError(message: "boom")
+
+        for _ in 0..<200 {
+            state = state.advancingError(by: 0.1)
+        }
+
+        XCTAssertEqual(state.phase, .bergungError)
+        XCTAssertEqual(state.errorMessage, "boom")
+    }
+
+    func testBergungErrorSurvivesRepeatedIdleAndErrorObservations() {
+        let recording = RecordingOverlayState.hidden.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+        let bergung = recording.enteringBergungError(message: "boom")
+
+        let afterIdle = bergung.applying(menuBarStatus: .idle) { self.anchor }
+        let afterError = afterIdle.applying(
+            menuBarStatus: .error(.transcription),
+            resolveAnchor: { self.anchor },
+            resolveErrorMessage: { "boom" }
+        )
+
+        XCTAssertEqual(afterIdle.phase, .bergungError)
+        XCTAssertEqual(afterError.phase, .bergungError)
+        XCTAssertEqual(afterError.errorMessage, "boom")
+    }
+
+    func testBergungErrorCanBeDismissedManually() {
+        let recording = RecordingOverlayState.hidden.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+        let bergung = recording.enteringBergungError(message: "boom")
+
+        XCTAssertEqual(bergung.dismissingBergungError(), .hidden)
+    }
+
+    func testDismissingBergungErrorIsIgnoredOutsideBergungPhase() {
+        let recording = RecordingOverlayState.hidden.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+
+        XCTAssertEqual(recording.dismissingBergungError(), recording)
+    }
+
+    func testNewRecordingOverridesBergungError() {
+        let recording = RecordingOverlayState.hidden.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+        let bergung = recording.enteringBergungError(message: "boom")
+
+        let recovered = bergung.applying(menuBarStatus: .recording(.transcription)) { self.mouseAnchor }
+
+        XCTAssertEqual(recovered.phase, .recording)
+        XCTAssertEqual(recovered.anchor, mouseAnchor)
     }
 
     // MARK: - Processing label (#128)

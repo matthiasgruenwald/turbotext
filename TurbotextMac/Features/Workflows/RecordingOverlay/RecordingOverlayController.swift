@@ -99,7 +99,7 @@ final class RecordingOverlayController {
                 state = state.receivingLevel(level, elapsed: Self.pollInterval)
             }
             if let partialTranscript = partialTranscriptProvider() {
-                state = state.receivingPartialTranscript(partialTranscript)
+                state = state.receivingLiveTranscript(LiveTranscriptDisplay(volatileText: partialTranscript))
             }
         case .processing:
             break
@@ -107,6 +107,8 @@ final class RecordingOverlayController {
             state = state.advancingCompletion(by: Self.pollInterval)
         case .error:
             state = state.advancingError(by: Self.pollInterval)
+        case .bergungError:
+            break
         case .hidden:
             break
         }
@@ -120,6 +122,13 @@ final class RecordingOverlayController {
     func dismissError() {
         guard state.phase == .error else { return }
         state = state.dismissingError()
+        render()
+    }
+
+    /// Manual close of the persistent rescue-failure state, e.g. from a click on the pill.
+    func dismissBergungError() {
+        guard state.phase == .bergungError else { return }
+        state = state.dismissingBergungError()
         render()
     }
 
@@ -146,12 +155,14 @@ final class RecordingOverlayController {
         switch state.phase {
         case .hidden:
             panel?.orderOut(nil)
-        case .recording, .processing, .error, .completion:
+        case .recording, .processing, .error, .completion, .bergungError:
             let activePanel = panel ?? makePanel()
             panel = activePanel
-            // The error and completion pills accept clicks (manual dismiss); every other
-            // state must stay click-through so it never steals input from the target app.
-            activePanel.ignoresMouseEvents = state.phase != .error && state.phase != .completion
+            // The error, completion and rescue pills accept clicks (manual dismiss); every
+            // other state must stay click-through so it never steals input from the target app.
+            activePanel.ignoresMouseEvents = state.phase != .error
+                && state.phase != .completion
+                && state.phase != .bergungError
             updateContent(of: activePanel)
             positionPanel(activePanel)
             activePanel.orderFrontRegardless()
@@ -183,10 +194,11 @@ final class RecordingOverlayController {
             showsSilenceHint: state.showsSilenceHint,
             signalReceived: state.signalReceived,
             errorMessage: state.errorMessage,
-            partialTranscript: state.partialTranscript,
+            partialTranscript: state.liveTranscriptDisplay?.displayText,
             processingLabel: state.processingLabel,
             completionLabel: state.completionLabel,
             onDismissError: { [weak self] in self?.dismissError() },
+            onDismissBergungError: { [weak self] in self?.dismissBergungError() },
             onDismissCompletionLabel: { [weak self] in self?.dismissCompletionLabel() }
         )
         // Reuse the hosting view and update rootView in place. Recreating it on

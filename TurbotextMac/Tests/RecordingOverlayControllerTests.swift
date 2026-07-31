@@ -291,9 +291,9 @@ final class RecordingOverlayControllerTests: XCTestCase {
         XCTAssertTrue(controller.state.showsSilenceHint)
     }
 
-    // MARK: - Partial transcript (#128)
+    // MARK: - Live transcript display (#150)
 
-    func testPartialTranscriptAppearsWhileRecording() {
+    func testLiveTranscriptAppearsWhileRecording() {
         let (orchestrator, _) = makeOrchestratorWithWorkflow()
         var partial = "Hallo"
         let controller = RecordingOverlayController(
@@ -305,14 +305,14 @@ final class RecordingOverlayControllerTests: XCTestCase {
         )
 
         controller.tick()
-        XCTAssertEqual(controller.state.partialTranscript, "Hallo")
+        XCTAssertEqual(controller.state.liveTranscriptDisplay?.volatileText, "Hallo")
 
         partial = "Hallo Welt"
         controller.tick()
-        XCTAssertEqual(controller.state.partialTranscript, "Hallo Welt")
+        XCTAssertEqual(controller.state.liveTranscriptDisplay?.volatileText, "Hallo Welt")
     }
 
-    func testPartialTranscriptStaysNilWithoutAppleSpeech() {
+    func testLiveTranscriptStaysNilWithoutAppleSpeech() {
         let (orchestrator, _) = makeOrchestratorWithWorkflow()
         let controller = RecordingOverlayController(
             orchestrator: orchestrator,
@@ -324,7 +324,7 @@ final class RecordingOverlayControllerTests: XCTestCase {
 
         controller.tick()
 
-        XCTAssertNil(controller.state.partialTranscript)
+        XCTAssertNil(controller.state.liveTranscriptDisplay)
     }
 
     // MARK: - Processing / completion labels (#128)

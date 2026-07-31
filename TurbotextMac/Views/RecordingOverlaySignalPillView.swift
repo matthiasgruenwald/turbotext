@@ -23,6 +23,7 @@ struct RecordingOverlaySignalPillView: View {
     /// Rewrite outcome, shown while `.completion` (#128).
     var completionLabel: String?
     var onDismissError: () -> Void = {}
+    var onDismissBergungError: () -> Void = {}
     var onDismissCompletionLabel: () -> Void = {}
 
     var body: some View {
@@ -42,6 +43,8 @@ struct RecordingOverlaySignalPillView: View {
                 switch phase {
                 case .error:
                     onDismissError()
+                case .bergungError:
+                    onDismissBergungError()
                 case .completion:
                     onDismissCompletionLabel()
                 default:
@@ -90,6 +93,21 @@ struct RecordingOverlaySignalPillView: View {
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.white)
                     .lineLimit(2)
+            }
+        case .bergungError:
+            HStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(errorMessage ?? "Aufnahme beendet, gesicherte Teile eingefügt.")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text("Ohne finale Nachbearbeitung")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.7))
+                        .lineLimit(1)
+                }
             }
         case .completion:
             HStack(spacing: 12) {
