@@ -3,6 +3,11 @@ import Foundation
 import Observation
 import Speech
 
+struct TranscriptionChunk: Sendable, Equatable {
+    let text: String
+    let isFinal: Bool
+}
+
 @available(macOS 26, *)
 @Observable
 final class LiveTranscriptionSession {
@@ -10,16 +15,17 @@ final class LiveTranscriptionSession {
         case idle
         case running
         case finished
-        case failed(String)
+        case failed(String, isBergung: Bool = false)
     }
 
-    private(set) var phase: Phase = .idle
+    var phase: Phase = .idle
     private(set) var collector = LiveTranscriptCollector()
 
     var volatileText: String { collector.volatileText }
     var finalText: String { collector.finalText }
     var displayText: String { collector.displayText }
 
+    private let smoothing: any LiveSmoothing
     private var analyzer: SpeechAnalyzer?
     private var transcriber: DictationTranscriber?
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
@@ -27,6 +33,52 @@ final class LiveTranscriptionSession {
     private var converter: AVAudioConverter?
 
     var isRunning: Bool { phase == .running }
+
+    init(smoothing: any LiveSmoothing = PassthroughSmoothing()) {
+        self.smoothing = smoothing
+    }
+
+    @MainActor
+    func runCollectingLoop(_ chunks: AsyncThrowingStream<TranscriptionChunk, Error>) async {
+        var lastFinalSegment = ""
+        do {
+            for try await chunk in chunks {
+                if chunk.isFinal {
+                    let context = LiveSmoothingContext.tail(of: lastFinalSegment)
+                    let smoothed = await smoothing.smooth(segment: chunk.text, context: context)
+                    let final = smoothed ?? chunk.text
+                    collector.apply(text: final, isFinal: true)
+                    lastFinalSegment = final
+                } else {
+                    collector.apply(text: chunk.text, isFinal: false)
+                }
+            }
+            phase = .finished
+        } catch is CancellationError {
+            phase = .finished
+        } catch {
+            guard phase == .running else { return }
+            phase = .failed(error.localizedDescription, isBergung: !collector.finalText.isEmpty)
+        }
+    }
+
+    private func makeChunkStream(_ transcriber: DictationTranscriber) -> AsyncThrowingStream<TranscriptionChunk, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    for try await result in transcriber.results {
+                        continuation.yield(TranscriptionChunk(
+                            text: String(result.text.characters),
+                            isFinal: result.isFinal
+                        ))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
 
     func start(sourceFormat: AVAudioFormat) async throws {
         guard phase == .idle else { return }
@@ -53,19 +105,7 @@ final class LiveTranscriptionSession {
 
         collectingTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            do {
-                for try await result in transcriber.results {
-                    let text = String(result.text.characters)
-                    self.collector.apply(text: text, isFinal: result.isFinal)
-                }
-                self.phase = .finished
-            } catch is CancellationError {
-                self.phase = .finished
-            } catch {
-                if self.phase == .running {
-                    self.phase = .failed(error.localizedDescription)
-                }
-            }
+            await self.runCollectingLoop(self.makeChunkStream(transcriber))
         }
 
         Task { [weak self] in

@@ -216,7 +216,7 @@ enum AppleSpeechTranscriptionService {
         }
 
         guard let fallbackAudioURL else {
-            if case .failed(let message) = session.phase {
+            if case .failed(let message, _) = session.phase {
                 throw AppleSpeechTranscriptionError.transcriptionFailed(message)
             }
             throw AppleSpeechTranscriptionError.noSpeechDetected
