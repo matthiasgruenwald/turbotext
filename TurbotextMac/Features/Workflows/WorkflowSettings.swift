@@ -146,6 +146,24 @@ enum TranscriptionBackend: String, Codable {
 
 struct TranscriptionSettings: Codable, Equatable {
     var language: String = "de"
+    var liveSmoothingEnabled: Bool = true
+    var livePillMaxLines: Int = 8
+
+    enum CodingKeys: String, CodingKey {
+        case language
+        case liveSmoothingEnabled
+        case livePillMaxLines
+    }
+}
+
+extension TranscriptionSettings {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        language = try container.decodeIfPresent(String.self, forKey: .language) ?? "de"
+        liveSmoothingEnabled = try container.decodeIfPresent(Bool.self, forKey: .liveSmoothingEnabled) ?? true
+        let rawMaxLines = try container.decodeIfPresent(Int.self, forKey: .livePillMaxLines) ?? 8
+        livePillMaxLines = min(max(rawMaxLines, 1), 20)
+    }
 }
 
 struct DampfAblassenSettings: Codable, Equatable {

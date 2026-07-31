@@ -154,6 +154,22 @@ struct TranscriptionSettingsView: View {
                 }
             }
 
+            if appState.selectedLocalTranscriptionBackend == .appleSpeech {
+                VStack(alignment: .leading, spacing: 10) {
+                    SectionLabel(text: "Live-Diktat")
+
+                    Toggle("Live-Glättung", isOn: $appState.transcriptionSettings.liveSmoothingEnabled)
+                        .toggleStyle(.switch)
+
+                    Stepper(
+                        "Maximale Zeilen der Pille: \(appState.transcriptionSettings.livePillMaxLines)",
+                        value: $appState.transcriptionSettings.livePillMaxLines,
+                        in: 1...20
+                    )
+                    .controlSize(.small)
+                }
+            }
+
             // MARK: Mikrofon
             MicrophoneFavoritesSectionView(
                 microphoneState: appState.microphoneState,

@@ -395,7 +395,8 @@ final class AppState {
 
     @available(macOS 26, *)
     private func makeLiveTranscriptionWorkflow() -> any Workflow {
-        let smoothing: any LiveSmoothing = FoundationModelsSmoothing.isAvailable
+        let smoothingActive = transcriptionSettings.liveSmoothingEnabled && FoundationModelsSmoothing.isAvailable
+        let smoothing: any LiveSmoothing = smoothingActive
             ? FoundationModelsSmoothing()
             : PassthroughSmoothing()
         let session = LiveTranscriptionSession(smoothing: smoothing)
@@ -403,7 +404,8 @@ final class AppState {
         return LiveDictationWorkflow(
             type: .transcription,
             session: session,
-            isSmoothingActive: FoundationModelsSmoothing.isAvailable,
+            isSmoothingActive: smoothingActive,
+            maxLines: transcriptionSettings.livePillMaxLines,
             onLiveTranscriptUpdate: { [weak orchestrator] display in
                 orchestrator?.updateLiveTranscriptDisplay(display)
             },

@@ -150,4 +150,44 @@ final class SettingsStoreTests: XCTestCase {
 
         XCTAssertTrue(loaded.app.alwaysLocalTranscription)
     }
+
+    func testSaveThenLoadRoundTripsLiveDictationSettings() {
+        let store = SettingsStore(fileURL: fileURL)
+
+        var transcription = TranscriptionSettings()
+        transcription.liveSmoothingEnabled = false
+        transcription.livePillMaxLines = 5
+
+        store.save(
+            app: AppSettings(),
+            transcription: transcription,
+            textImprovement: TextImprovementSettings(),
+            dampfAblassen: DampfAblassenSettings(),
+            emojiText: EmojiTextSettings()
+        )
+
+        let loaded = store.load()
+
+        XCTAssertFalse(loaded.transcription.liveSmoothingEnabled)
+        XCTAssertEqual(loaded.transcription.livePillMaxLines, 5)
+    }
+
+    func testTranscriptionSettingsDecodeWithoutLiveDictationKeysUsesDefaults() throws {
+        let json = "{ \"language\": \"de\" }".data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(TranscriptionSettings.self, from: json)
+
+        XCTAssertTrue(decoded.liveSmoothingEnabled)
+        XCTAssertEqual(decoded.livePillMaxLines, 8)
+    }
+
+    func testTranscriptionSettingsDecodeClampsMaxLinesIntoValidRange() throws {
+        let tooHigh = "{ \"livePillMaxLines\": 99 }".data(using: .utf8)!
+        let high = try JSONDecoder().decode(TranscriptionSettings.self, from: tooHigh)
+        XCTAssertEqual(high.livePillMaxLines, 20)
+
+        let tooLow = "{ \"livePillMaxLines\": 0 }".data(using: .utf8)!
+        let low = try JSONDecoder().decode(TranscriptionSettings.self, from: tooLow)
+        XCTAssertEqual(low.livePillMaxLines, 1)
+    }
 }

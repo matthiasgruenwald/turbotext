@@ -21,6 +21,7 @@ final class LiveDictationWorkflow: Workflow {
     private let pipeline: SpokenWorkflowPipeline
     private let session: LiveTranscriptionSession
     private let isSmoothingActive: Bool
+    private let maxLines: Int
     private let rewritingMessage: String
     private let rewrite: ((String) async throws -> RewriteStepResult)?
     private let processingLabelResolver: () -> String?
@@ -32,6 +33,7 @@ final class LiveDictationWorkflow: Workflow {
         type: WorkflowType,
         session: LiveTranscriptionSession,
         isSmoothingActive: Bool = false,
+        maxLines: Int = 8,
         pipeline: SpokenWorkflowPipeline? = nil,
         rewritingMessage: String = "Wird verarbeitet ...",
         rewrite: ((String) async throws -> RewriteStepResult)? = nil,
@@ -42,6 +44,7 @@ final class LiveDictationWorkflow: Workflow {
         self.type = type
         self.session = session
         self.isSmoothingActive = isSmoothingActive
+        self.maxLines = maxLines
         self.pipeline = pipeline ?? SpokenWorkflowPipeline()
         self.rewritingMessage = rewritingMessage
         self.rewrite = rewrite
@@ -180,7 +183,7 @@ final class LiveDictationWorkflow: Workflow {
             finalText: session.finalText,
             volatileText: session.volatileText,
             isSmoothingActive: isSmoothingActive,
-            maxLines: 3
+            maxLines: maxLines
         )
         onLiveTranscriptUpdate?(display)
     }
