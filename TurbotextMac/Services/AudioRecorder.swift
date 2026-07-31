@@ -14,6 +14,8 @@ final class AudioRecorder: NSObject {
     var audioLevel: Float = 0
     private(set) var hasUsableSignal = false
     var lastRecordingDuration: TimeInterval = 0
+    var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
+    private(set) var inputFormat: AVAudioFormat?
 
     private let engine = AVAudioEngine()
     private var outputFile: AVAudioFile?
@@ -61,6 +63,7 @@ final class AudioRecorder: NSObject {
             errorMessage = "Kein Mikrofon verfügbar."
             return
         }
+        self.inputFormat = inputFormat
 
         let fileSettings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
@@ -111,6 +114,8 @@ final class AudioRecorder: NSObject {
         recordingURL = currentFileURL
         currentFileURL = nil
         audioLevel = 0
+        inputFormat = nil
+        onBuffer = nil
     }
 
     func discardRecording() {
@@ -129,6 +134,7 @@ final class AudioRecorder: NSObject {
         meteredPeakLevel = Self.peakLevel(of: buffer)
         hasUsableSignal = hasUsableSignal || Self.isUsableSignal(meteredPeakLevel)
         try? outputFile?.write(from: buffer)
+        onBuffer?(buffer)
     }
 
     static func isUsableSignal(_ peakLevel: Float) -> Bool {

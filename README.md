@@ -102,6 +102,42 @@ For fully local transcription, install a WhisperKit CoreML model and enable **Si
 
 For a detailed walkthrough, see [docs/setup.md](docs/setup.md).
 
+### Keychain Prompt On Every Rebuild
+
+`./build.sh` signs the app ad-hoc, which produces a new code signing identity every time. The Keychain ties each stored key to the identity of the app that created it, so a rebuilt Turbotext looks like a different app and macOS asks for the keychain password again.
+
+Two ways around it, depending on what you need:
+
+**Run without touching the Keychain.** Simulated credentials replace the real keys with fake ones that never reach the Keychain, which is the fastest way to click through the app or let an agent drive it:
+
+```bash
+./build.sh --install --simulated-keys
+```
+
+The same works on an already-installed app, and API key fields then read `SIM ••••••••` so a simulated run is never mistaken for a configured one:
+
+```bash
+open /Applications/Turbotext.app --args --simulated-credentials
+```
+
+Individual keys can be overridden, and an empty value leaves that key unconfigured — useful for exercising the onboarding path:
+
+```bash
+TURBOTEXT_SIMULATED_CREDENTIALS=1 \
+TURBOTEXT_SIMULATED_GROQ_API_KEY= \
+/Applications/Turbotext.app/Contents/MacOS/Turbotext
+```
+
+Simulated mode never calls the Keychain, so it can neither read nor overwrite your real keys.
+
+**Keep the identity stable instead.** Create a self-signed code signing certificate once — Keychain Access → *Certificate Assistant* → *Create a Certificate*, name it e.g. `Turbotext Dev`, type *Code Signing* — then build with it:
+
+```bash
+TURBOTEXT_SIGN_IDENTITY="Turbotext Dev" ./build.sh --install --run
+```
+
+The signing identity then stays the same across rebuilds, so the keychain prompt appears once and *Always Allow* sticks. The artifact is still neither Developer-ID-signed nor notarized.
+
 ## Permissions
 
 Turbotext asks for:
