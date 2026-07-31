@@ -145,12 +145,10 @@ enum AppleSpeechTranscriptionService {
                 for try await result in transcriber.results {
                     let text = String(result.text.characters)
                     if result.isFinal {
-                        // Each final result already carries the running transcript, not
-                        // just its own segment, so overwriting (not appending) is correct —
-                        // matches the validated behaviour in AppleSpeechProbe.swift (Wayfinder #101/#104).
-                        finalText = text
+                        let separator = finalText.isEmpty ? "" : " "
+                        finalText += separator + text
                     } else {
-                        partialTranscriptHandler?(text)
+                        partialTranscriptHandler?(finalText.isEmpty ? text : finalText + " " + text)
                     }
                 }
                 return finalText
