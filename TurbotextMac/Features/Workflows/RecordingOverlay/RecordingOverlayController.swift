@@ -20,7 +20,7 @@ final class RecordingOverlayController {
     private let anchorResolver: () -> RecordingOverlayAnchor
     private let levelProvider: () -> Float?
     private let errorMessageProvider: () -> String?
-    private let partialTranscriptProvider: () -> String?
+    private let liveTranscriptDisplayProvider: () -> LiveTranscriptDisplay?
     private let processingLabelProvider: () -> String?
     private let completionLabelProvider: () -> String?
 
@@ -41,7 +41,7 @@ final class RecordingOverlayController {
         screenBottomCenterProvider: @escaping () -> CGPoint = { RecordingOverlayAnchorResolver.primaryScreenBottomCenter() },
         levelProvider: (() -> Float?)? = nil,
         errorMessageProvider: (() -> String?)? = nil,
-        partialTranscriptProvider: (() -> String?)? = nil,
+        liveTranscriptDisplayProvider: (() -> LiveTranscriptDisplay?)? = nil,
         processingLabelProvider: (() -> String?)? = nil,
         completionLabelProvider: (() -> String?)? = nil
     ) {
@@ -59,7 +59,7 @@ final class RecordingOverlayController {
         }
         self.levelProvider = levelProvider ?? { [weak orchestrator] in orchestrator?.activeWorkflow?.audioLevel }
         self.errorMessageProvider = errorMessageProvider ?? { [weak orchestrator] in orchestrator?.lastErrorMessage }
-        self.partialTranscriptProvider = partialTranscriptProvider ?? { [weak orchestrator] in orchestrator?.lastPartialTranscript }
+        self.liveTranscriptDisplayProvider = liveTranscriptDisplayProvider ?? { [weak orchestrator] in orchestrator?.lastLiveTranscriptDisplay }
         self.processingLabelProvider = processingLabelProvider ?? { [weak orchestrator] in orchestrator?.lastProcessingLabel }
         self.completionLabelProvider = completionLabelProvider ?? { [weak orchestrator] in orchestrator?.lastCompletionLabel }
     }
@@ -83,6 +83,12 @@ final class RecordingOverlayController {
             return
         }
 
+        if let bergungMessage = orchestrator.bergungMessage, state.phase == .recording {
+            state = state.enteringBergungError(message: bergungMessage)
+            render()
+            return
+        }
+
         let previousPhase = state.phase
         let previousAnchor = state.anchor
         state = state.applying(
@@ -98,8 +104,8 @@ final class RecordingOverlayController {
             if let level = levelProvider() {
                 state = state.receivingLevel(level, elapsed: Self.pollInterval)
             }
-            if let partialTranscript = partialTranscriptProvider() {
-                state = state.receivingLiveTranscript(LiveTranscriptDisplay(volatileText: partialTranscript))
+            if let display = liveTranscriptDisplayProvider() {
+                state = state.receivingLiveTranscript(display)
             }
         case .processing:
             break
@@ -194,7 +200,7 @@ final class RecordingOverlayController {
             showsSilenceHint: state.showsSilenceHint,
             signalReceived: state.signalReceived,
             errorMessage: state.errorMessage,
-            partialTranscript: state.liveTranscriptDisplay?.displayText,
+            liveTranscript: state.liveTranscriptDisplay,
             processingLabel: state.processingLabel,
             completionLabel: state.completionLabel,
             onDismissError: { [weak self] in self?.dismissError() },
@@ -221,10 +227,10 @@ final class RecordingOverlayController {
 
     private func positionPanel(_ panel: NSPanel) {
         guard let anchor = state.anchor else { return }
+        let size = hostingView?.fittingSize ?? panel.frame.size
         switch anchor.source {
         case .screenBottomCenter:
-            // The anchor point is the desired horizontal center, not a left edge.
-            let origin = NSPoint(x: anchor.point.x - panel.frame.width / 2, y: anchor.point.y)
+            let origin = NSPoint(x: anchor.point.x - size.width / 2, y: anchor.point.y)
             panel.setFrameOrigin(origin)
         }
     }

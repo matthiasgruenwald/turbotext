@@ -1,3 +1,4 @@
+import AVFAudio
 import XCTest
 @testable import Turbotext
 
@@ -112,6 +113,8 @@ private final class FakeTextImprovementRecorder: SpokenWorkflowRecording {
     var errorMessage: String?
     var audioLevel: Float = 0
     var lastRecordingDuration: TimeInterval
+    var inputFormat: AVAudioFormat?
+    var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
 
     init(isRecording: Bool, duration: TimeInterval, recordingURL: URL) {
         self.isRecording = isRecording

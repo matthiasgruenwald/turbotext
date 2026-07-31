@@ -353,4 +353,47 @@ final class WorkflowOrchestratorTests: XCTestCase {
         XCTAssertEqual(pasteboardWrites, ["transcribed text"])
         XCTAssertEqual(pasteCount, 1)
     }
+
+    // MARK: - Live transcript display (#151)
+
+    func testUpdateLiveTranscriptDisplayStoresTheDisplay() {
+        let box = WorkflowBox()
+        let orchestrator = makeOrchestrator(createdWorkflows: box)
+        let display = LiveTranscriptDisplay(finalText: "Fest.", volatileText: "flüchtig", maxLines: 3)
+
+        orchestrator.updateLiveTranscriptDisplay(display)
+
+        XCTAssertEqual(orchestrator.lastLiveTranscriptDisplay, display)
+    }
+
+    func testUpdatePartialTranscriptWrapsAsVolatileDisplay() {
+        let box = WorkflowBox()
+        let orchestrator = makeOrchestrator(createdWorkflows: box)
+
+        orchestrator.updatePartialTranscript("Hallo")
+
+        XCTAssertEqual(orchestrator.lastLiveTranscriptDisplay?.volatileText, "Hallo")
+        XCTAssertEqual(orchestrator.lastLiveTranscriptDisplay?.finalText, "")
+    }
+
+    func testStartResetsLiveTranscriptDisplayAndBergungMessage() {
+        let box = WorkflowBox()
+        let orchestrator = makeOrchestrator(createdWorkflows: box)
+        orchestrator.updateLiveTranscriptDisplay(LiveTranscriptDisplay(volatileText: "alt"))
+        orchestrator.reportBergung(message: "boom")
+
+        orchestrator.start(.transcription, source: .manual, pasteTarget: nil)
+
+        XCTAssertNil(orchestrator.lastLiveTranscriptDisplay)
+        XCTAssertNil(orchestrator.bergungMessage)
+    }
+
+    func testReportBergungStoresMessage() {
+        let box = WorkflowBox()
+        let orchestrator = makeOrchestrator(createdWorkflows: box)
+
+        orchestrator.reportBergung(message: "Engine-Fehler")
+
+        XCTAssertEqual(orchestrator.bergungMessage, "Engine-Fehler")
+    }
 }

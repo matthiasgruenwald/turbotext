@@ -1,26 +1,16 @@
 import SwiftUI
 
-/// Dark, non-interactive signal pill shown near the insertion caret while a
-/// voice workflow records and processes. Visual language matches variant A
-/// ("Signal-Pille") from the throwaway CursorWaveformVisualPrototype.
-///
-/// The outer capsule always renders at a fixed size (`width`/`height`), no matter
-/// which phase or sub-state is shown — content that appears/disappears inside it
-/// (silence hint, error text) must never resize or reflow the pill.
 struct RecordingOverlaySignalPillView: View {
     static let width: CGFloat = 260
-    static let height: CGFloat = 44
+    static let minHeight: CGFloat = 44
 
     let phase: RecordingOverlayPhase
     let levelHistory: [Float]
     var showsSilenceHint: Bool = false
     var signalReceived: Bool = false
     var errorMessage: String?
-    /// Progressive Apple Speech transcript, shown while `.recording` (#128).
-    var partialTranscript: String?
-    /// Predicted rewrite routing, shown while `.processing` (#128).
+    var liveTranscript: LiveTranscriptDisplay?
     var processingLabel: String?
-    /// Rewrite outcome, shown while `.completion` (#128).
     var completionLabel: String?
     var onDismissError: () -> Void = {}
     var onDismissBergungError: () -> Void = {}
@@ -30,15 +20,16 @@ struct RecordingOverlaySignalPillView: View {
         content
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .frame(width: Self.width, height: Self.height)
+            .frame(width: Self.width)
+            .frame(minHeight: Self.minHeight)
             .background(
                 phase == .recording && signalReceived
                     ? Color(red: 0.15, green: 0.21, blue: 0.15)
                     : Color(red: 0.13, green: 0.15, blue: 0.20)
             )
-            .clipShape(Capsule())
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.35), radius: 14, y: 8)
-            .contentShape(Capsule())
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .onTapGesture {
                 switch phase {
                 case .error:
@@ -59,24 +50,7 @@ struct RecordingOverlaySignalPillView: View {
         case .hidden:
             EmptyView()
         case .recording:
-            HStack(spacing: 12) {
-                Circle().fill(.red).frame(width: 9, height: 9)
-                if showsSilenceHint {
-                    Text("Kein Signal erkannt …")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                } else if let partialTranscript, !partialTranscript.isEmpty {
-                    Text(partialTranscript)
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .truncationMode(.head)
-                } else {
-                    WaveformBars(levelHistory: levelHistory)
-                        .frame(maxWidth: .infinity)
-                }
-            }
+            recordingContent
         case .processing:
             HStack(spacing: 12) {
                 ProgressView().controlSize(.small).tint(.white)
@@ -120,18 +94,53 @@ struct RecordingOverlaySignalPillView: View {
             }
         }
     }
+
+    @ViewBuilder
+    private var recordingContent: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Circle().fill(.red).frame(width: 9, height: 9).padding(.top, 4)
+            if showsSilenceHint {
+                Text("Kein Signal erkannt …")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            } else if let liveTranscript, !liveTranscript.isEmpty {
+                liveTranscriptText(liveTranscript)
+            } else {
+                WaveformBars(levelHistory: levelHistory)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private func liveTranscriptText(_ display: LiveTranscriptDisplay) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            transcriptText(display)
+                .lineLimit(display.maxLines)
+                .truncationMode(.head)
+            if display.isSmoothingActive {
+                Image(systemName: "wand.and.stars")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+        }
+    }
+
+    private func transcriptText(_ display: LiveTranscriptDisplay) -> Text {
+        var result = Text(display.finalText)
+            .font(.footnote.weight(.medium))
+            .foregroundColor(.white)
+        if !display.volatileText.isEmpty {
+            let separator = display.finalText.isEmpty ? "" : " "
+            result = result
+                + Text(separator + display.volatileText)
+                    .font(.footnote.weight(.medium))
+                    .foregroundColor(.white.opacity(0.5))
+        }
+        return result
+    }
 }
 
-/// Draws bars directly into a `Canvas` rather than one view per sample — cheap
-/// per-frame redraws and, more importantly, a slot width derived from the
-/// fixed `RecordingOverlayState.levelHistoryLimit` rather than the current
-/// sample count. Early in a recording (few samples) that leaves the window
-/// mostly empty with bars only at the right edge; new samples enter from the
-/// right and, once the window fills, older bars land past x=0 and are
-/// skipped — reading as the waveform scrolling left and clipping off.
-/// Chosen over per-view HStack approaches (variant "C" of
-/// docs/research prototype `WaveformScrollPrototype`) because it isn't
-/// sensitive to SwiftUI's HStack/GeometryReader layout timing.
 private struct WaveformBars: View {
     let levelHistory: [Float]
 

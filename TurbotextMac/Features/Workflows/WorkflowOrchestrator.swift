@@ -32,9 +32,12 @@ final class WorkflowOrchestrator {
     /// failure ("Kein Mikrofon verfügbar."). Read by `RecordingOverlayController` when
     /// it decides to surface a start error in the signal pill.
     private(set) var lastErrorMessage: String?
-    /// Progressive transcript from Apple Speech's partial-result callback (#128), updated
-    /// throughout recording. Read by `RecordingOverlayController` while `.recording`.
-    private(set) var lastPartialTranscript: String?
+    /// Structured live-dictate transcript (#150/#151), updated throughout recording
+    /// by the live path. Read by `RecordingOverlayController` while `.recording`.
+    private(set) var lastLiveTranscriptDisplay: LiveTranscriptDisplay?
+    /// Set when the live engine failed mid-dictation and rescued segments were pasted
+    /// (ADR 0005). Read by `RecordingOverlayController` to enter `.bergungError`.
+    private(set) var bergungMessage: String?
     /// Snapshot of `Workflow.processingLabel` (#128), captured while the workflow is still
     /// live so `RecordingOverlayController` can read it after the workflow resets.
     private(set) var lastProcessingLabel: String?
@@ -119,9 +122,10 @@ final class WorkflowOrchestrator {
         workflowCleanupTask?.cancel()
         activeLaunchSource = source
         activePasteTarget = pasteTarget
-        lastPartialTranscript = nil
+        lastLiveTranscriptDisplay = nil
         lastProcessingLabel = nil
         lastCompletionLabel = nil
+        bergungMessage = nil
 
         workflow.onOutput = { [weak self] text in
             self?.handleWorkflowOutput(text)
@@ -202,9 +206,19 @@ final class WorkflowOrchestrator {
         }
     }
 
-    /// Records a fresh partial transcript from Apple Speech's progressive callback (#128).
+    /// Records a fresh structured live transcript from the streaming callback (#150/#151).
+    func updateLiveTranscriptDisplay(_ display: LiveTranscriptDisplay) {
+        lastLiveTranscriptDisplay = display
+    }
+
+    /// Records a partial transcript string, wrapping it as volatile-only display (#128 compat).
     func updatePartialTranscript(_ text: String) {
-        lastPartialTranscript = text
+        lastLiveTranscriptDisplay = LiveTranscriptDisplay(volatileText: text)
+    }
+
+    /// Signals that the live engine failed and rescued segments were pasted (ADR 0005).
+    func reportBergung(message: String?) {
+        bergungMessage = message
     }
 
     // MARK: - Phase Handling

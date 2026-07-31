@@ -313,6 +313,9 @@ final class AppState {
         switch type {
         case .transcription:
             let resolved = resolvedTranscriber(backendOverride: backendOverride)
+            if resolved.resolution == .appleSpeech, #available(macOS 26, *) {
+                return makeLiveTranscriptionWorkflow()
+            }
             return TranscriptionWorkflow(
                 customTerms: textImprovementSettings.customTerms,
                 language: transcriptionSettings.language,
@@ -390,6 +393,26 @@ final class AppState {
         )
     }
 
+    @available(macOS 26, *)
+    private func makeLiveTranscriptionWorkflow() -> any Workflow {
+        let smoothing: any LiveSmoothing = FoundationModelsSmoothing.isAvailable
+            ? FoundationModelsSmoothing()
+            : PassthroughSmoothing()
+        let session = LiveTranscriptionSession(smoothing: smoothing)
+        let orchestrator = workflowLifecycle.orchestrator
+        return LiveDictationWorkflow(
+            type: .transcription,
+            session: session,
+            isSmoothingActive: FoundationModelsSmoothing.isAvailable,
+            onLiveTranscriptUpdate: { [weak orchestrator] display in
+                orchestrator?.updateLiveTranscriptDisplay(display)
+            },
+            onBergung: { [weak orchestrator] message in
+                orchestrator?.reportBergung(message: message)
+            }
+        )
+    }
+
     /// The resolved transcriber for the three rewrite workflows, which never carry a
     /// `backendOverride` — only the `.transcription` factory closure does (from the
     /// hotkey-time offline-fallback decision).
@@ -405,7 +428,7 @@ final class AppState {
     /// from live network state, so it no longer needs to flow through this parameter.
     private func resolvedTranscriber(
         backendOverride: TranscriptionBackend?
-    ) -> (transcriber: SpokenWorkflowPipeline.Transcriber, backend: TranscriptionBackend) {
+    ) -> (transcriber: SpokenWorkflowPipeline.Transcriber, backend: TranscriptionBackend, resolution: ResolvedTranscriptionBackend) {
         let resolution = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: appSettings.alwaysLocalTranscription,
             selectedLocalBackend: selectedLocalTranscriptionBackend,
@@ -422,13 +445,13 @@ final class AppState {
                     Task { @MainActor in self?.workflowLifecycle.orchestrator.updatePartialTranscript(text) }
                 }
             )
-            return (appleTranscriber ?? unavailableTranscriber, .local)
+            return (appleTranscriber ?? unavailableTranscriber, .local, resolution)
         case .remote:
-            return (transcriber(for: .remote), .remote)
+            return (transcriber(for: .remote), .remote, resolution)
         case .whisperKit:
-            return (transcriber(for: .local), .local)
+            return (transcriber(for: .local), .local, resolution)
         case .unavailable:
-            return (unavailableTranscriber, .local)
+            return (unavailableTranscriber, .local, resolution)
         }
     }
 

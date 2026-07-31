@@ -301,7 +301,7 @@ final class RecordingOverlayControllerTests: XCTestCase {
             modeProvider: { .screenBottomCenter },
             anchorResolver: { self.anchor },
             levelProvider: { 0 },
-            partialTranscriptProvider: { partial }
+            liveTranscriptDisplayProvider: { LiveTranscriptDisplay(volatileText: partial) }
         )
 
         controller.tick()
@@ -319,7 +319,7 @@ final class RecordingOverlayControllerTests: XCTestCase {
             modeProvider: { .screenBottomCenter },
             anchorResolver: { self.anchor },
             levelProvider: { 0 },
-            partialTranscriptProvider: { nil }
+            liveTranscriptDisplayProvider: { nil }
         )
 
         controller.tick()
@@ -472,5 +472,78 @@ final class RecordingOverlayControllerTests: XCTestCase {
         controller.tick()
 
         XCTAssertEqual(controller.state.anchor?.point, CGPoint(x: 640, y: 40), "must stay on the screen selected when recording started")
+    }
+
+    // MARK: - Bergung error (#151)
+
+    func testBergungMessageEntersBergungErrorFromRecording() {
+        let (orchestrator, _) = makeOrchestratorWithWorkflow()
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { 0 }
+        )
+        controller.tick()
+        XCTAssertEqual(controller.state.phase, .recording)
+
+        orchestrator.reportBergung(message: "Engine-Fehler")
+        controller.tick()
+
+        XCTAssertEqual(controller.state.phase, .bergungError)
+        XCTAssertEqual(controller.state.errorMessage, "Engine-Fehler")
+    }
+
+    func testBergungErrorPersistsThroughIdleObservations() {
+        let (orchestrator, _) = makeOrchestratorWithWorkflow()
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { 0 }
+        )
+        controller.tick()
+        orchestrator.reportBergung(message: "boom")
+        controller.tick()
+        XCTAssertEqual(controller.state.phase, .bergungError)
+
+        orchestrator.reset()
+        controller.tick()
+        controller.tick()
+
+        XCTAssertEqual(controller.state.phase, .bergungError)
+    }
+
+    func testBergungErrorIsIgnoredOutsideRecording() {
+        let (orchestrator, _) = makeOrchestratorWithWorkflow()
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { 0 }
+        )
+
+        orchestrator.reportBergung(message: "too late")
+        controller.tick()
+
+        XCTAssertEqual(controller.state.phase, .recording)
+    }
+
+    // MARK: - Live transcript display via provider (#151)
+
+    func testStructuredLiveTranscriptDisplayIsRelayedToState() {
+        let (orchestrator, _) = makeOrchestratorWithWorkflow()
+        let display = LiveTranscriptDisplay(finalText: "Fest.", volatileText: "flüchtig", isSmoothingActive: true, maxLines: 3)
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { 0 },
+            liveTranscriptDisplayProvider: { display }
+        )
+
+        controller.tick()
+
+        XCTAssertEqual(controller.state.liveTranscriptDisplay, display)
     }
 }

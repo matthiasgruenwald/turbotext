@@ -1,3 +1,4 @@
+import AVFAudio
 import Foundation
 
 protocol SpokenWorkflowRecording: AnyObject {
@@ -7,6 +8,8 @@ protocol SpokenWorkflowRecording: AnyObject {
     var audioLevel: Float { get }
     var hasUsableSignal: Bool { get }
     var lastRecordingDuration: TimeInterval { get }
+    var inputFormat: AVAudioFormat? { get }
+    var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)? { get set }
 
     func startRecording()
     func stopRecording()
@@ -53,6 +56,11 @@ final class SpokenWorkflowPipeline {
 
     var isRecording: Bool { recorder.isRecording }
     var audioLevel: Float { recorder.audioLevel }
+    var inputFormat: AVAudioFormat? { recorder.inputFormat }
+    var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)? {
+        get { recorder.onBuffer }
+        set { recorder.onBuffer = newValue }
+    }
 
     func startRecording() -> Result<Void, Swift.Error> {
         recorder.startRecording()

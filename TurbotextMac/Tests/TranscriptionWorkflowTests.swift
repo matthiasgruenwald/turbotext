@@ -1,3 +1,4 @@
+import AVFAudio
 import XCTest
 @testable import Turbotext
 
@@ -145,6 +146,8 @@ private final class FakeTranscriptionRecorder: SpokenWorkflowRecording {
     var audioLevel: Float = 0
     var hasUsableSignal = true
     var lastRecordingDuration: TimeInterval
+    var inputFormat: AVAudioFormat?
+    var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
     /// When set, `startRecording()` fails deterministically (like a real "no microphone"
     /// or Core Audio start failure) instead of flipping `isRecording` on.
     var startErrorMessage: String?

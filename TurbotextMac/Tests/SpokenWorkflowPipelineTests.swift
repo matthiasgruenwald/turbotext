@@ -1,3 +1,4 @@
+import AVFAudio
 import XCTest
 @testable import Turbotext
 
@@ -132,6 +133,8 @@ private final class FakeSpokenRecorder: SpokenWorkflowRecording {
     var audioLevel: Float = 0
     var hasUsableSignal = true
     var lastRecordingDuration: TimeInterval
+    var inputFormat: AVAudioFormat?
+    var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
     var stopCount = 0
     var discardCount = 0
     var startCount = 0
