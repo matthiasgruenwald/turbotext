@@ -21,7 +21,6 @@ final class AudioRecorder: NSObject {
     private var recordingStartedAt: Date?
     private var levelTimer: Timer?
     private var meteredPeakLevel: Float = -160
-    private var isRecordingBluetoothDevice = false
     private let defaults: PersistenceProvider
 
     init(defaults: PersistenceProvider = UserDefaultsPersistence.shared) {
@@ -52,7 +51,6 @@ final class AudioRecorder: NSObject {
             availableDevices: MicrophoneService.availableInputDevices(),
             defaultDeviceID: MicrophoneService.defaultInputDeviceID()
         )
-        isRecordingBluetoothDevice = targetDeviceID.map(MicrophoneService.isBluetoothDevice) ?? false
         if let targetDeviceID {
             setEngineInputDevice(targetDeviceID)
         }
@@ -92,7 +90,6 @@ final class AudioRecorder: NSObject {
             recordingStartedAt = Date()
             isRecording = true
             startMetering()
-            RecordingCueSoundPlayer.playStart(isBluetoothDevice: isRecordingBluetoothDevice)
         } catch {
             inputNode.removeTap(onBus: 0)
             outputFile = nil
@@ -102,7 +99,6 @@ final class AudioRecorder: NSObject {
     }
 
     func stopRecording() {
-        let wasRecording = isRecording
         stopMetering()
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
@@ -115,9 +111,6 @@ final class AudioRecorder: NSObject {
         recordingURL = currentFileURL
         currentFileURL = nil
         audioLevel = 0
-        if wasRecording {
-            RecordingCueSoundPlayer.playEnd(isBluetoothDevice: isRecordingBluetoothDevice)
-        }
     }
 
     func discardRecording() {

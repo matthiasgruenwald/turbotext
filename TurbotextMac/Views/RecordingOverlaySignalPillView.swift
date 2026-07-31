@@ -14,6 +14,7 @@ struct RecordingOverlaySignalPillView: View {
     let phase: RecordingOverlayPhase
     let levelHistory: [Float]
     var showsSilenceHint: Bool = false
+    var signalReceived: Bool = false
     var errorMessage: String?
     /// Progressive Apple Speech transcript, shown while `.recording` (#128).
     var partialTranscript: String?
@@ -29,7 +30,11 @@ struct RecordingOverlaySignalPillView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .frame(width: Self.width, height: Self.height)
-            .background(Color(red: 0.13, green: 0.15, blue: 0.20))
+            .background(
+                phase == .recording && signalReceived
+                    ? Color(red: 0.15, green: 0.21, blue: 0.15)
+                    : Color(red: 0.13, green: 0.15, blue: 0.20)
+            )
             .clipShape(Capsule())
             .shadow(color: .black.opacity(0.35), radius: 14, y: 8)
             .contentShape(Capsule())

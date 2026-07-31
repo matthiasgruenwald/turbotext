@@ -181,6 +181,7 @@ final class RecordingOverlayController {
             phase: state.phase,
             levelHistory: state.levelHistory,
             showsSilenceHint: state.showsSilenceHint,
+            signalReceived: state.signalReceived,
             errorMessage: state.errorMessage,
             partialTranscript: state.partialTranscript,
             processingLabel: state.processingLabel,

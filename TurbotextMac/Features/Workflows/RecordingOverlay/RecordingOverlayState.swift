@@ -41,6 +41,7 @@ struct RecordingOverlayState: Equatable {
     /// Shown while `.completion` (#128), e.g. "Text lokal verbessert · Apple Foundation Models".
     let completionLabel: String?
     let completionElapsed: TimeInterval
+    let signalReceived: Bool
 
     static let hidden = RecordingOverlayState(
         phase: .hidden, anchor: nil, levelHistory: [], silenceElapsed: 0, errorMessage: nil, errorElapsed: 0
@@ -60,7 +61,8 @@ struct RecordingOverlayState: Equatable {
         partialTranscript: String? = nil,
         processingLabel: String? = nil,
         completionLabel: String? = nil,
-        completionElapsed: TimeInterval = 0
+        completionElapsed: TimeInterval = 0,
+        signalReceived: Bool = false
     ) {
         self.phase = phase
         self.anchor = anchor
@@ -72,6 +74,7 @@ struct RecordingOverlayState: Equatable {
         self.processingLabel = processingLabel
         self.completionLabel = completionLabel
         self.completionElapsed = completionElapsed
+        self.signalReceived = signalReceived
     }
 
     /// Applies one `MenuBarStatus` observation. `resolveAnchor` is only consulted when
@@ -144,7 +147,8 @@ struct RecordingOverlayState: Equatable {
         let nextSilence = clamped > Self.silenceLevelThreshold ? 0 : silenceElapsed + elapsed
         return RecordingOverlayState(
             phase: phase, anchor: anchor, levelHistory: nextHistory, silenceElapsed: nextSilence,
-            partialTranscript: partialTranscript
+            partialTranscript: partialTranscript,
+            signalReceived: signalReceived || clamped > Self.silenceLevelThreshold
         )
     }
 

@@ -51,6 +51,27 @@ final class MicrophoneAutoSelectionServiceTests: XCTestCase {
         XCTAssertNil(persistence.string(forKey: key))
     }
 
+    func testSwitchesToAvailableFavoriteAfterDeviceChange() {
+        let key = "test_selectedMicUID_\(UUID().uuidString)"
+        let persistence = InMemoryPersistence()
+        let favorites = makeFavoritesStore()
+        favorites.addFavorite(uid: "headset-mic")
+        var available: [AudioInputDevice] = []
+        let service = MicrophoneAutoSelectionService(
+            favoritesStore: favorites,
+            selectedMicUIDKey: key,
+            deviceProvider: { available },
+            defaults: persistence
+        )
+
+        service.applySelection()
+        XCTAssertNil(persistence.string(forKey: key), "no favorite available yet")
+
+        available = [self.device("headset-mic")]
+        service.applySelection()
+        XCTAssertEqual(persistence.string(forKey: key), "headset-mic", "favorite plugged in → selected")
+    }
+
     func testClearsStaleSelectedUIDWhenUseSystemDefaultEnabled() {
         let key = "test_selectedMicUID_\(UUID().uuidString)"
         let persistence = InMemoryPersistence()

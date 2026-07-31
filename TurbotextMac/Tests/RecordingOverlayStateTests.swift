@@ -307,6 +307,44 @@ final class RecordingOverlayStateTests: XCTestCase {
         XCTAssertEqual(completion.dismissingCompletion(), .hidden)
     }
 
+    // MARK: - Signal received (#132)
+
+    func testSignalReceivedFlipsTrueOnUsableLevel() {
+        let recording = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+        XCTAssertFalse(recording.signalReceived)
+
+        let updated = recording.receivingLevel(0.6, elapsed: 0.1)
+        XCTAssertTrue(updated.signalReceived)
+    }
+
+    func testSignalReceivedStaysTrueForRestOfRecording() {
+        var state = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+        state = state.receivingLevel(0.6, elapsed: 0.1)
+        state = state.receivingLevel(0.0, elapsed: 0.1)
+        state = state.receivingLevel(0.0, elapsed: 0.1)
+
+        XCTAssertTrue(state.signalReceived)
+    }
+
+    func testSignalReceivedResetsOnNewRecording() {
+        let firstRecording = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+            .receivingLevel(0.6, elapsed: 0.1)
+        let processing = firstRecording.applying(menuBarStatus: .processing(.transcription)) { self.anchor }
+        let idle = processing.applying(menuBarStatus: .idle) { self.anchor }
+        let secondRecording = idle.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+
+        XCTAssertFalse(secondRecording.signalReceived)
+    }
+
+    func testSignalReceivedStaysFalseWithoutUsableLevel() {
+        var state = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+        for _ in 0..<10 {
+            state = state.receivingLevel(0.01, elapsed: 0.1)
+        }
+
+        XCTAssertFalse(state.signalReceived)
+    }
+
     func testErrorMidRecordingStillHidesImmediately() {
         // Errors after recording visibly began (e.g. a later transcription failure) are
         // out of this issue's scope and keep the pre-existing hide-immediately behavior.
