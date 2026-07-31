@@ -39,6 +39,7 @@ struct CredentialsSettingsView: View {
         VStack(alignment: .leading, spacing: 16) {
             groqKeySection
             rewritingProviderModeSection
+            localRewriteSection
             Divider()
             openAIKeySection
 
@@ -136,6 +137,25 @@ struct CredentialsSettingsView: View {
             .font(.system(size: 11.5))
 
             Text("Gilt für Textverbesserung, Dampf ablassen und Emoji-Text. Aus: Groq wird bevorzugt, solange das Kontingent reicht. An: immer OpenAI, auch mit Groq-Key.")
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: Local Rewrite Availability
+    private var localRewriteSection: some View {
+        let availability = LocalRewriteAvailability.current
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: availability.statusIconName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(availability.isAvailable ? .green : .orange)
+                Text(availability.statusLabel)
+                    .font(.system(size: 11, weight: .medium))
+            }
+
+            Text(availability.detailText)
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
