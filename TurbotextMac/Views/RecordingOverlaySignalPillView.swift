@@ -115,9 +115,7 @@ struct RecordingOverlaySignalPillView: View {
 
     private func liveTranscriptText(_ display: LiveTranscriptDisplay) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
-            transcriptText(display)
-                .lineLimit(display.maxLines)
-                .truncationMode(.head)
+            TailClippedTranscriptText(text: transcriptText(display), maxLines: display.maxLines)
             if display.isSmoothingActive {
                 Image(systemName: "wand.and.stars")
                     .font(.caption2)
@@ -139,6 +137,41 @@ struct RecordingOverlaySignalPillView: View {
         }
         return result
     }
+}
+
+/// Reserves height exactly as `.lineLimit` would (growing up to `maxLines`,
+/// capped there), then overlays the untruncated text bottom-aligned and
+/// clipped to that measured height, so the newest text (tail) stays visible
+/// instead of `.lineLimit`'s default head-truncation. `.frame(maxHeight:)`
+/// alone doesn't clamp a `.fixedSize` child back down to the offered size, so
+/// the reserved height is measured explicitly and applied as a fixed height.
+private struct TailClippedTranscriptText: View {
+    let text: Text
+    let maxLines: Int
+    @State private var reservedHeight: CGFloat?
+
+    var body: some View {
+        text
+            .lineLimit(maxLines)
+            .hidden()
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: ReservedHeightKey.self, value: proxy.size.height)
+                }
+            )
+            .onPreferenceChange(ReservedHeightKey.self) { reservedHeight = $0 }
+            .overlay(alignment: .bottomLeading) {
+                text
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(height: reservedHeight, alignment: .bottom)
+                    .clipped()
+            }
+    }
+}
+
+private struct ReservedHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 private struct WaveformBars: View {
