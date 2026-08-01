@@ -41,6 +41,7 @@ final class LiveTranscriptionSession {
     @ObservationIgnored private var fedBufferCount = 0
     @ObservationIgnored private var droppedBufferCount = 0
     @ObservationIgnored private var isFinishRequested = false
+    @ObservationIgnored private var lastChunkAt: Date?
 
     var isRunning: Bool { phase == .running }
 
@@ -85,7 +86,8 @@ final class LiveTranscriptionSession {
                         chunkCount += 1
                         if result.isFinal { finalCount += 1 }
                         let text = String(result.text.characters)
-                        liveLogger.debug(
+                        self?.lastChunkAt = Date()
+                        liveLogger.info(
                             "chunk #\(chunkCount) isFinal=\(result.isFinal) chars=\(text.count)"
                         )
                         continuation.yield(TranscriptionChunk(text: text, isFinal: result.isFinal))
@@ -99,7 +101,7 @@ final class LiveTranscriptionSession {
                 } catch {
                     let nsError = error as NSError
                     liveLogger.error(
-                        "results stream failed domain=\(nsError.domain) code=\(nsError.code) chunks=\(chunkCount)"
+                        "results stream failed domain=\(nsError.domain, privacy: .public) code=\(nsError.code) chunks=\(chunkCount) description=\(nsError.localizedDescription, privacy: .public)"
                     )
                     continuation.finish(throwing: error)
                 }
@@ -205,8 +207,9 @@ final class LiveTranscriptionSession {
                 let range = await analyzer.volatileRange
                 let start = range.map { $0.start.seconds } ?? .nan
                 let end = range.map { $0.end.seconds } ?? .nan
-                liveLogger.debug(
-                    "probe fed=\(self.fedBufferCount) dropped=\(self.droppedBufferCount) volatileRange=\(start)...\(end)"
+                let chunkAge = self.lastChunkAt.map { Date().timeIntervalSince($0) } ?? -1
+                liveLogger.info(
+                    "probe fed=\(self.fedBufferCount) dropped=\(self.droppedBufferCount) lastChunkAgo=\(String(format: "%.1f", chunkAge))s volatileRange=\(start)...\(end)"
                 )
             }
         }
@@ -215,7 +218,7 @@ final class LiveTranscriptionSession {
     private nonisolated func recordFedBuffer(inputFrames: AVAudioFrameCount, outputFrames: AVAudioFrameCount) {
         fedBufferCount += 1
         guard fedBufferCount % Self.feedLogInterval == 0 else { return }
-        liveLogger.debug(
+        liveLogger.info(
             "fed \(self.fedBufferCount) buffers (in=\(inputFrames) out=\(outputFrames)) dropped=\(self.droppedBufferCount)"
         )
     }
