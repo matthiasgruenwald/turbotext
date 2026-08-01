@@ -1,7 +1,10 @@
 @preconcurrency import AVFAudio
 import Foundation
 import Observation
+import OSLog
 import Speech
+
+private let liveLogger = Logger(subsystem: "app.turbotext.mac", category: "LiveDictation")
 
 struct TranscriptionChunk: Sendable, Equatable {
     let text: String
@@ -30,7 +33,14 @@ final class LiveTranscriptionSession {
     private var transcriber: DictationTranscriber?
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
     private var collectingTask: Task<Void, Never>?
+    private var progressProbeTask: Task<Void, Never>?
     private var converter: AVAudioConverter?
+
+    private static let feedLogInterval = 50
+
+    @ObservationIgnored private var fedBufferCount = 0
+    @ObservationIgnored private var droppedBufferCount = 0
+    @ObservationIgnored private var isFinishRequested = false
 
     var isRunning: Bool { phase == .running }
 
@@ -53,27 +63,44 @@ final class LiveTranscriptionSession {
                     collector.apply(text: chunk.text, isFinal: false)
                 }
             }
+            liveLogger.info("collecting loop finished (finishRequested=\(self.isFinishRequested))")
             phase = .finished
         } catch is CancellationError {
+            liveLogger.info("collecting loop cancelled")
             phase = .finished
         } catch {
             guard phase == .running else { return }
+            liveLogger.error("collecting loop failed: \(error.localizedDescription)")
             phase = .failed(error.localizedDescription, isBergung: !collector.finalText.isEmpty)
         }
     }
 
     private func makeChunkStream(_ transcriber: DictationTranscriber) -> AsyncThrowingStream<TranscriptionChunk, Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            Task { [weak self] in
+                var chunkCount = 0
+                var finalCount = 0
                 do {
                     for try await result in transcriber.results {
-                        continuation.yield(TranscriptionChunk(
-                            text: String(result.text.characters),
-                            isFinal: result.isFinal
-                        ))
+                        chunkCount += 1
+                        if result.isFinal { finalCount += 1 }
+                        let text = String(result.text.characters)
+                        liveLogger.debug(
+                            "chunk #\(chunkCount) isFinal=\(result.isFinal) chars=\(text.count)"
+                        )
+                        continuation.yield(TranscriptionChunk(text: text, isFinal: result.isFinal))
                     }
+                    let expected = self?.isFinishRequested ?? true
+                    liveLogger.log(
+                        level: expected ? .info : .error,
+                        "results stream ended (finishRequested=\(expected)) chunks=\(chunkCount) finals=\(finalCount)"
+                    )
                     continuation.finish()
                 } catch {
+                    let nsError = error as NSError
+                    liveLogger.error(
+                        "results stream failed domain=\(nsError.domain) code=\(nsError.code) chunks=\(chunkCount)"
+                    )
                     continuation.finish(throwing: error)
                 }
             }
@@ -108,10 +135,24 @@ final class LiveTranscriptionSession {
             await self.runCollectingLoop(self.makeChunkStream(transcriber))
         }
 
+        let reporting = DictationTranscriber.Preset.progressiveLongDictation.reportingOptions
+        liveLogger.info(
+            """
+            session started source=\(sourceFormat.sampleRate)Hz/\(sourceFormat.channelCount)ch \
+            analyzer=\(analyzerFormat.sampleRate)Hz/\(analyzerFormat.channelCount)ch \
+            volatileResults=\(reporting.contains(.volatileResults)) \
+            frequentFinalization=\(reporting.contains(.frequentFinalization))
+            """
+        )
+        startProgressProbe(analyzer: analyzer)
+
         Task { [weak self] in
             do {
                 try await analyzer.start(inputSequence: stream)
+                liveLogger.info("analyzer.start returned")
             } catch {
+                let nsError = error as NSError
+                liveLogger.error("analyzer.start failed domain=\(nsError.domain) code=\(nsError.code)")
                 await MainActor.run {
                     guard let self, self.phase == .running else { return }
                     self.phase = .failed(error.localizedDescription)
@@ -121,13 +162,19 @@ final class LiveTranscriptionSession {
     }
 
     nonisolated func feed(buffer: AVAudioPCMBuffer) {
-        guard let converter, let continuation = inputContinuation else { return }
+        guard let converter, let continuation = inputContinuation else {
+            recordDroppedBuffer(reason: "no converter or continuation")
+            return
+        }
         let frameCapacity = AVAudioFrameCount(
             Double(buffer.frameLength) * (converter.outputFormat.sampleRate / converter.inputFormat.sampleRate)
         )
         guard frameCapacity > 0,
               let converted = AVAudioPCMBuffer(pcmFormat: converter.outputFormat, frameCapacity: frameCapacity)
-        else { return }
+        else {
+            recordDroppedBuffer(reason: "output buffer allocation failed")
+            return
+        }
 
         var error: NSError?
         var hasData = true
@@ -140,12 +187,50 @@ final class LiveTranscriptionSession {
             outStatus.pointee = .noDataNow
             return nil
         }
-        guard error == nil, converted.frameLength > 0 else { return }
+        guard error == nil, converted.frameLength > 0 else {
+            recordDroppedBuffer(reason: "convert failed code=\(error?.code ?? 0) frames=\(converted.frameLength)")
+            return
+        }
         continuation.yield(AnalyzerInput(buffer: converted))
+        recordFedBuffer(inputFrames: buffer.frameLength, outputFrames: converted.frameLength)
+    }
+
+    /// Diagnose für #155: trennt „Engine steht" von „Audio kommt nicht mehr an",
+    /// indem gefütterte Buffer und der Fortschritt des Analyzers gemeinsam getickt werden.
+    private func startProgressProbe(analyzer: SpeechAnalyzer) {
+        progressProbeTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, self.phase == .running else { return }
+                let range = await analyzer.volatileRange
+                let start = range.map { $0.start.seconds } ?? .nan
+                let end = range.map { $0.end.seconds } ?? .nan
+                liveLogger.debug(
+                    "probe fed=\(self.fedBufferCount) dropped=\(self.droppedBufferCount) volatileRange=\(start)...\(end)"
+                )
+            }
+        }
+    }
+
+    private nonisolated func recordFedBuffer(inputFrames: AVAudioFrameCount, outputFrames: AVAudioFrameCount) {
+        fedBufferCount += 1
+        guard fedBufferCount % Self.feedLogInterval == 0 else { return }
+        liveLogger.debug(
+            "fed \(self.fedBufferCount) buffers (in=\(inputFrames) out=\(outputFrames)) dropped=\(self.droppedBufferCount)"
+        )
+    }
+
+    private nonisolated func recordDroppedBuffer(reason: String) {
+        droppedBufferCount += 1
+        guard droppedBufferCount == 1 || droppedBufferCount % Self.feedLogInterval == 0 else { return }
+        liveLogger.error("dropped \(self.droppedBufferCount) buffers, last reason: \(reason)")
     }
 
     func finish() {
         guard phase == .running else { return }
+        isFinishRequested = true
+        liveLogger.info("finish requested after \(self.fedBufferCount) fed buffers")
+        progressProbeTask?.cancel()
         inputContinuation?.finish()
         Task {
             try? await analyzer?.finalizeAndFinishThroughEndOfInput()
@@ -154,6 +239,8 @@ final class LiveTranscriptionSession {
 
     func cancel() {
         guard phase == .running || phase == .idle else { return }
+        isFinishRequested = true
+        progressProbeTask?.cancel()
         inputContinuation?.finish()
         collectingTask?.cancel()
         Task {
