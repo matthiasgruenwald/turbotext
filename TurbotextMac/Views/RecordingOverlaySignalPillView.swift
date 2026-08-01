@@ -22,11 +22,10 @@ struct RecordingOverlaySignalPillView: View {
             .padding(.vertical, 8)
             .frame(width: Self.width)
             .frame(minHeight: Self.minHeight)
-            .background(
-                phase == .recording && signalReceived
-                    ? Color(red: 0.15, green: 0.21, blue: 0.15)
-                    : Color(red: 0.13, green: 0.15, blue: 0.20)
-            )
+            // The green "signal received" tint (#154) blended translucent white text
+            // below WCAG AA contrast; the red recording dot already signals recording
+            // state, so the pill now stays on the one background for every phase.
+            .background(Color(red: 0.13, green: 0.15, blue: 0.20))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.35), radius: 14, y: 8)
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -133,7 +132,7 @@ struct RecordingOverlaySignalPillView: View {
             result = result
                 + Text(separator + display.volatileText)
                     .font(.footnote.weight(.medium))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.white.opacity(0.72))
         }
         return result
     }
