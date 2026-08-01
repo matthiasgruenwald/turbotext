@@ -63,8 +63,23 @@ enum AppleSpeechTranscriptionService {
     static let locale = Locale(identifier: "de-DE")
     static let minimumOSVersion = OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
 
-    static func makeDictationTranscriber() -> DictationTranscriber {
-        DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
+    /// `frequentFinalization` begrenzt das volatile Fenster: ohne die Option bleibt
+    /// dessen Startzeit stehen und der Analyzer dekodiert wachsende Audiobereiche
+    /// neu, bis der Speech-Dienst mit `SFSpeechErrorCodeInternalServiceError`
+    /// aussteigt (#155). Nur der Live-Pfad braucht das — dateibasiert wird ohnehin
+    /// am Stück finalisiert.
+    static func makeDictationTranscriber(frequentFinalization: Bool = false) -> DictationTranscriber {
+        let preset = DictationTranscriber.Preset.progressiveLongDictation
+        guard frequentFinalization else {
+            return DictationTranscriber(locale: locale, preset: preset)
+        }
+        return DictationTranscriber(
+            locale: locale,
+            contentHints: preset.contentHints,
+            transcriptionOptions: preset.transcriptionOptions,
+            reportingOptions: preset.reportingOptions.union([.frequentFinalization]),
+            attributeOptions: preset.attributeOptions
+        )
     }
 
     static var isAvailable: Bool {

@@ -112,7 +112,7 @@ final class LiveTranscriptionSession {
     func start(sourceFormat: AVAudioFormat) async throws {
         guard phase == .idle else { return }
 
-        let transcriber = AppleSpeechTranscriptionService.makeDictationTranscriber()
+        let transcriber = AppleSpeechTranscriptionService.makeDictationTranscriber(frequentFinalization: true)
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         guard let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
             phase = .failed("Audioformat-Erkennung fehlgeschlagen.")
@@ -138,6 +138,7 @@ final class LiveTranscriptionSession {
         }
 
         let reporting = DictationTranscriber.Preset.progressiveLongDictation.reportingOptions
+            .union([.frequentFinalization])
         liveLogger.info(
             """
             session started source=\(sourceFormat.sampleRate)Hz/\(sourceFormat.channelCount)ch \
@@ -209,7 +210,7 @@ final class LiveTranscriptionSession {
                 let end = range.map { $0.end.seconds } ?? .nan
                 let chunkAge = self.lastChunkAt.map { Date().timeIntervalSince($0) } ?? -1
                 liveLogger.info(
-                    "probe fed=\(self.fedBufferCount) dropped=\(self.droppedBufferCount) lastChunkAgo=\(String(format: "%.1f", chunkAge))s volatileRange=\(start)...\(end)"
+                    "probe fed=\(self.fedBufferCount) dropped=\(self.droppedBufferCount) lastChunkAgo=\(String(format: "%.1f", chunkAge), privacy: .public)s volatileRange=\(start)...\(end)"
                 )
             }
         }
