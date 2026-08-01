@@ -22,11 +22,10 @@ struct RecordingOverlaySignalPillView: View {
             .padding(.vertical, 8)
             .frame(width: Self.width)
             .frame(minHeight: Self.minHeight)
-            .background(
-                phase == .recording && signalReceived
-                    ? Color(red: 0.15, green: 0.21, blue: 0.15)
-                    : Color(red: 0.13, green: 0.15, blue: 0.20)
-            )
+            // The green "signal received" tint (#154) blended translucent white text
+            // below WCAG AA contrast; the red recording dot already signals recording
+            // state, so the pill now stays on the one background for every phase.
+            .background(Color(red: 0.13, green: 0.15, blue: 0.20))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.35), radius: 14, y: 8)
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -115,9 +114,7 @@ struct RecordingOverlaySignalPillView: View {
 
     private func liveTranscriptText(_ display: LiveTranscriptDisplay) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
-            transcriptText(display)
-                .lineLimit(display.maxLines)
-                .truncationMode(.head)
+            TailClippedTranscriptText(text: transcriptText(display), maxLines: display.maxLines)
             if display.isSmoothingActive {
                 Image(systemName: "wand.and.stars")
                     .font(.caption2)
@@ -135,10 +132,45 @@ struct RecordingOverlaySignalPillView: View {
             result = result
                 + Text(separator + display.volatileText)
                     .font(.footnote.weight(.medium))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.white.opacity(0.72))
         }
         return result
     }
+}
+
+/// Reserves height exactly as `.lineLimit` would (growing up to `maxLines`,
+/// capped there), then overlays the untruncated text bottom-aligned and
+/// clipped to that measured height, so the newest text (tail) stays visible
+/// instead of `.lineLimit`'s default head-truncation. `.frame(maxHeight:)`
+/// alone doesn't clamp a `.fixedSize` child back down to the offered size, so
+/// the reserved height is measured explicitly and applied as a fixed height.
+private struct TailClippedTranscriptText: View {
+    let text: Text
+    let maxLines: Int
+    @State private var reservedHeight: CGFloat?
+
+    var body: some View {
+        text
+            .lineLimit(maxLines)
+            .hidden()
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: ReservedHeightKey.self, value: proxy.size.height)
+                }
+            )
+            .onPreferenceChange(ReservedHeightKey.self) { reservedHeight = $0 }
+            .overlay(alignment: .bottomLeading) {
+                text
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(height: reservedHeight, alignment: .bottom)
+                    .clipped()
+            }
+    }
+}
+
+private struct ReservedHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 private struct WaveformBars: View {
