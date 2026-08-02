@@ -64,8 +64,13 @@ final class LiveTranscriptionSession {
                     collector.apply(text: chunk.text, isFinal: false)
                 }
             }
-            liveLogger.info("collecting loop finished (finishRequested=\(self.isFinishRequested))")
-            phase = .finished
+            if isFinishRequested {
+                liveLogger.info("collecting loop finished (finishRequested=true)")
+                phase = .finished
+            } else {
+                liveLogger.error("results stream ended without finish request — treating as engine abort")
+                phase = .failed("Die Spracherkennung wurde unerwartet beendet.", isBergung: !collector.finalText.isEmpty)
+            }
         } catch is CancellationError {
             liveLogger.info("collecting loop cancelled")
             phase = .finished

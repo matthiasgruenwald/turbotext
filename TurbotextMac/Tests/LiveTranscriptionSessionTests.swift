@@ -39,6 +39,7 @@ final class LiveTranscriptionSessionTests: XCTestCase {
 
     func testFinalSegmentsFlowThroughSmoothingIntoCollector() async {
         let session = makeSession()
+        session.finish()
 
         await session.runCollectingLoop(stream([
             TranscriptionChunk(text: "Hallo", isFinal: false),
@@ -92,6 +93,7 @@ final class LiveTranscriptionSessionTests: XCTestCase {
     func testVolatileChunkIsNotSmoothed() async {
         let spy = SpySmoothing()
         let session = makeSession(smoothing: spy)
+        session.finish()
 
         await session.runCollectingLoop(stream([
             TranscriptionChunk(text: "unfertiger schwanz", isFinal: false),
@@ -140,6 +142,33 @@ final class LiveTranscriptionSessionTests: XCTestCase {
             [TranscriptionChunk(text: "nur volatil", isFinal: false)],
             finishingWithError: TestEngineError()
         ))
+
+        guard case .failed(_, let isBergung) = session.phase else {
+            return XCTFail("Erwartete .failed, bekam \(session.phase)")
+        }
+        XCTAssertFalse(isBergung)
+    }
+
+    func testStreamEndWithoutFinishRequestTriggersBergung() async {
+        let session = makeSession()
+
+        await session.runCollectingLoop(stream([
+            TranscriptionChunk(text: "Geretteter Satz.", isFinal: true),
+        ]))
+
+        guard case .failed(_, let isBergung) = session.phase else {
+            return XCTFail("Erwartete .failed, bekam \(session.phase)")
+        }
+        XCTAssertTrue(isBergung)
+        XCTAssertEqual(session.finalText, "Geretteter Satz.")
+    }
+
+    func testStreamEndWithoutFinishRequestAndWithoutFinalTextIsVisibleError() async {
+        let session = makeSession()
+
+        await session.runCollectingLoop(stream([
+            TranscriptionChunk(text: "nur volatil", isFinal: false),
+        ]))
 
         guard case .failed(_, let isBergung) = session.phase else {
             return XCTFail("Erwartete .failed, bekam \(session.phase)")

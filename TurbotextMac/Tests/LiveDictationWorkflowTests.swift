@@ -215,4 +215,39 @@ final class LiveDictationWorkflowBergungTests: XCTestCase {
         XCTAssertNotNil(bergungMessage)
         XCTAssertEqual(output, "Geretteter Text")
     }
+
+    func testStreamEndWithoutFinishRequestStopsRecordingAndBergsImmediately() async {
+        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        let recorder = FakeLiveRecorder()
+        let pipeline = SpokenWorkflowPipeline(recorder: recorder)
+        var bergungMessage: String??
+        var output: String?
+
+        let workflow = LiveDictationWorkflow(
+            type: .transcription,
+            session: session,
+            pipeline: pipeline,
+            onBergung: { bergungMessage = $0 }
+        )
+        workflow.onOutput = { output = $0 }
+        workflow.start()
+        XCTAssertTrue(recorder.isRecording)
+
+        session.phase = .running
+        let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
+            continuation.yield(TranscriptionChunk(text: "Geretteter Text", isFinal: true))
+            continuation.finish()
+        }
+        await session.runCollectingLoop(stream)
+
+        let expectation = expectation(description: "bergung processed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            expectation.fulfill()
+        }
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertFalse(recorder.isRecording, "Aufnahme muss sofort stoppen, nicht erst beim Nutzer-Stop")
+        XCTAssertNotNil(bergungMessage)
+        XCTAssertEqual(output, "Geretteter Text")
+    }
 }
