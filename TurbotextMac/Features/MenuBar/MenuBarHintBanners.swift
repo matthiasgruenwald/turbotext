@@ -51,8 +51,8 @@ extension MenuBarView {
     var inputMonitoringHintBanner: some View {
         hintBanner(
             icon: "keyboard.badge.exclamationmark",
-            title: "Tastaturüberwachung freigeben (nur für eigene Hotkeys nötig).",
-            detail: "Turbotext steht dort evtl. nicht in der Liste — über + hinzufügen."
+            title: "Eingabeüberwachung freigeben für mehr Tastenkürzel.",
+            detail: "Ohne sie funktionieren nur Kürzel mit der fn-Taste."
         ) {
             Button("Öffnen") {
                 appState.requestInputMonitoringPermission()

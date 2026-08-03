@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var prewarmObserver: PrewarmObserver!
     private var dockModeObserver: DockModeObserver!
     private var recordingOverlayController: RecordingOverlayController!
+    private var permissionGuidePanelController: PermissionGuidePanelController!
     let appState = AppState()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -75,6 +76,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             appState?.appSettings.hideRewriteCompletionLabel = true
         }
         recordingOverlayController.start()
+
+        permissionGuidePanelController = PermissionGuidePanelController(
+            coordinator: appState.permissionGuideCoordinator
+        )
+        appState.permissionGuideCoordinator.panel = permissionGuidePanelController
 
         DockModeService.apply(dockModeEnabled: appState.appSettings.dockModeEnabled)
         appState.prewarmLocalTranscriptionIfNeeded()

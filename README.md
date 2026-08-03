@@ -148,6 +148,8 @@ Turbotext asks for:
 
 Permission status for Accessibility and Input Monitoring is shown directly in Settings — no need to check System Settings manually.
 
+For granting permissions, Turbotext ships an interactive onboarding guide: click **Berechtigungen einrichten** on the onboarding page (or **Öffnen** on a permission hint), and System Settings opens at the right privacy pane while a floating panel appears next to it. Drag the Turbotext token from the panel into the Accessibility or Input Monitoring list — no need to hunt for the + button.
+
 ### Input Monitoring (External Keyboards)
 
 macOS requires explicit approval to read key events from non-Apple keyboards. If your hotkeys only work on the built-in Apple keyboard, grant Input Monitoring:
@@ -197,6 +199,10 @@ See [docs/local-models.md](docs/local-models.md).
 Contributions are welcome.
 
 Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+
+## Credits
+
+The interactive permission onboarding (floating guide panel with a drag-&-drop app token, System Settings deep links, and TCC status polling) is inspired by [FluidVoice](https://github.com/altic-dev/FluidVoice), which is licensed under the GNU GPLv3. Turbotext contains no copied FluidVoice code: the behavior was studied and independently re-implemented to keep this project MIT-licensed (see [ADR 0008](docs/adr/0008-berechtigungs-onboarding-neuimplementierung.md)). FluidVoice is credited as the source of inspiration, with respect to its GPLv3 license.
 
 ## License
 

@@ -57,6 +57,9 @@ extension MenuBarView {
 
                     onboardingStep(number: "1", title: "Groq Key speichern", detail: "Öffne die Einstellungen und trage deinen eigenen Groq API Key ein.")
                     onboardingStep(number: "2", title: "Berechtigungen erlauben", detail: "Mikrofon und Bedienungshilfen für das Einfügen freigeben.")
+                    if !appState.accessibilityPermissionGranted || !appState.inputMonitoringPermissionGranted {
+                        permissionGuideButton
+                    }
                     onboardingStep(number: "3", title: "Workflow wählen", detail: "Turbotext oder einen der Verbesserer-Workflows direkt aus der Menüleiste starten.")
                     onboardingGroqStep
                 }
@@ -94,6 +97,32 @@ extension MenuBarView {
 
             appFooter
         }
+    }
+
+    var permissionGuideButton: some View {
+        Button {
+            appState.startPermissionGuide(requested: [.accessibility, .inputMonitoring])
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "hand.point.up.left.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Berechtigungen einrichten")
+                    .font(.system(size: 11.5, weight: .medium))
+            }
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.primary.opacity(0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(SubtleButtonStyle())
+        .padding(.leading, 28)
     }
 
     func onboardingStep(number: String, title: String, detail: String) -> some View {

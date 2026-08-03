@@ -78,6 +78,8 @@ final class AppState {
     let shortcutStore: ShortcutStore
     let hotkeyCaptureService: HotkeyCaptureService
 
+    let permissionGuideCoordinator: PermissionGuideCoordinator
+
     // Network status
     let networkPingService: NetworkPingService
 
@@ -144,6 +146,7 @@ final class AppState {
         let store = ShortcutStore()
         self.shortcutStore = store
         self.hotkeyCaptureService = HotkeyCaptureService(store: store)
+        self.permissionGuideCoordinator = PermissionGuideCoordinator()
         self.microphoneState = MicrophoneState()
         self.networkPingService = NetworkPingService()
         let settings = SettingsState()
@@ -190,6 +193,10 @@ final class AppState {
             guard let self else { return }
             self.onCloudIndicatorRefreshNeeded?()
             self.onAppSettingsChanged?(oldValue, newValue)
+        }
+
+        permissionGuideCoordinator.onPermissionStatusChanged = { [weak self] in
+            self?.refreshAccessibilityPermission()
         }
 
         refreshAccessibilityPermission()
@@ -619,9 +626,12 @@ extension AppState {
         inputMonitoringPermissionGranted = InputMonitoringPermissionService.currentStatus()
     }
 
+    func startPermissionGuide(requested: Set<PermissionGuideStep>) {
+        permissionGuideCoordinator.start(requested: requested)
+    }
+
     func requestAccessibilityPermission() {
-        accessibilityPermissionGranted = AccessibilityPermissionService.requestPermissionPrompt()
-        scheduleAccessibilityPermissionRefresh()
+        startPermissionGuide(requested: [.accessibility])
     }
 
     var shouldShowInputMonitoringHint: Bool {
@@ -636,18 +646,7 @@ extension AppState {
     }
 
     func requestInputMonitoringPermission() {
-        inputMonitoringPermissionGranted = InputMonitoringPermissionService.requestPermissionPrompt()
-        InputMonitoringPermissionService.openSystemSettings()
-        scheduleAccessibilityPermissionRefresh()
-    }
-
-    private func scheduleAccessibilityPermissionRefresh() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            self?.refreshAccessibilityPermission()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-            self?.refreshAccessibilityPermission()
-        }
+        startPermissionGuide(requested: [.inputMonitoring])
     }
 }
 
