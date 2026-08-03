@@ -38,17 +38,21 @@ final class LiveDictationWorkflowTests: XCTestCase {
     private func makeWorkflow(
         recorder: FakeLiveRecorder? = nil,
         session: LiveTranscriptionSession? = nil,
+        smoothingPass: (@Sendable (String) async -> String?)? = nil,
+        smoothingBudget: Duration = .seconds(5),
         rewrite: ((String) async throws -> RewriteStepResult)? = nil,
         onBergung: ((String?) -> Void)? = nil,
         fileFallbackTranscriber: ((URL, TimeInterval) async throws -> String)? = nil,
         gracePeriod: Duration = .zero
     ) -> (LiveDictationWorkflow, LiveTranscriptionSession, FakeLiveRecorder) {
         let recorder = recorder ?? FakeLiveRecorder()
-        let session = session ?? LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        let session = session ?? LiveTranscriptionSession()
         let pipeline = SpokenWorkflowPipeline(recorder: recorder)
         let workflow = LiveDictationWorkflow(
             type: .transcription,
             session: session,
+            smoothingPass: smoothingPass,
+            smoothingBudget: smoothingBudget,
             pipeline: pipeline,
             gracePeriod: gracePeriod,
             rewrite: rewrite,
@@ -99,7 +103,7 @@ final class LiveDictationWorkflowTests: XCTestCase {
     }
 
     func testStopWithFinalizedTextCallsOnOutput() async {
-        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        let session = LiveTranscriptionSession()
         await feedSession(session, text: "Hallo Welt")
         let (workflow, _, _) = makeWorkflow(session: session)
         workflow.start()
@@ -134,7 +138,7 @@ final class LiveDictationWorkflowTests: XCTestCase {
     }
 
     func testStopWithRewriteAppliesRewriteStep() async {
-        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        let session = LiveTranscriptionSession()
         await feedSession(session, text: "rohtext")
         let (workflow, _, _) = makeWorkflow(
             session: session,
@@ -199,7 +203,7 @@ final class LiveDictationWorkflowTests: XCTestCase {
     // MARK: - Drain (#159)
 
     func testStopWaitsForDrainAndUsesSessionText() async {
-        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        let session = LiveTranscriptionSession()
         await feedSession(session, text: "Vollständiger Satz")
         var fallbackCalled = false
         let (workflow, _, _) = makeWorkflow(
@@ -226,7 +230,7 @@ final class LiveDictationWorkflowTests: XCTestCase {
     }
 
     func testStopFallsBackToFileTranscriptionWhenSessionFailed() async {
-        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        let session = LiveTranscriptionSession()
         session.phase = .running
         let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
             continuation.yield(TranscriptionChunk(text: "Teiltext", isFinal: true))
@@ -254,7 +258,7 @@ final class LiveDictationWorkflowTests: XCTestCase {
     }
 
     func testStopUsesCollectedTextWhenFallbackAlsoFails() async {
-        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        let session = LiveTranscriptionSession()
         session.phase = .running
         let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
             continuation.yield(TranscriptionChunk(text: "Geretteter Text", isFinal: true))
@@ -282,7 +286,7 @@ final class LiveDictationWorkflowTests: XCTestCase {
     }
 
     func testBergungDoesNotFireDuringDrain() async {
-        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        let session = LiveTranscriptionSession()
         await feedSession(session, text: "Text")
         var bergungFired = false
         let (workflow, _, _) = makeWorkflow(
@@ -298,6 +302,106 @@ final class LiveDictationWorkflowTests: XCTestCase {
         await fulfillment(of: [expectation], timeout: 2)
 
         XCTAssertFalse(bergungFired, "Bergung darf während des Drains nicht feuern")
+    }
+
+    // MARK: - Glättung als Nachbearbeitung (#163)
+
+    func testStopAppliesSmoothingPassBeforeOutput() async {
+        let session = LiveTranscriptionSession()
+        await feedSession(session, text: "roher satz")
+        let (workflow, _, _) = makeWorkflow(
+            session: session,
+            smoothingPass: { text in "Geglättet: \(text)" }
+        )
+        workflow.start()
+
+        let expectation = expectation(description: "output delivered")
+        var output: String?
+        workflow.onOutput = { text in
+            output = text
+            expectation.fulfill()
+        }
+
+        workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertEqual(output, "Geglättet: roher satz")
+    }
+
+    func testSmoothingPassSeesFileFallbackText() async {
+        let session = LiveTranscriptionSession()
+        session.phase = .running
+        let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
+            continuation.finish(throwing: NSError(domain: "test", code: 1))
+        }
+        await session.runCollectingLoop(stream)
+
+        let (workflow, _, _) = makeWorkflow(
+            session: session,
+            smoothingPass: { text in "Geglättet: \(text)" },
+            fileFallbackTranscriber: { _, _ in "Fallback-Text" }
+        )
+        workflow.start()
+
+        let expectation = expectation(description: "output delivered")
+        var output: String?
+        workflow.onOutput = { text in
+            output = text
+            expectation.fulfill()
+        }
+
+        workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertEqual(output, "Geglättet: Fallback-Text", "die Glättung greift auch auf dem Datei-Fallback-Pfad")
+    }
+
+    func testSmoothingBudgetExpiryDeliversRawText() async {
+        let session = LiveTranscriptionSession()
+        await feedSession(session, text: "roher satz")
+        let (workflow, _, _) = makeWorkflow(
+            session: session,
+            smoothingPass: { text in
+                try? await Task.sleep(for: .seconds(5))
+                return "Geglättet: \(text)"
+            },
+            smoothingBudget: .milliseconds(50)
+        )
+        workflow.start()
+
+        let expectation = expectation(description: "output delivered")
+        var output: String?
+        workflow.onOutput = { text in
+            output = text
+            expectation.fulfill()
+        }
+
+        workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertEqual(output, "roher satz", "nach Ablauf des Budgets wird der Rohtext eingefügt")
+    }
+
+    func testSmoothingNilResultKeepsRawText() async {
+        let session = LiveTranscriptionSession()
+        await feedSession(session, text: "roher satz")
+        let (workflow, _, _) = makeWorkflow(
+            session: session,
+            smoothingPass: { _ in nil }
+        )
+        workflow.start()
+
+        let expectation = expectation(description: "output delivered")
+        var output: String?
+        workflow.onOutput = { text in
+            output = text
+            expectation.fulfill()
+        }
+
+        workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertEqual(output, "roher satz", "ein leeres Glättungsergebnis erhält den Rohtext")
     }
 
     // MARK: - Grace-Period (#160)
@@ -358,7 +462,7 @@ final class LiveDictationWorkflowTests: XCTestCase {
     }
 
     func testBergungDuringGraceCancelsGraceAndBergsText() async {
-        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        let session = LiveTranscriptionSession()
         let recorder = FakeLiveRecorder()
         let pipeline = SpokenWorkflowPipeline(recorder: recorder)
         var bergungFired = false
@@ -401,7 +505,7 @@ final class LiveDictationWorkflowTests: XCTestCase {
 final class LiveDictationWorkflowBergungTests: XCTestCase {
 
     func testBergungCallbackFiresOnSessionFailureWithRescuedText() async {
-        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        let session = LiveTranscriptionSession()
         let recorder = FakeLiveRecorder()
         let pipeline = SpokenWorkflowPipeline(recorder: recorder)
         var bergungMessage: String??
@@ -434,7 +538,7 @@ final class LiveDictationWorkflowBergungTests: XCTestCase {
     }
 
     func testStreamEndWithoutFinishRequestStopsRecordingAndBergsImmediately() async {
-        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        let session = LiveTranscriptionSession()
         let recorder = FakeLiveRecorder()
         let pipeline = SpokenWorkflowPipeline(recorder: recorder)
         var bergungMessage: String??

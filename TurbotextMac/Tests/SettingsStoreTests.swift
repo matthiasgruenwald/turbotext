@@ -155,7 +155,7 @@ final class SettingsStoreTests: XCTestCase {
         let store = SettingsStore(fileURL: fileURL)
 
         var transcription = TranscriptionSettings()
-        transcription.liveSmoothingEnabled = false
+        transcription.liveSmoothingEnabled = true
         transcription.livePillMaxLines = 5
 
         store.save(
@@ -168,7 +168,7 @@ final class SettingsStoreTests: XCTestCase {
 
         let loaded = store.load()
 
-        XCTAssertFalse(loaded.transcription.liveSmoothingEnabled)
+        XCTAssertTrue(loaded.transcription.liveSmoothingEnabled)
         XCTAssertEqual(loaded.transcription.livePillMaxLines, 5)
     }
 
@@ -177,7 +177,7 @@ final class SettingsStoreTests: XCTestCase {
 
         let decoded = try JSONDecoder().decode(TranscriptionSettings.self, from: json)
 
-        XCTAssertTrue(decoded.liveSmoothingEnabled)
+        XCTAssertFalse(decoded.liveSmoothingEnabled)
         XCTAssertEqual(decoded.livePillMaxLines, 8)
     }
 

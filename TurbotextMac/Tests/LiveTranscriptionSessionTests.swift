@@ -5,18 +5,8 @@ import XCTest
 final class LiveTranscriptionSessionTests: XCTestCase {
     private struct TestEngineError: Error {}
 
-    private final class SpySmoothing: LiveSmoothing, @unchecked Sendable {
-        private(set) var calls: [(segment: String, context: String?)] = []
-        var result: ((String) -> String?)?
-
-        func smooth(segment: String, context: String?) async -> String? {
-            calls.append((segment, context))
-            return result?(segment) ?? segment
-        }
-    }
-
-    private func makeSession(smoothing: any LiveSmoothing = PassthroughSmoothing()) -> LiveTranscriptionSession {
-        let session = LiveTranscriptionSession(smoothing: smoothing)
+    private func makeSession() -> LiveTranscriptionSession {
+        let session = LiveTranscriptionSession()
         session.phase = .running
         return session
     }
@@ -37,7 +27,7 @@ final class LiveTranscriptionSessionTests: XCTestCase {
         }
     }
 
-    func testFinalSegmentsFlowThroughSmoothingIntoCollector() async {
+    func testFinalSegmentsFlowIntoCollector() async {
         let session = makeSession()
         session.finish()
 
@@ -52,55 +42,16 @@ final class LiveTranscriptionSessionTests: XCTestCase {
         XCTAssertEqual(session.phase, .finished)
     }
 
-    func testSmoothingResultReplacesRawSegment() async {
-        let spy = SpySmoothing()
-        spy.result = { $0.uppercased() }
-        let session = makeSession(smoothing: spy)
-
-        await session.runCollectingLoop(stream([
-            TranscriptionChunk(text: "leiser text", isFinal: true),
-        ]))
-
-        XCTAssertEqual(session.finalText, "LEISER TEXT")
-    }
-
-    func testNilSmoothingResultFallsBackToRawSegment() async {
-        let spy = SpySmoothing()
-        spy.result = { _ in nil }
-        let session = makeSession(smoothing: spy)
-
-        await session.runCollectingLoop(stream([
-            TranscriptionChunk(text: "rohes segment", isFinal: true),
-        ]))
-
-        XCTAssertEqual(session.finalText, "rohes segment")
-    }
-
-    func testSmoothingContextIsTailOfPreviousFinalSegment() async {
-        let spy = SpySmoothing()
-        let session = makeSession(smoothing: spy)
-
-        await session.runCollectingLoop(stream([
-            TranscriptionChunk(text: "Erster Satz.", isFinal: true),
-            TranscriptionChunk(text: "Zweiter Satz.", isFinal: true),
-        ]))
-
-        XCTAssertEqual(spy.calls.count, 2)
-        XCTAssertNil(spy.calls[0].context)
-        XCTAssertEqual(spy.calls[1].context, "Erster Satz.")
-    }
-
-    func testVolatileChunkIsNotSmoothed() async {
-        let spy = SpySmoothing()
-        let session = makeSession(smoothing: spy)
+    func testVolatileChunkStaysVolatile() async {
+        let session = makeSession()
         session.finish()
 
         await session.runCollectingLoop(stream([
             TranscriptionChunk(text: "unfertiger schwanz", isFinal: false),
         ]))
 
-        XCTAssertTrue(spy.calls.isEmpty)
         XCTAssertEqual(session.volatileText, "unfertiger schwanz")
+        XCTAssertEqual(session.finalText, "")
         XCTAssertEqual(session.phase, .finished)
     }
 

@@ -117,14 +117,7 @@ struct RecordingOverlaySignalPillView: View {
     }
 
     private func liveTranscriptText(_ display: LiveTranscriptDisplay) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            TailClippedTranscriptText(text: transcriptText(display), maxLines: display.maxLines)
-            if display.isSmoothingActive {
-                Image(systemName: "wand.and.stars")
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.5))
-            }
-        }
+        TailClippedTranscriptText(text: transcriptText(display), maxLines: display.maxLines)
     }
 
     private func transcriptText(_ display: LiveTranscriptDisplay) -> Text {

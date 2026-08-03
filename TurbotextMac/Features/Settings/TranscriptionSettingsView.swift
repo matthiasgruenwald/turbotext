@@ -158,7 +158,7 @@ struct TranscriptionSettingsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     SectionLabel(text: "Live-Diktat")
 
-                    Toggle("Live-Glättung", isOn: $appState.transcriptionSettings.liveSmoothingEnabled)
+                    Toggle("Glättung", isOn: $appState.transcriptionSettings.liveSmoothingEnabled)
                         .toggleStyle(.switch)
 
                     Stepper(

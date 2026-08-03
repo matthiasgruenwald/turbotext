@@ -28,7 +28,6 @@ final class LiveTranscriptionSession {
     var finalText: String { collector.finalText }
     var displayText: String { collector.displayText }
 
-    private let smoothing: any LiveSmoothing
     private var analyzer: SpeechAnalyzer?
     private var transcriber: DictationTranscriber?
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
@@ -45,24 +44,11 @@ final class LiveTranscriptionSession {
 
     var isRunning: Bool { phase == .running }
 
-    init(smoothing: any LiveSmoothing = PassthroughSmoothing()) {
-        self.smoothing = smoothing
-    }
-
     @MainActor
     func runCollectingLoop(_ chunks: AsyncThrowingStream<TranscriptionChunk, Error>) async {
-        var lastFinalSegment = ""
         do {
             for try await chunk in chunks {
-                if chunk.isFinal {
-                    let context = LiveSmoothingContext.tail(of: lastFinalSegment)
-                    let smoothed = await smoothing.smooth(segment: chunk.text, context: context)
-                    let final = smoothed ?? chunk.text
-                    collector.apply(text: final, isFinal: true)
-                    lastFinalSegment = final
-                } else {
-                    collector.apply(text: chunk.text, isFinal: false)
-                }
+                collector.apply(text: chunk.text, isFinal: chunk.isFinal)
             }
             if isFinishRequested {
                 liveLogger.info("collecting loop finished (finishRequested=true)")
