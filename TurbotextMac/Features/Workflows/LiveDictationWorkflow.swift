@@ -186,17 +186,22 @@ final class LiveDictationWorkflow: Workflow {
 
     // #163: smoothing runs after the drain and never gates the insert — an over-budget
     // pass degrades to the raw text instead of blowing the completion deadline.
+    // A task group would await its cancelled child until the model call unwinds
+    // (LanguageModelSession.respond ignores cancellation), so the loser is detached.
     private func smoothedWithinBudget(_ text: String) async -> String? {
         guard let pass = smoothingPass else { return nil }
         let budget = smoothingBudget
-        return await withTaskGroup(of: String?.self) { group in
-            group.addTask { await pass(text) }
-            group.addTask {
-                try? await Task.sleep(for: budget)
-                return nil
+        return await withCheckedContinuation { continuation in
+            let resolver = SmoothingBudgetResolver(continuation: continuation)
+            let work = Task {
+                let result = await pass(text)
+                await resolver.resolve(result)
             }
-            defer { group.cancelAll() }
-            return await group.next() ?? nil
+            Task {
+                try? await Task.sleep(for: budget)
+                work.cancel()
+                await resolver.resolve(nil)
+            }
         }
     }
 
@@ -284,5 +289,20 @@ final class LiveDictationWorkflow: Workflow {
             maxLines: maxLines
         )
         onLiveTranscriptUpdate?(display)
+    }
+}
+
+private actor SmoothingBudgetResolver {
+    private let continuation: CheckedContinuation<String?, Never>
+    private var resolved = false
+
+    init(continuation: CheckedContinuation<String?, Never>) {
+        self.continuation = continuation
+    }
+
+    func resolve(_ value: String?) {
+        guard !resolved else { return }
+        resolved = true
+        continuation.resume(returning: value)
     }
 }

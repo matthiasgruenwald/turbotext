@@ -382,6 +382,37 @@ final class LiveDictationWorkflowTests: XCTestCase {
         XCTAssertEqual(output, "roher satz", "nach Ablauf des Budgets wird der Rohtext eingefügt")
     }
 
+    func testSmoothingBudgetExpiryDoesNotWaitForUncancellablePass() async {
+        let session = LiveTranscriptionSession()
+        await feedSession(session, text: "roher satz")
+        let (workflow, _, _) = makeWorkflow(
+            session: session,
+            smoothingPass: { text in
+                // Models LanguageModelSession.respond: ignores cancellation and runs to completion.
+                await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+                    Task {
+                        try? await Task.sleep(for: .seconds(2))
+                        continuation.resume(returning: "Geglättet: \(text)")
+                    }
+                }
+            },
+            smoothingBudget: .milliseconds(50)
+        )
+        workflow.start()
+
+        let expectation = expectation(description: "output delivered")
+        var output: String?
+        workflow.onOutput = { text in
+            output = text
+            expectation.fulfill()
+        }
+
+        workflow.stop()
+        await fulfillment(of: [expectation], timeout: 1)
+
+        XCTAssertEqual(output, "roher satz", "ein nicht abbrechbarer Glättungs-Pass darf den Insert nicht über das Budget hinaus verzögern")
+    }
+
     func testSmoothingNilResultKeepsRawText() async {
         let session = LiveTranscriptionSession()
         await feedSession(session, text: "roher satz")
