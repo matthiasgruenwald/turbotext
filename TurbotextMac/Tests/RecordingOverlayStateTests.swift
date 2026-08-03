@@ -77,13 +77,13 @@ final class RecordingOverlayStateTests: XCTestCase {
         XCTAssertEqual(updated.levelHistory, [0, 1])
     }
 
-    func testLevelHistoryKeepsRoughlyThirtySamples() {
+    func testLevelHistoryKeepsFifteenSecondsOfSamples() {
         var state = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
-        for i in 0..<50 {
-            state = state.receivingLevel(Float(i) / 50)
+        for i in 0..<200 {
+            state = state.receivingLevel(Float(i) / 200)
         }
         XCTAssertEqual(state.levelHistory.count, RecordingOverlayState.levelHistoryLimit)
-        XCTAssertEqual(RecordingOverlayState.levelHistoryLimit, 30)
+        XCTAssertEqual(RecordingOverlayState.levelHistoryLimit, 150)
     }
 
     // MARK: - Silence hint

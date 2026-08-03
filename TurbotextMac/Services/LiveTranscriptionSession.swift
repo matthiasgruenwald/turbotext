@@ -32,10 +32,12 @@ final class LiveTranscriptionSession {
     private var transcriber: DictationTranscriber?
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
     private var collectingTask: Task<Void, Never>?
-    private var progressProbeTask: Task<Void, Never>?
+    var progressProbeTask: Task<Void, Never>?
     private var converter: AVAudioConverter?
 
     private static let feedLogInterval = 50
+    /// Comfortably above the 10 s drain deadline so the probe outlives a full drain.
+    private static let drainProbeLimit: Duration = .seconds(15)
 
     @ObservationIgnored private var fedBufferCount = 0
     @ObservationIgnored private var droppedBufferCount = 0
@@ -191,17 +193,24 @@ final class LiveTranscriptionSession {
 
     /// Diagnose für #155: trennt „Engine steht" von „Audio kommt nicht mehr an",
     /// indem gefütterte Buffer und der Fortschritt des Analyzers gemeinsam getickt werden.
+    /// Läuft seit #158 über `finish()` hinaus weiter, damit der Drain protokolliert ist.
     private func startProgressProbe(analyzer: SpeechAnalyzer) {
         progressProbeTask = Task { [weak self] in
+            var drainObservedFor: Duration = .zero
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 guard let self, self.phase == .running else { return }
+                if self.isFinishRequested {
+                    // Bound the post-finish window so a hung engine cannot probe forever.
+                    drainObservedFor += .seconds(1)
+                    if drainObservedFor > Self.drainProbeLimit { return }
+                }
                 let range = await analyzer.volatileRange
                 let start = range.map { $0.start.seconds } ?? .nan
                 let end = range.map { $0.end.seconds } ?? .nan
                 let chunkAge = self.lastChunkAt.map { Date().timeIntervalSince($0) } ?? -1
                 liveLogger.info(
-                    "probe fed=\(self.fedBufferCount) dropped=\(self.droppedBufferCount) lastChunkAgo=\(String(format: "%.1f", chunkAge), privacy: .public)s volatileRange=\(start)...\(end)"
+                    "probe fed=\(self.fedBufferCount) dropped=\(self.droppedBufferCount) lastChunkAgo=\(String(format: "%.1f", chunkAge), privacy: .public)s volatileRange=\(start)...\(end) finishRequested=\(self.isFinishRequested)"
                 )
             }
         }
@@ -225,7 +234,6 @@ final class LiveTranscriptionSession {
         guard phase == .running else { return }
         isFinishRequested = true
         liveLogger.info("finish requested after \(self.fedBufferCount) fed buffers")
-        progressProbeTask?.cancel()
         inputContinuation?.finish()
         Task {
             try? await analyzer?.finalizeAndFinishThroughEndOfInput()

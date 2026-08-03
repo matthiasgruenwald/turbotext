@@ -98,21 +98,24 @@ struct RecordingOverlaySignalPillView: View {
         }
     }
 
+    // #158: transcript and waveform are no longer either/or — the level strip hangs
+    // on the microphone, not the engine, so it is the one indicator that cannot stall.
     @ViewBuilder
     private var recordingContent: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Circle().fill(.red).frame(width: 9, height: 9).padding(.top, 4)
-            if showsSilenceHint {
-                Text("Kein Signal erkannt …")
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-            } else if let liveTranscript, !liveTranscript.isEmpty {
-                liveTranscriptText(liveTranscript)
-            } else {
-                WaveformBars(levelHistory: levelHistory)
-                    .frame(maxWidth: .infinity)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 12) {
+                Circle().fill(.red).frame(width: 9, height: 9).padding(.top, 4)
+                if showsSilenceHint {
+                    Text("Kein Signal erkannt …")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                } else if let liveTranscript, !liveTranscript.isEmpty {
+                    liveTranscriptText(liveTranscript)
+                }
             }
+            WaveformBars(levelHistory: levelHistory)
+                .frame(maxWidth: .infinity)
         }
     }
 
@@ -189,11 +192,11 @@ private struct WaveformBars: View {
                 context.fill(path, with: .color(.white.opacity(0.85)))
             }
         }
-        .frame(height: 20)
+        .frame(height: 14)
         .clipped()
     }
 
     private func barHeight(for level: Float) -> CGFloat {
-        4 + CGFloat(level) * 16
+        3 + CGFloat(level) * 11
     }
 }
