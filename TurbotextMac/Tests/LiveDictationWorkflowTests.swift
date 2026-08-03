@@ -40,7 +40,8 @@ final class LiveDictationWorkflowTests: XCTestCase {
         session: LiveTranscriptionSession? = nil,
         rewrite: ((String) async throws -> RewriteStepResult)? = nil,
         onBergung: ((String?) -> Void)? = nil,
-        fileFallbackTranscriber: ((URL, TimeInterval) async throws -> String)? = nil
+        fileFallbackTranscriber: ((URL, TimeInterval) async throws -> String)? = nil,
+        gracePeriod: Duration = .zero
     ) -> (LiveDictationWorkflow, LiveTranscriptionSession, FakeLiveRecorder) {
         let recorder = recorder ?? FakeLiveRecorder()
         let session = session ?? LiveTranscriptionSession(smoothing: PassthroughSmoothing())
@@ -49,6 +50,7 @@ final class LiveDictationWorkflowTests: XCTestCase {
             type: .transcription,
             session: session,
             pipeline: pipeline,
+            gracePeriod: gracePeriod,
             rewrite: rewrite,
             onBergung: onBergung,
             fileFallbackTranscriber: fileFallbackTranscriber
@@ -296,6 +298,101 @@ final class LiveDictationWorkflowTests: XCTestCase {
         await fulfillment(of: [expectation], timeout: 2)
 
         XCTAssertFalse(bergungFired, "Bergung darf während des Drains nicht feuern")
+    }
+
+    // MARK: - Grace-Period (#160)
+
+    func testStopKeepsRecordingAliveDuringGracePeriod() async {
+        let recorder = FakeLiveRecorder()
+        let (workflow, _, _) = makeWorkflow(recorder: recorder, gracePeriod: .milliseconds(50))
+        workflow.start()
+
+        workflow.stop()
+
+        XCTAssertTrue(recorder.isRecording, "während der Grace-Period läuft die Aufnahme weiter")
+        XCTAssertNotNil(recorder.onBuffer, "die Session wird während der Grace-Period weiter gefüttert")
+        XCTAssertEqual(recorder.stopCount, 0)
+        XCTAssertEqual(workflow.phase, .running("Aufnahme läuft ..."))
+
+        try? await Task.sleep(for: .milliseconds(300))
+
+        XCTAssertFalse(recorder.isRecording)
+        XCTAssertEqual(recorder.stopCount, 1)
+    }
+
+    func testSecondStopDuringGraceFinalizesImmediately() async {
+        let recorder = FakeLiveRecorder()
+        let (workflow, _, _) = makeWorkflow(recorder: recorder, gracePeriod: .seconds(5))
+        workflow.start()
+
+        workflow.stop()
+        XCTAssertTrue(recorder.isRecording)
+
+        workflow.stop()
+
+        XCTAssertFalse(recorder.isRecording, "zweiter Stopp bricht die Grace-Period sofort ab")
+        XCTAssertEqual(recorder.stopCount, 1)
+
+        try? await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(recorder.stopCount, 1, "der gecancelte Grace-Task darf nicht nachfeuern")
+    }
+
+    func testResetDuringGraceCancelsGrace() async {
+        let recorder = FakeLiveRecorder()
+        let (workflow, _, _) = makeWorkflow(recorder: recorder, gracePeriod: .seconds(5))
+        workflow.start()
+        var outputCalled = false
+        workflow.onOutput = { _ in outputCalled = true }
+
+        workflow.stop()
+        XCTAssertTrue(recorder.isRecording)
+
+        workflow.reset()
+
+        XCTAssertFalse(recorder.isRecording)
+        XCTAssertEqual(workflow.phase, .idle)
+
+        try? await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(outputCalled)
+        XCTAssertEqual(recorder.stopCount, 1, "nur reset() stoppt die Aufnahme, der Grace-Task feuert nicht nach")
+    }
+
+    func testBergungDuringGraceCancelsGraceAndBergsText() async {
+        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        let recorder = FakeLiveRecorder()
+        let pipeline = SpokenWorkflowPipeline(recorder: recorder)
+        var bergungFired = false
+        let workflow = LiveDictationWorkflow(
+            type: .transcription,
+            session: session,
+            pipeline: pipeline,
+            gracePeriod: .seconds(5),
+            onBergung: { _ in bergungFired = true }
+        )
+        var output: String?
+        workflow.onOutput = { output = $0 }
+        workflow.start()
+
+        workflow.stop()
+        XCTAssertTrue(recorder.isRecording, "Grace-Period hält die Aufnahme am Leben")
+
+        session.phase = .running
+        let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
+            continuation.yield(TranscriptionChunk(text: "Geretteter Text", isFinal: true))
+            continuation.finish(throwing: NSError(domain: "test", code: 1))
+        }
+        await session.runCollectingLoop(stream)
+
+        let expectation = expectation(description: "bergung processed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            expectation.fulfill()
+        }
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertTrue(bergungFired)
+        XCTAssertEqual(output, "Geretteter Text")
+        XCTAssertFalse(recorder.isRecording)
+        XCTAssertEqual(recorder.stopCount, 1, "Bergung stoppt sofort, der Grace-Task feuert nicht nach")
     }
 }
 
