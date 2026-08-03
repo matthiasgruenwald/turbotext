@@ -51,16 +51,22 @@ struct RecordingOverlaySignalPillView: View {
         case .recording:
             recordingContent
         case .processing:
-            HStack(alignment: .top, spacing: 12) {
-                ProgressView().controlSize(.small).tint(.white).padding(.top, 2)
-                if let liveTranscript, !liveTranscript.isEmpty {
-                    liveTranscriptText(liveTranscript)
-                } else {
-                    Text(processingLabel ?? "Wird verarbeitet …")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
+            // #158: the frozen strip stays visible through the drain/processing
+            // phase instead of vanishing, so the pill never looks dead mid-Nachlauf.
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 12) {
+                    ProgressView().controlSize(.small).tint(.white).padding(.top, 2)
+                    if let liveTranscript, !liveTranscript.isEmpty {
+                        liveTranscriptText(liveTranscript)
+                    } else {
+                        Text(processingLabel ?? "Wird verarbeitet …")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                    }
                 }
+                WaveformBars(levelHistory: levelHistory)
+                    .frame(maxWidth: .infinity)
             }
         case .error:
             HStack(spacing: 12) {
@@ -192,11 +198,11 @@ private struct WaveformBars: View {
                 context.fill(path, with: .color(.white.opacity(0.85)))
             }
         }
-        .frame(height: 14)
+        .frame(height: 20)
         .clipped()
     }
 
     private func barHeight(for level: Float) -> CGFloat {
-        3 + CGFloat(level) * 11
+        2 + CGFloat(level) * 18
     }
 }
