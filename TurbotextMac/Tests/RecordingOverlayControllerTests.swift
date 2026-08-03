@@ -546,4 +546,26 @@ final class RecordingOverlayControllerTests: XCTestCase {
 
         XCTAssertEqual(controller.state.liveTranscriptDisplay, display)
     }
+
+    func testLiveTranscriptUpdatesWhileProcessing() {
+        let (orchestrator, workflow) = makeOrchestratorWithWorkflow()
+        var partial = "Hallo"
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { 0 },
+            liveTranscriptDisplayProvider: { LiveTranscriptDisplay(volatileText: partial) }
+        )
+        controller.tick()
+        XCTAssertEqual(controller.state.phase, .recording)
+
+        workflow.isRecording = false
+        workflow.phase = .running("Wird verarbeitet ...")
+        partial = "Hallo Welt"
+        controller.tick()
+
+        XCTAssertEqual(controller.state.phase, .processing)
+        XCTAssertEqual(controller.state.liveTranscriptDisplay?.volatileText, "Hallo Welt")
+    }
 }

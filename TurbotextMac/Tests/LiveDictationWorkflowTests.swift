@@ -38,7 +38,9 @@ final class LiveDictationWorkflowTests: XCTestCase {
     private func makeWorkflow(
         recorder: FakeLiveRecorder? = nil,
         session: LiveTranscriptionSession? = nil,
-        rewrite: ((String) async throws -> RewriteStepResult)? = nil
+        rewrite: ((String) async throws -> RewriteStepResult)? = nil,
+        onBergung: ((String?) -> Void)? = nil,
+        fileFallbackTranscriber: ((URL, TimeInterval) async throws -> String)? = nil
     ) -> (LiveDictationWorkflow, LiveTranscriptionSession, FakeLiveRecorder) {
         let recorder = recorder ?? FakeLiveRecorder()
         let session = session ?? LiveTranscriptionSession(smoothing: PassthroughSmoothing())
@@ -47,12 +49,16 @@ final class LiveDictationWorkflowTests: XCTestCase {
             type: .transcription,
             session: session,
             pipeline: pipeline,
-            rewrite: rewrite
+            rewrite: rewrite,
+            onBergung: onBergung,
+            fileFallbackTranscriber: fileFallbackTranscriber
         )
         return (workflow, session, recorder)
     }
 
     private func feedSession(_ session: LiveTranscriptionSession, text: String) async {
+        session.phase = .running
+        session.finish()
         let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
             continuation.yield(TranscriptionChunk(text: text, isFinal: true))
             continuation.finish()
@@ -95,22 +101,32 @@ final class LiveDictationWorkflowTests: XCTestCase {
         await feedSession(session, text: "Hallo Welt")
         let (workflow, _, _) = makeWorkflow(session: session)
         workflow.start()
+
+        let expectation = expectation(description: "output delivered")
         var output: String?
-        workflow.onOutput = { output = $0 }
+        workflow.onOutput = { text in
+            output = text
+            expectation.fulfill()
+        }
 
         workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
 
         XCTAssertEqual(output, "Hallo Welt")
         XCTAssertEqual(workflow.phase, .done("Hallo Welt"))
     }
 
-    func testStopWithEmptyTextShowsError() {
+    func testStopWithEmptyTextShowsError() async {
         let (workflow, _, _) = makeWorkflow()
         workflow.start()
-        var phaseChanges: [WorkflowPhase] = []
-        workflow.onPhaseChange = { phaseChanges.append($0) }
+
+        let expectation = expectation(description: "error phase reached")
+        workflow.onPhaseChange = { phase in
+            if case .error = phase { expectation.fulfill() }
+        }
 
         workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
 
         XCTAssertEqual(workflow.phase, .error("Keine Aufnahme erkannt."))
     }
@@ -176,6 +192,110 @@ final class LiveDictationWorkflowTests: XCTestCase {
         workflow.stop()
 
         XCTAssertNil(recorder.onBuffer)
+    }
+
+    // MARK: - Drain (#159)
+
+    func testStopWaitsForDrainAndUsesSessionText() async {
+        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        await feedSession(session, text: "Vollständiger Satz")
+        var fallbackCalled = false
+        let (workflow, _, _) = makeWorkflow(
+            session: session,
+            fileFallbackTranscriber: { _, _ in
+                fallbackCalled = true
+                return "Fallback"
+            }
+        )
+        workflow.start()
+
+        let expectation = expectation(description: "output delivered")
+        var output: String?
+        workflow.onOutput = { text in
+            output = text
+            expectation.fulfill()
+        }
+
+        workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertEqual(output, "Vollständiger Satz")
+        XCTAssertFalse(fallbackCalled, "drain war erfolgreich — Fallback darf nicht feuern")
+    }
+
+    func testStopFallsBackToFileTranscriptionWhenSessionFailed() async {
+        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        session.phase = .running
+        let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
+            continuation.yield(TranscriptionChunk(text: "Teiltext", isFinal: true))
+            continuation.finish(throwing: NSError(domain: "test", code: 1))
+        }
+        await session.runCollectingLoop(stream)
+
+        let (workflow, _, _) = makeWorkflow(
+            session: session,
+            fileFallbackTranscriber: { _, _ in "Fallback-Text" }
+        )
+        workflow.start()
+
+        let expectation = expectation(description: "output delivered")
+        var output: String?
+        workflow.onOutput = { text in
+            output = text
+            expectation.fulfill()
+        }
+
+        workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertEqual(output, "Fallback-Text")
+    }
+
+    func testStopUsesCollectedTextWhenFallbackAlsoFails() async {
+        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        session.phase = .running
+        let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
+            continuation.yield(TranscriptionChunk(text: "Geretteter Text", isFinal: true))
+            continuation.finish(throwing: NSError(domain: "test", code: 1))
+        }
+        await session.runCollectingLoop(stream)
+
+        let (workflow, _, _) = makeWorkflow(
+            session: session,
+            fileFallbackTranscriber: { _, _ in throw NSError(domain: "fallback", code: 1) }
+        )
+        workflow.start()
+
+        let expectation = expectation(description: "output delivered")
+        var output: String?
+        workflow.onOutput = { text in
+            output = text
+            expectation.fulfill()
+        }
+
+        workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertEqual(output, "Geretteter Text", "bei Fallback-Fehler muss der gesammelte Text verwendet werden")
+    }
+
+    func testBergungDoesNotFireDuringDrain() async {
+        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        await feedSession(session, text: "Text")
+        var bergungFired = false
+        let (workflow, _, _) = makeWorkflow(
+            session: session,
+            onBergung: { _ in bergungFired = true }
+        )
+        workflow.start()
+
+        let expectation = expectation(description: "output delivered")
+        workflow.onOutput = { _ in expectation.fulfill() }
+
+        workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertFalse(bergungFired, "Bergung darf während des Drains nicht feuern")
     }
 }
 

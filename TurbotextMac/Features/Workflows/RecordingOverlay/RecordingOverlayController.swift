@@ -89,8 +89,7 @@ final class RecordingOverlayController {
             return
         }
 
-        let previousPhase = state.phase
-        let previousAnchor = state.anchor
+        let previousState = state
         state = state.applying(
             menuBarStatus: orchestrator.menuBarStatus,
             resolveAnchor: anchorResolver,
@@ -108,7 +107,9 @@ final class RecordingOverlayController {
                 state = state.receivingLiveTranscript(display)
             }
         case .processing:
-            break
+            if let display = liveTranscriptDisplayProvider() {
+                state = state.receivingLiveTranscript(display)
+            }
         case .completion:
             state = state.advancingCompletion(by: Self.pollInterval)
         case .error:
@@ -119,8 +120,7 @@ final class RecordingOverlayController {
             break
         }
 
-        let anchorChanged = state.anchor != previousAnchor
-        guard state.phase != previousPhase || state.phase == .recording || anchorChanged else { return }
+        guard state != previousState else { return }
         render()
     }
 
