@@ -120,7 +120,8 @@ struct RecordingOverlaySignalPillView: View {
                     liveTranscriptText(liveTranscript)
                 }
             }
-            WaveformBars(levelHistory: levelHistory)
+            // Green = capture is live; the processing phase keeps the frozen white strip.
+            WaveformBars(levelHistory: levelHistory, barColor: .green.opacity(0.9))
                 .frame(maxWidth: .infinity)
         }
     }
@@ -181,6 +182,7 @@ private struct ReservedHeightKey: PreferenceKey {
 
 private struct WaveformBars: View {
     let levelHistory: [Float]
+    var barColor: Color = .white.opacity(0.85)
 
     var body: some View {
         Canvas { context, size in
@@ -195,7 +197,7 @@ private struct WaveformBars: View {
                 let height = barHeight(for: level)
                 let rect = CGRect(x: x, y: (size.height - height) / 2, width: barWidth, height: height)
                 let path = Path(roundedRect: rect, cornerRadius: barWidth / 2)
-                context.fill(path, with: .color(.white.opacity(0.85)))
+                context.fill(path, with: .color(barColor))
             }
         }
         .frame(height: 20)
