@@ -28,7 +28,9 @@ final class LiveDictationWorkflow: Workflow {
     private let onLiveTranscriptUpdate: ((LiveTranscriptDisplay) -> Void)?
     private let onBergung: ((String?) -> Void)?
     private let fileFallbackTranscriber: (URL, TimeInterval) async throws -> String
+    private let gracePeriod: Duration
     private var processingTask: Task<Void, Never>?
+    private var graceTask: Task<Void, Never>?
     private var isDraining = false
 
     init(
@@ -37,6 +39,7 @@ final class LiveDictationWorkflow: Workflow {
         isSmoothingActive: Bool = false,
         maxLines: Int = 8,
         pipeline: SpokenWorkflowPipeline? = nil,
+        gracePeriod: Duration = .milliseconds(250),
         rewritingMessage: String = "Wird verarbeitet ...",
         rewrite: ((String) async throws -> RewriteStepResult)? = nil,
         processingLabelResolver: @escaping () -> String? = { nil },
@@ -49,6 +52,7 @@ final class LiveDictationWorkflow: Workflow {
         self.isSmoothingActive = isSmoothingActive
         self.maxLines = maxLines
         self.pipeline = pipeline ?? SpokenWorkflowPipeline()
+        self.gracePeriod = gracePeriod
         self.rewritingMessage = rewritingMessage
         self.rewrite = rewrite
         self.processingLabelResolver = processingLabelResolver
@@ -85,13 +89,26 @@ final class LiveDictationWorkflow: Workflow {
     }
 
     func stop() {
-        if pipeline.isRecording {
-            pipeline.onBuffer = nil
-            session.finish()
-            let recording = pipeline.stopRecording()
-            isDraining = true
-            phase = .running("Aufnahme läuft ...")
-            processingTask = Task { await drainThenProcess(recording: recording) }
+        if let graceTask {
+            graceTask.cancel()
+            self.graceTask = nil
+            finalizeStop()
+        } else if pipeline.isRecording {
+            guard gracePeriod > .zero else {
+                finalizeStop()
+                return
+            }
+            // #160: the tap buffer (~93 ms) plus hardware latency would cut off the
+            // tail of the utterance; keep capture + session feed alive briefly first.
+            graceTask = Task {
+                do {
+                    try await Task.sleep(for: gracePeriod)
+                } catch {
+                    return
+                }
+                graceTask = nil
+                finalizeStop()
+            }
         } else {
             processingTask?.cancel()
             processingTask = nil
@@ -101,7 +118,19 @@ final class LiveDictationWorkflow: Workflow {
         }
     }
 
+    private func finalizeStop() {
+        guard pipeline.isRecording else { return }
+        pipeline.onBuffer = nil
+        session.finish()
+        let recording = pipeline.stopRecording()
+        isDraining = true
+        phase = .running("Aufnahme läuft ...")
+        processingTask = Task { await drainThenProcess(recording: recording) }
+    }
+
     func reset() {
+        graceTask?.cancel()
+        graceTask = nil
         processingTask?.cancel()
         processingTask = nil
         isDraining = false
@@ -168,6 +197,8 @@ final class LiveDictationWorkflow: Workflow {
 
     private func handleBergung(message: String?) {
         guard isRecording else { return }
+        graceTask?.cancel()
+        graceTask = nil
         pipeline.onBuffer = nil
         if pipeline.isRecording {
             _ = pipeline.stopRecording()
@@ -201,6 +232,8 @@ final class LiveDictationWorkflow: Workflow {
             handleBergung(message: message)
         case .failed(let message, isBergung: false):
             guard !isDraining else { return }
+            graceTask?.cancel()
+            graceTask = nil
             if pipeline.isRecording {
                 pipeline.onBuffer = nil
                 _ = pipeline.stopRecording()
