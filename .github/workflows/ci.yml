@@ -31,9 +31,12 @@ jobs:
             echo "No patterns loaded from $patterns_file"
             exit 1
           fi
+          # SimulatedCredentialsStore.swift is excluded because its fake keys are
+          # deliberately shaped to match real key patterns (exercised by tests).
           if grep -RInE \
               --exclude-dir=.git \
               --exclude=secret-scan-patterns.txt \
+              --exclude=SimulatedCredentialsStore.swift \
               "$pattern" .; then
             echo "Potential secret or private project reference found."
             exit 1
