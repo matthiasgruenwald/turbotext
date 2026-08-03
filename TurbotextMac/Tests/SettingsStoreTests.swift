@@ -155,7 +155,7 @@ final class SettingsStoreTests: XCTestCase {
         let store = SettingsStore(fileURL: fileURL)
 
         var transcription = TranscriptionSettings()
-        transcription.liveSmoothingEnabled = true
+        transcription.liveSmoothingBackend = .online
         transcription.livePillMaxLines = 5
 
         store.save(
@@ -168,7 +168,7 @@ final class SettingsStoreTests: XCTestCase {
 
         let loaded = store.load()
 
-        XCTAssertTrue(loaded.transcription.liveSmoothingEnabled)
+        XCTAssertEqual(loaded.transcription.liveSmoothingBackend, .online)
         XCTAssertEqual(loaded.transcription.livePillMaxLines, 5)
     }
 
@@ -177,8 +177,32 @@ final class SettingsStoreTests: XCTestCase {
 
         let decoded = try JSONDecoder().decode(TranscriptionSettings.self, from: json)
 
-        XCTAssertFalse(decoded.liveSmoothingEnabled)
+        XCTAssertEqual(decoded.liveSmoothingBackend, .off)
         XCTAssertEqual(decoded.livePillMaxLines, 8)
+    }
+
+    func testTranscriptionSettingsMigrateLegacySmoothingEnabledToOnDevice() throws {
+        let json = "{ \"liveSmoothingEnabled\": true }".data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(TranscriptionSettings.self, from: json)
+
+        XCTAssertEqual(decoded.liveSmoothingBackend, .onDevice, "die Bool-Einstellung migriert auf 'Auf diesem Mac', nie still auf online")
+    }
+
+    func testTranscriptionSettingsMigrateLegacySmoothingDisabledToOff() throws {
+        let json = "{ \"liveSmoothingEnabled\": false }".data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(TranscriptionSettings.self, from: json)
+
+        XCTAssertEqual(decoded.liveSmoothingBackend, .off)
+    }
+
+    func testTranscriptionSettingsPreferSmoothingBackendOverLegacyKey() throws {
+        let json = "{ \"liveSmoothingBackend\": \"off\", \"liveSmoothingEnabled\": true }".data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(TranscriptionSettings.self, from: json)
+
+        XCTAssertEqual(decoded.liveSmoothingBackend, .off)
     }
 
     func testTranscriptionSettingsDecodeClampsMaxLinesIntoValidRange() throws {

@@ -402,11 +402,24 @@ final class AppState {
 
     @available(macOS 26, *)
     private func makeLiveTranscriptionWorkflow() -> any Workflow {
-        let smoothingActive = transcriptionSettings.liveSmoothingEnabled && FoundationModelsSmoothing.isAvailable
         var smoothingPass: (@Sendable (String) async -> String?)?
-        if smoothingActive {
-            let smoothing = FoundationModelsSmoothing()
+        var smoothingMessage = "Glättet ..."
+        switch transcriptionSettings.liveSmoothingBackend {
+        case .off:
+            break
+        case .onDevice:
+            if FoundationModelsSmoothing.isAvailable {
+                let smoothing = FoundationModelsSmoothing()
+                smoothingPass = { text in await smoothing.smooth(text: text) }
+                smoothingMessage = "Glättet lokal auf diesem Mac ..."
+            }
+        case .online:
+            let smoothing = OnlineSmoothing(
+                providerMode: appSettings.rewritingProviderMode,
+                hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil
+            )
             smoothingPass = { text in await smoothing.smooth(text: text) }
+            smoothingMessage = "Glättet online mit \(smoothing.predictedProvider.displayName) ..."
         }
         let session = LiveTranscriptionSession()
         let orchestrator = workflowLifecycle.orchestrator
@@ -414,6 +427,7 @@ final class AppState {
             type: .transcription,
             session: session,
             smoothingPass: smoothingPass,
+            smoothingMessage: smoothingMessage,
             maxLines: transcriptionSettings.livePillMaxLines,
             onLiveTranscriptUpdate: { [weak orchestrator] display in
                 orchestrator?.updateLiveTranscriptDisplay(display)

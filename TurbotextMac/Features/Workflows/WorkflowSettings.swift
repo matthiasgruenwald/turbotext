@@ -144,23 +144,49 @@ enum TranscriptionBackend: String, Codable {
 
 // MARK: - Workflow Settings
 
+enum LiveSmoothingBackend: String, Codable, CaseIterable, Identifiable {
+    case off
+    case onDevice
+    case online
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .off: return "Aus"
+        case .onDevice: return "Auf diesem Mac"
+        case .online: return "Online (Groq/OpenAI)"
+        }
+    }
+}
+
 struct TranscriptionSettings: Codable, Equatable {
     var language: String = "de"
-    var liveSmoothingEnabled: Bool = false
+    var liveSmoothingBackend: LiveSmoothingBackend = .off
     var livePillMaxLines: Int = 8
 
     enum CodingKeys: String, CodingKey {
         case language
-        case liveSmoothingEnabled
+        case liveSmoothingBackend
         case livePillMaxLines
     }
 }
 
 extension TranscriptionSettings {
+    private enum LegacyCodingKeys: String, CodingKey {
+        case liveSmoothingEnabled
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         language = try container.decodeIfPresent(String.self, forKey: .language) ?? "de"
-        liveSmoothingEnabled = try container.decodeIfPresent(Bool.self, forKey: .liveSmoothingEnabled) ?? false
+        if let backend = try container.decodeIfPresent(LiveSmoothingBackend.self, forKey: .liveSmoothingBackend) {
+            liveSmoothingBackend = backend
+        } else {
+            let legacyContainer = try? decoder.container(keyedBy: LegacyCodingKeys.self)
+            let legacyEnabled = (try? legacyContainer?.decodeIfPresent(Bool.self, forKey: .liveSmoothingEnabled)) ?? false
+            liveSmoothingBackend = legacyEnabled ? .onDevice : .off
+        }
         let rawMaxLines = try container.decodeIfPresent(Int.self, forKey: .livePillMaxLines) ?? 8
         livePillMaxLines = min(max(rawMaxLines, 1), 20)
     }

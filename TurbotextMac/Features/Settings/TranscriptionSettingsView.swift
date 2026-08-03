@@ -158,9 +158,24 @@ struct TranscriptionSettingsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     SectionLabel(text: "Live-Diktat")
 
-                    Toggle("Glättung", isOn: $appState.transcriptionSettings.liveSmoothingEnabled)
-                        .toggleStyle(.switch)
-                    Text("Glättet das Diktat geräteintern nach Aufnahmeende (Budget: 5 Sekunden, danach wird der Rohtext eingefügt). Kann den Abschluss verzögern; bringt derzeit vor allem bei sauberem Diktat sichtbar etwas.")
+                    Picker("Glättung", selection: $appState.transcriptionSettings.liveSmoothingBackend) {
+                        ForEach(LiveSmoothingBackend.allCases) { backend in
+                            Text(backend.displayName).tag(backend)
+                        }
+                    }
+                    .controlSize(.small)
+
+                    if appState.transcriptionSettings.liveSmoothingBackend == .onDevice {
+                        let availability = OnDeviceSmoothingAvailability.current
+                        if let reasonText = availability.reasonText {
+                            Text(reasonText)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    Text("Glättet das Diktat nach Aufnahmeende (Budget: 5 Sekunden, danach wird der Rohtext eingefügt). „Auf diesem Mac“ bleibt vollständig gerätelokal. „Online“ folgt der Anbieter-Einstellung der Umformulierungs-Workflows; ohne Key, offline oder bei Anbieterfehlern wird still der Rohtext eingefügt.")
                         .font(.system(size: 10.5))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
