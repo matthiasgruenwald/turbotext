@@ -51,16 +51,22 @@ struct RecordingOverlaySignalPillView: View {
         case .recording:
             recordingContent
         case .processing:
-            HStack(alignment: .top, spacing: 12) {
-                ProgressView().controlSize(.small).tint(.white).padding(.top, 2)
-                if let liveTranscript, !liveTranscript.isEmpty {
-                    liveTranscriptText(liveTranscript)
-                } else {
-                    Text(processingLabel ?? "Wird verarbeitet …")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
+            // #158: the frozen strip stays visible through the drain/processing
+            // phase instead of vanishing, so the pill never looks dead mid-Nachlauf.
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 12) {
+                    ProgressView().controlSize(.small).tint(.white).padding(.top, 2)
+                    if let liveTranscript, !liveTranscript.isEmpty {
+                        liveTranscriptText(liveTranscript)
+                    } else {
+                        Text(processingLabel ?? "Wird verarbeitet …")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                    }
                 }
+                WaveformBars(levelHistory: levelHistory)
+                    .frame(maxWidth: .infinity)
             }
         case .error:
             HStack(spacing: 12) {
@@ -98,21 +104,25 @@ struct RecordingOverlaySignalPillView: View {
         }
     }
 
+    // #158: transcript and waveform are no longer either/or — the level strip hangs
+    // on the microphone, not the engine, so it is the one indicator that cannot stall.
     @ViewBuilder
     private var recordingContent: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Circle().fill(.red).frame(width: 9, height: 9).padding(.top, 4)
-            if showsSilenceHint {
-                Text("Kein Signal erkannt …")
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-            } else if let liveTranscript, !liveTranscript.isEmpty {
-                liveTranscriptText(liveTranscript)
-            } else {
-                WaveformBars(levelHistory: levelHistory)
-                    .frame(maxWidth: .infinity)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 12) {
+                Circle().fill(.red).frame(width: 9, height: 9).padding(.top, 4)
+                if showsSilenceHint {
+                    Text("Kein Signal erkannt …")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                } else if let liveTranscript, !liveTranscript.isEmpty {
+                    liveTranscriptText(liveTranscript)
+                }
             }
+            // Green = capture is live; the processing phase keeps the frozen white strip.
+            WaveformBars(levelHistory: levelHistory, barColor: .green.opacity(0.9))
+                .frame(maxWidth: .infinity)
         }
     }
 
@@ -172,6 +182,7 @@ private struct ReservedHeightKey: PreferenceKey {
 
 private struct WaveformBars: View {
     let levelHistory: [Float]
+    var barColor: Color = .white.opacity(0.85)
 
     var body: some View {
         Canvas { context, size in
@@ -186,14 +197,14 @@ private struct WaveformBars: View {
                 let height = barHeight(for: level)
                 let rect = CGRect(x: x, y: (size.height - height) / 2, width: barWidth, height: height)
                 let path = Path(roundedRect: rect, cornerRadius: barWidth / 2)
-                context.fill(path, with: .color(.white.opacity(0.85)))
+                context.fill(path, with: .color(barColor))
             }
         }
-        .frame(height: 20)
+        .frame(height: 30)
         .clipped()
     }
 
     private func barHeight(for level: Float) -> CGFloat {
-        4 + CGFloat(level) * 16
+        3 + CGFloat(level) * 27
     }
 }

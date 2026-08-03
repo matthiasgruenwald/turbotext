@@ -34,7 +34,9 @@ struct LiveTranscriptDisplay: Equatable {
 /// from `MenuBarStatus` transitions plus sampled audio levels, so it can be
 /// unit-tested without AppKit windows or a real workflow.
 struct RecordingOverlayState: Equatable {
-    static let levelHistoryLimit = 30
+    /// 10 samples/s × 15 s — the wider window keeps the waveform meaningful across
+    /// engine delivery bursts instead of showing only the last 3 s (#158).
+    static let levelHistoryLimit = 150
     /// How long a recording must show no usable signal before the silence hint appears.
     static let silenceHintDelay: TimeInterval = 5
     /// How long a known start error stays visible before it auto-dismisses.

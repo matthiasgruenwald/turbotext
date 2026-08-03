@@ -158,6 +158,29 @@ final class LiveTranscriptionSessionTests: XCTestCase {
         XCTAssertEqual(session.phase, .finished)
     }
 
+    // MARK: - Progress-Probe (#158 Paket 1)
+
+    func testFinishKeepsProgressProbeRunningForDrainObservation() {
+        let session = makeSession()
+        let probe = Task<Void, Never> { _ = try? await Task.sleep(for: .seconds(5)) }
+        session.progressProbeTask = probe
+
+        session.finish()
+
+        XCTAssertFalse(probe.isCancelled, "der Drain ist sonst unprotokolliert (#158)")
+        probe.cancel()
+    }
+
+    func testCancelStopsProgressProbe() {
+        let session = makeSession()
+        let probe = Task<Void, Never> { _ = try? await Task.sleep(for: .seconds(5)) }
+        session.progressProbeTask = probe
+
+        session.cancel()
+
+        XCTAssertTrue(probe.isCancelled)
+    }
+
     func testFinalizeTextAbsorbsVolatile() async {
         let session = makeSession()
 
