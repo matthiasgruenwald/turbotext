@@ -28,6 +28,8 @@ final class RecordingOverlayController {
     private var panel: NSPanel?
     private var hostingView: NSHostingView<RecordingOverlaySignalPillView>?
     private var pollTimer: Timer?
+    private var lastSizeKey: PillSizeKey?
+    private var lastFittingSize: NSSize = .zero
 
     /// Test-only escape hatch to assert real panel configuration (focus/space/interaction
     /// behavior) without duplicating that setup in a fake.
@@ -220,18 +222,52 @@ final class RecordingOverlayController {
             panel.contentView = newHostingView
             activeHostingView = newHostingView
         }
-        let fittingSize = activeHostingView.fittingSize
+        // Level updates arrive at 10 Hz but only text changes resize the pill. Measuring
+        // (fittingSize forces layout) and setting frame + content size every tick stacked
+        // AppKit layout on top of the SwiftUI update already in flight and wedged the main
+        // thread on tall pills (#171). Measure only when size-relevant content changed.
+        let sizeKey = PillSizeKey(
+            phase: state.phase,
+            transcript: state.liveTranscriptDisplay,
+            silenceHint: state.showsSilenceHint,
+            processingLabel: state.processingLabel,
+            errorMessage: state.errorMessage,
+            completionLabel: state.completionLabel
+        )
+        let fittingSize: NSSize
+        if sizeKey == lastSizeKey {
+            fittingSize = lastFittingSize
+        } else {
+            fittingSize = activeHostingView.fittingSize
+            lastSizeKey = sizeKey
+            lastFittingSize = fittingSize
+        }
+        guard fittingSize != activeHostingView.frame.size else { return }
         activeHostingView.frame = NSRect(origin: .zero, size: fittingSize)
         panel.setContentSize(fittingSize)
     }
 
     private func positionPanel(_ panel: NSPanel) {
         guard let anchor = state.anchor else { return }
-        let size = hostingView?.fittingSize ?? panel.frame.size
+        // The hosting view's frame is kept in sync by updateContent; reading
+        // fittingSize here would force another layout pass on every poll tick (#171).
+        let size = hostingView?.frame.size ?? panel.frame.size
         switch anchor.source {
         case .screenBottomCenter:
             let origin = NSPoint(x: anchor.point.x - size.width / 2, y: anchor.point.y)
             panel.setFrameOrigin(origin)
         }
     }
+}
+
+/// Size-relevant content of the pill. Level history and signal flags redraw every poll
+/// tick but never change the pill's size, so keying measurement on this fingerprint keeps
+/// fittingSize (which forces layout) out of the 10 Hz hot path (#171).
+private struct PillSizeKey: Equatable {
+    let phase: RecordingOverlayPhase
+    let transcript: LiveTranscriptDisplay?
+    let silenceHint: Bool
+    let processingLabel: String?
+    let errorMessage: String?
+    let completionLabel: String?
 }
