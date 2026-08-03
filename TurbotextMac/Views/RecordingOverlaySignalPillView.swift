@@ -200,11 +200,11 @@ private struct WaveformBars: View {
                 context.fill(path, with: .color(barColor))
             }
         }
-        .frame(height: 20)
+        .frame(height: 30)
         .clipped()
     }
 
     private func barHeight(for level: Float) -> CGFloat {
-        2 + CGFloat(level) * 18
+        3 + CGFloat(level) * 27
     }
 }

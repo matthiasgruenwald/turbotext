@@ -160,6 +160,10 @@ struct TranscriptionSettingsView: View {
 
                     Toggle("Glättung", isOn: $appState.transcriptionSettings.liveSmoothingEnabled)
                         .toggleStyle(.switch)
+                    Text("Glättet das Diktat geräteintern nach Aufnahmeende (Budget: 5 Sekunden, danach wird der Rohtext eingefügt). Kann den Abschluss verzögern; bringt derzeit vor allem bei sauberem Diktat sichtbar etwas.")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     Stepper(
                         "Maximale Zeilen der Pille: \(appState.transcriptionSettings.livePillMaxLines)",
