@@ -12,7 +12,7 @@ permissions:
 jobs:
   build-macos:
     name: Build macOS app
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
 
     steps:
@@ -31,16 +31,19 @@ jobs:
             echo "No patterns loaded from $patterns_file"
             exit 1
           fi
+          # SimulatedCredentialsStore.swift is excluded because its fake keys are
+          # deliberately shaped to match real key patterns (exercised by tests).
           if grep -RInE \
               --exclude-dir=.git \
               --exclude=secret-scan-patterns.txt \
+              --exclude=SimulatedCredentialsStore.swift \
               "$pattern" .; then
             echo "Potential secret or private project reference found."
             exit 1
           fi
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.4.app || sudo xcode-select -s /Applications/Xcode_16.3.app || sudo xcode-select -s /Applications/Xcode.app
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app || sudo xcode-select -s /Applications/Xcode_26.5.app || sudo xcode-select -s /Applications/Xcode.app
 
       - name: Install XcodeGen
         run: |
