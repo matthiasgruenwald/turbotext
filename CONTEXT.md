@@ -44,7 +44,7 @@ Architekturentscheidungen (ADRs) liegen in `docs/adr/`, nicht in dieser Datei.
 
 **Shortcut-Array** — pro `WorkflowType` eine geordnete Liste von beliebig vielen Shortcuts. Workflow feuert, wenn IRGENDEIN Shortcut in der Liste matcht (OR-Logik).
 
-**fn-Default-Shortcuts** — die aktuellen hardcodierten `fn`-Kombis (z.B. `fn+Shift` = Transkription). Bleiben als Defaults im Shortcut-Array voreingestellt, sind aber löschbar und überschreibbar.
+**fn-Default-Shortcuts** — die aktuellen hardcodierten `fn`-Kombis (z.B. `fn+Shift` = Transkription). Bleiben als Defaults im Shortcut-Array voreingestellt, sind aber löschbar und überschreibbar. fn-Kürzel funktionieren als einzige auch ohne Eingabeüberwachung; alle anderen Tastenkombinationen benötigen sie.
 
 **Key Recorder** — UI-Modus zum Erfassen neuer Shortcuts: Nutzer klickt Button → App lauscht auf nächste Tastenkombination via `NSEvent`-Monitor → Combo wird dem Shortcut-Array des Workflows hinzugefügt. Kein Ersetzen — immer append.
 
@@ -69,6 +69,14 @@ Architekturentscheidungen (ADRs) liegen in `docs/adr/`, nicht in dieser Datei.
 **Hauptfenster** — Normales, nicht-transientes `NSWindow`, hostet dieselbe `MenuBarView` wie der Menüleisten-Popover (geteilter `AppState`, keine Code-Duplikation). Bleibt offen bis explizit geschlossen — im Gegensatz zum Popover, der bei Außenklick automatisch verschwindet (`behavior = .transient`). Existiert nur im Dock-Modus; wird über Dock-Icon-Klick geöffnet.
 
 **Menüleisten-Klick-Vorrang** — Ist das Hauptfenster offen, holt ein Klick auf das Menüleisten-Icon das Fenster nach vorne, statt einen zweiten Popover zu öffnen. Verhindert zwei gleichzeitig sichtbare UI-Kopien desselben States.
+
+## Berechtigungen
+
+**Interaktives Berechtigungs-Onboarding** — Flow beim Erststart und bei später fehlenden Freigaben: Turbotext öffnet die Systemeinstellungen gezielt an der Stelle für Bedienungshilfen bzw. Eingabeüberwachung, damit Nutzer:innen die App dort selbst per Drag & Drop eintragen. Sequentiell: zuerst Bedienungshilfen (essenziell fürs Einfügen), dann Eingabeüberwachung (essenziell für alle Kürzel außer fn); der zweite Schritt ist überspringbar. Startet nur auf expliziten Klick, nie automatisch. Nach einer Erteilung ist kein App-Neustart nötig; der Zustand aktualisiert sich live. Siehe [ADR 0008](docs/adr/0008-berechtigungs-onboarding-neuimplementierung.md).
+
+**Berechtigungs-Guide-Panel** — Schwebendes, nicht-aktivierendes Fenster während des interaktiven Berechtigungs-Onboardings. Positioniert sich neben dem Systemeinstellungen-Fenster, damit Drag-Token und die Zielliste in den Systemeinstellungen gleichzeitig sichtbar sind. Funktioniert unabhängig von Hauptfenster, Popover und Dock-Modus. Verschwindet, sobald der Flow abgeschlossen ist oder die Systemeinstellungen geschlossen werden.
+
+**Drag-Token** — Ziehbare Repräsentation von Turbotext (App-Icon und Name) im Berechtigungs-Guide-Panel. Bietet beim Ziehen die laufende App als Datei an; der Drop auf die Liste in den Systemeinstellungen erzeugt den Berechtigungseintrag.
 
 ## Netzwerk-Qualität
 
