@@ -269,8 +269,27 @@ final class RecordingOverlayStateTests: XCTestCase {
     }
 
     func testLiveTranscriptDisplayIsIgnoredOutsideRecording() {
+        let hidden = RecordingOverlayState.hidden
+        XCTAssertEqual(hidden.receivingLiveTranscript(LiveTranscriptDisplay(volatileText: "Hallo")), hidden)
+    }
+
+    func testLiveTranscriptDisplayUpdatesWhileProcessing() {
         let processing = RecordingOverlayState(phase: .processing, anchor: anchor, levelHistory: [])
-        XCTAssertEqual(processing.receivingLiveTranscript(LiveTranscriptDisplay(volatileText: "Hallo")), processing)
+        let updated = processing.receivingLiveTranscript(LiveTranscriptDisplay(finalText: "Nachlauf"))
+
+        XCTAssertEqual(updated.liveTranscriptDisplay?.finalText, "Nachlauf")
+        XCTAssertEqual(updated.phase, .processing)
+    }
+
+    func testLiveTranscriptDisplaySurvivesTransitionToProcessing() {
+        let recording = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+            .receivingLiveTranscript(LiveTranscriptDisplay(finalText: "Satz", volatileText: "Ende"))
+
+        let processing = recording.applying(menuBarStatus: .processing(.transcription)) { self.anchor }
+
+        XCTAssertEqual(processing.phase, .processing)
+        XCTAssertEqual(processing.liveTranscriptDisplay?.finalText, "Satz")
+        XCTAssertEqual(processing.liveTranscriptDisplay?.volatileText, "Ende")
     }
 
     func testLiveTranscriptDisplaySurvivesLevelUpdates() {

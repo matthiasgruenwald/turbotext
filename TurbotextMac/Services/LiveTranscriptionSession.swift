@@ -258,6 +258,20 @@ final class LiveTranscriptionSession {
         phase = .finished
     }
 
+    @MainActor
+    func waitForDrain(timeout: Duration = .seconds(10)) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while phase == .running {
+            guard ContinuousClock.now < deadline else { return false }
+            do {
+                try await Task.sleep(for: .milliseconds(50))
+            } catch {
+                return false
+            }
+        }
+        return phase == .finished
+    }
+
     func finalizeText() -> String {
         collector.absorbVolatile()
         return collector.finalizedText

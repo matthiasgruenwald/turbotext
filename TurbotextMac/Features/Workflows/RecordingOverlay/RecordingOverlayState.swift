@@ -131,6 +131,7 @@ struct RecordingOverlayState: Equatable {
             guard phase == .recording || phase == .processing else { return self }
             return RecordingOverlayState(
                 phase: .processing, anchor: anchor, levelHistory: levelHistory,
+                liveTranscriptDisplay: liveTranscriptDisplay,
                 processingLabel: processingLabel ?? resolveProcessingLabel()
             )
         case .error:
@@ -177,13 +178,14 @@ struct RecordingOverlayState: Equatable {
     }
 
     /// Applies a fresh structured live transcript from the streaming callback (#150).
-    /// Ignored outside `.recording` — the field is meaningless once processing/rewriting begins.
+    /// Also accepted while `.processing` so the drain tail stays visible (#159).
     func receivingLiveTranscript(_ display: LiveTranscriptDisplay) -> RecordingOverlayState {
-        guard phase == .recording else { return self }
+        guard phase == .recording || phase == .processing else { return self }
         guard display != liveTranscriptDisplay else { return self }
         return RecordingOverlayState(
             phase: phase, anchor: anchor, levelHistory: levelHistory, silenceElapsed: silenceElapsed,
-            liveTranscriptDisplay: display, signalReceived: signalReceived
+            liveTranscriptDisplay: display, processingLabel: processingLabel,
+            signalReceived: signalReceived
         )
     }
 

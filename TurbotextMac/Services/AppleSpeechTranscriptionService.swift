@@ -200,48 +200,4 @@ enum AppleSpeechTranscriptionService {
         }
     }
 
-    /// Erzeugt eine Live-Streaming-Session, die den Analyzer mit laufendem
-    /// Mikrofonaudio speist. `sourceFormat` ist das Format des AudioRecorder-Taps.
-    static func makeLiveSession(sourceFormat: AVAudioFormat) async throws -> LiveTranscriptionSession {
-        let session = LiveTranscriptionSession()
-        try await session.start(sourceFormat: sourceFormat)
-        return session
-    }
-
-    /// Schließt eine Live-Session ab und liefert den Transkriptions-Text.
-    /// Fällt auf den dateibasierten Pfad zurück, wenn der Streambetrieb
-    /// fehlgeschlagen ist — die Datei wurde parallel mitgeschrieben.
-    static func finishLiveSession(
-        _ session: LiveTranscriptionSession,
-        fallbackAudioURL: URL?,
-        fallbackDuration: TimeInterval,
-        customTerms: [String],
-        language: String
-    ) async throws -> String {
-        session.finish()
-
-        let deadline = Date().addingTimeInterval(10)
-        while session.phase == .running && Date() < deadline {
-            try await Task.sleep(for: .milliseconds(50))
-        }
-
-        if case .finished = session.phase {
-            let text = session.finalizeText()
-            if !text.isEmpty { return text }
-        }
-
-        guard let fallbackAudioURL else {
-            if case .failed(let message, _) = session.phase {
-                throw AppleSpeechTranscriptionError.transcriptionFailed(message)
-            }
-            throw AppleSpeechTranscriptionError.noSpeechDetected
-        }
-
-        return try await transcribe(
-            audioURL: fallbackAudioURL,
-            duration: fallbackDuration,
-            customTerms: customTerms,
-            language: language
-        )
-    }
 }

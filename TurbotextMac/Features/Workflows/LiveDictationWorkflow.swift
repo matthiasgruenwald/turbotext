@@ -27,7 +27,9 @@ final class LiveDictationWorkflow: Workflow {
     private let processingLabelResolver: () -> String?
     private let onLiveTranscriptUpdate: ((LiveTranscriptDisplay) -> Void)?
     private let onBergung: ((String?) -> Void)?
+    private let fileFallbackTranscriber: (URL, TimeInterval) async throws -> String
     private var processingTask: Task<Void, Never>?
+    private var isDraining = false
 
     init(
         type: WorkflowType,
@@ -39,7 +41,8 @@ final class LiveDictationWorkflow: Workflow {
         rewrite: ((String) async throws -> RewriteStepResult)? = nil,
         processingLabelResolver: @escaping () -> String? = { nil },
         onLiveTranscriptUpdate: ((LiveTranscriptDisplay) -> Void)? = nil,
-        onBergung: ((String?) -> Void)? = nil
+        onBergung: ((String?) -> Void)? = nil,
+        fileFallbackTranscriber: ((URL, TimeInterval) async throws -> String)? = nil
     ) {
         self.type = type
         self.session = session
@@ -51,6 +54,11 @@ final class LiveDictationWorkflow: Workflow {
         self.processingLabelResolver = processingLabelResolver
         self.onLiveTranscriptUpdate = onLiveTranscriptUpdate
         self.onBergung = onBergung
+        self.fileFallbackTranscriber = fileFallbackTranscriber ?? { url, duration in
+            try await AppleSpeechTranscriptionService.transcribe(
+                audioURL: url, duration: duration, customTerms: [], language: "de"
+            )
+        }
     }
 
     func start() {
@@ -80,11 +88,14 @@ final class LiveDictationWorkflow: Workflow {
         if pipeline.isRecording {
             pipeline.onBuffer = nil
             session.finish()
-            _ = pipeline.stopRecording()
-            processFinalText()
+            let recording = pipeline.stopRecording()
+            isDraining = true
+            phase = .running("Aufnahme läuft ...")
+            processingTask = Task { await drainThenProcess(recording: recording) }
         } else {
             processingTask?.cancel()
             processingTask = nil
+            isDraining = false
             session.cancel()
             phase = .idle
         }
@@ -93,6 +104,7 @@ final class LiveDictationWorkflow: Workflow {
     func reset() {
         processingTask?.cancel()
         processingTask = nil
+        isDraining = false
         session.cancel()
         pipeline.resetRecording()
         processingLabel = nil
@@ -100,13 +112,35 @@ final class LiveDictationWorkflow: Workflow {
         phase = .idle
     }
 
-    private func processFinalText() {
-        let text = session.finalizeText()
+    private func drainThenProcess(recording: Result<SpokenWorkflowPipeline.Recording, SpokenWorkflowPipeline.Error>) async {
+        let drained = await session.waitForDrain()
+        var text = session.finalizeText()
+
+        if !drained || text.isEmpty {
+            if case .success(let rec) = recording {
+                do {
+                    let fallbackText = try await fileFallbackTranscriber(rec.url, rec.duration)
+                    if !fallbackText.isEmpty {
+                        text = fallbackText
+                    }
+                } catch is CancellationError {
+                    isDraining = false
+                    return
+                } catch {}
+            }
+        }
+
+        isDraining = false
+
         guard !text.isEmpty else {
             phase = .error("Keine Aufnahme erkannt.")
             return
         }
 
+        processText(text)
+    }
+
+    private func processText(_ text: String) {
         guard let rewrite else {
             let cleaned = TranscriptionQualityService.cleanedTranscript(text)
             phase = .done(cleaned)
@@ -166,13 +200,14 @@ final class LiveDictationWorkflow: Workflow {
         case .failed(let message, isBergung: true):
             handleBergung(message: message)
         case .failed(let message, isBergung: false):
+            guard !isDraining else { return }
             if pipeline.isRecording {
                 pipeline.onBuffer = nil
                 _ = pipeline.stopRecording()
             }
             phase = .error(message)
         default:
-            guard isRecording else { return }
+            guard isRecording || isDraining else { return }
             relayTranscriptDisplay()
             observeSession()
         }

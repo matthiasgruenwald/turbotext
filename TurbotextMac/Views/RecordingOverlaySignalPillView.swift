@@ -51,12 +51,16 @@ struct RecordingOverlaySignalPillView: View {
         case .recording:
             recordingContent
         case .processing:
-            HStack(spacing: 12) {
-                ProgressView().controlSize(.small).tint(.white)
-                Text(processingLabel ?? "Wird verarbeitet …")
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
+            HStack(alignment: .top, spacing: 12) {
+                ProgressView().controlSize(.small).tint(.white).padding(.top, 2)
+                if let liveTranscript, !liveTranscript.isEmpty {
+                    liveTranscriptText(liveTranscript)
+                } else {
+                    Text(processingLabel ?? "Wird verarbeitet …")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                }
             }
         case .error:
             HStack(spacing: 12) {
