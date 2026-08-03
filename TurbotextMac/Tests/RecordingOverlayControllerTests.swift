@@ -568,4 +568,62 @@ final class RecordingOverlayControllerTests: XCTestCase {
         XCTAssertEqual(controller.state.phase, .processing)
         XCTAssertEqual(controller.state.liveTranscriptDisplay?.volatileText, "Hallo Welt")
     }
+
+    // MARK: - Engine progress marker (#158 package 4)
+
+    func testTranscriptionLagIsRelayedToStateWhileRecording() {
+        let (orchestrator, _) = makeOrchestratorWithWorkflow()
+        var lag: TimeInterval? = 2.5
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { 0.5 },
+            transcriptionLagProvider: { lag }
+        )
+
+        controller.tick()
+        XCTAssertEqual(controller.state.transcriptionLag, 2.5)
+
+        lag = 1.0
+        controller.tick()
+        XCTAssertEqual(controller.state.transcriptionLag, 1.0)
+    }
+
+    func testTranscriptionLagKeepsUpdatingWhileProcessing() {
+        let (orchestrator, workflow) = makeOrchestratorWithWorkflow()
+        var lag: TimeInterval? = 2.0
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { workflow.audioLevel },
+            transcriptionLagProvider: { lag }
+        )
+        controller.tick()
+        XCTAssertEqual(controller.state.transcriptionLag, 2.0)
+
+        workflow.isRecording = false
+        workflow.phase = .running("Wird verarbeitet ...")
+        lag = 0.5
+        controller.tick()
+
+        XCTAssertEqual(controller.state.phase, .processing)
+        XCTAssertEqual(controller.state.transcriptionLag, 0.5)
+    }
+
+    func testTranscriptionLagStaysNilForWorkflowsWithoutLiveEngine() {
+        let (orchestrator, _) = makeOrchestratorWithWorkflow()
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { 0.5 }
+        )
+
+        controller.tick()
+
+        XCTAssertEqual(controller.state.phase, .recording)
+        XCTAssertNil(controller.state.transcriptionLag)
+    }
 }

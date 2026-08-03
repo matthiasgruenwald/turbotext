@@ -13,7 +13,7 @@ private final class RecordingOverlayPanel: NSPanel {
 /// (`onWorkflowFinished`/`onWillPaste`), which `WorkflowLifecycleManager` already owns.
 @MainActor
 final class RecordingOverlayController {
-    private static let pollInterval: TimeInterval = 0.1
+    private static let pollInterval: TimeInterval = RecordingOverlayState.levelSampleInterval
 
     private let orchestrator: WorkflowOrchestrator
     private let modeProvider: () -> RecordingOverlayMode
@@ -21,6 +21,7 @@ final class RecordingOverlayController {
     private let levelProvider: () -> Float?
     private let errorMessageProvider: () -> String?
     private let liveTranscriptDisplayProvider: () -> LiveTranscriptDisplay?
+    private let transcriptionLagProvider: () -> TimeInterval?
     private let processingLabelProvider: () -> String?
     private let completionLabelProvider: () -> String?
 
@@ -44,6 +45,7 @@ final class RecordingOverlayController {
         levelProvider: (() -> Float?)? = nil,
         errorMessageProvider: (() -> String?)? = nil,
         liveTranscriptDisplayProvider: (() -> LiveTranscriptDisplay?)? = nil,
+        transcriptionLagProvider: (() -> TimeInterval?)? = nil,
         processingLabelProvider: (() -> String?)? = nil,
         completionLabelProvider: (() -> String?)? = nil
     ) {
@@ -62,6 +64,7 @@ final class RecordingOverlayController {
         self.levelProvider = levelProvider ?? { [weak orchestrator] in orchestrator?.activeWorkflow?.audioLevel }
         self.errorMessageProvider = errorMessageProvider ?? { [weak orchestrator] in orchestrator?.lastErrorMessage }
         self.liveTranscriptDisplayProvider = liveTranscriptDisplayProvider ?? { [weak orchestrator] in orchestrator?.lastLiveTranscriptDisplay }
+        self.transcriptionLagProvider = transcriptionLagProvider ?? { [weak orchestrator] in orchestrator?.activeWorkflow?.transcriptionLag }
         self.processingLabelProvider = processingLabelProvider ?? { [weak orchestrator] in orchestrator?.lastProcessingLabel }
         self.completionLabelProvider = completionLabelProvider ?? { [weak orchestrator] in orchestrator?.lastCompletionLabel }
     }
@@ -108,10 +111,12 @@ final class RecordingOverlayController {
             if let display = liveTranscriptDisplayProvider() {
                 state = state.receivingLiveTranscript(display)
             }
+            state = state.receivingTranscriptionLag(transcriptionLagProvider())
         case .processing:
             if let display = liveTranscriptDisplayProvider() {
                 state = state.receivingLiveTranscript(display)
             }
+            state = state.receivingTranscriptionLag(transcriptionLagProvider())
         case .completion:
             state = state.advancingCompletion(by: Self.pollInterval)
         case .error:
@@ -203,6 +208,7 @@ final class RecordingOverlayController {
             signalReceived: state.signalReceived,
             errorMessage: state.errorMessage,
             liveTranscript: state.liveTranscriptDisplay,
+            transcriptionLag: state.transcriptionLag,
             processingLabel: state.processingLabel,
             completionLabel: state.completionLabel,
             onDismissError: { [weak self] in self?.dismissError() },
@@ -260,9 +266,10 @@ final class RecordingOverlayController {
     }
 }
 
-/// Size-relevant content of the pill. Level history and signal flags redraw every poll
-/// tick but never change the pill's size, so keying measurement on this fingerprint keeps
-/// fittingSize (which forces layout) out of the 10 Hz hot path (#171).
+/// Size-relevant content of the pill. Level history, the engine-progress marker and
+/// signal flags redraw every poll tick but never change the pill's size, so keying
+/// measurement on this fingerprint keeps fittingSize (which forces layout) out of the
+/// 10 Hz hot path (#171).
 private struct PillSizeKey: Equatable {
     let phase: RecordingOverlayPhase
     let transcript: LiveTranscriptDisplay?

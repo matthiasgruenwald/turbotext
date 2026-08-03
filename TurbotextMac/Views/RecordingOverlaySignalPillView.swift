@@ -10,6 +10,7 @@ struct RecordingOverlaySignalPillView: View {
     var signalReceived: Bool = false
     var errorMessage: String?
     var liveTranscript: LiveTranscriptDisplay?
+    var transcriptionLag: TimeInterval?
     var processingLabel: String?
     var completionLabel: String?
     var onDismissError: () -> Void = {}
@@ -65,8 +66,12 @@ struct RecordingOverlaySignalPillView: View {
                             .lineLimit(1)
                     }
                 }
-                WaveformBars(levelHistory: levelHistory)
-                    .frame(maxWidth: .infinity)
+                WaveformBars(
+                    levelHistory: levelHistory,
+                    transcriptionLag: transcriptionLag,
+                    unheardBarColor: .white.opacity(0.28)
+                )
+                .frame(maxWidth: .infinity)
             }
         case .error:
             HStack(spacing: 12) {
@@ -121,8 +126,14 @@ struct RecordingOverlaySignalPillView: View {
                 }
             }
             // Green = capture is live; the processing phase keeps the frozen white strip.
-            WaveformBars(levelHistory: levelHistory, barColor: .green.opacity(0.9))
-                .frame(maxWidth: .infinity)
+            // The dim tail marks audio the engine has not decoded yet (#158 package 4).
+            WaveformBars(
+                levelHistory: levelHistory,
+                barColor: .green.opacity(0.9),
+                transcriptionLag: transcriptionLag,
+                unheardBarColor: .green.opacity(0.28)
+            )
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -183,11 +194,19 @@ private struct ReservedHeightKey: PreferenceKey {
 private struct WaveformBars: View {
     let levelHistory: [Float]
     var barColor: Color = .white.opacity(0.85)
+    var transcriptionLag: TimeInterval?
+    var unheardBarColor: Color?
 
     var body: some View {
         Canvas { context, size in
             let capacity = RecordingOverlayState.levelHistoryLimit
             guard capacity > 0 else { return }
+            let unheardBars = min(
+                RecordingOverlayState.unheardBarCount(forLag: transcriptionLag) ?? 0,
+                levelHistory.count
+            )
+            let heardSplit = levelHistory.count - unheardBars
+            let pendingColor = unheardBarColor ?? barColor
             let slot = size.width / CGFloat(capacity)
             let barWidth = max(1, slot * 0.55)
             let startX = size.width - CGFloat(levelHistory.count) * slot
@@ -197,7 +216,7 @@ private struct WaveformBars: View {
                 let height = barHeight(for: level)
                 let rect = CGRect(x: x, y: (size.height - height) / 2, width: barWidth, height: height)
                 let path = Path(roundedRect: rect, cornerRadius: barWidth / 2)
-                context.fill(path, with: .color(barColor))
+                context.fill(path, with: .color(index < heardSplit ? barColor : pendingColor))
             }
         }
         .frame(height: 30)

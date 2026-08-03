@@ -55,6 +55,9 @@ protocol Workflow: AnyObject, Observable {
     /// Shown in the signal pill ~3s after the result is pasted (#128). `nil` for
     /// workflows without a rewrite step, or when nothing worth reporting happened.
     var completionLabel: String? { get }
+    /// Seconds of fed audio the live engine has not decoded yet (#158 package 4),
+    /// driving the two-colored waveform. `nil` for every non-streaming backend.
+    var transcriptionLag: TimeInterval? { get }
     var onOutput: WorkflowOutputHandler? { get set }
     var onPhaseChange: WorkflowPhaseChangeHandler? { get set }
 
@@ -66,4 +69,5 @@ protocol Workflow: AnyObject, Observable {
 extension Workflow {
     var processingLabel: String? { nil }
     var completionLabel: String? { nil }
+    var transcriptionLag: TimeInterval? { nil }
 }

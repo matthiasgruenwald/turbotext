@@ -38,13 +38,31 @@ final class LiveTranscriptionSession {
     private static let feedLogInterval = 50
     /// Comfortably above the 10 s drain deadline so the probe outlives a full drain.
     private static let drainProbeLimit: Duration = .seconds(15)
+    /// Matches the pill's poll cadence so the progress marker tracks the engine
+    /// smoothly instead of jumping once per second (#158 package 4).
+    private static let progressProbeInterval: Duration = .milliseconds(100)
+    private static let progressProbeLogStride = 10
 
     @ObservationIgnored private var fedBufferCount = 0
     @ObservationIgnored private var droppedBufferCount = 0
+    @ObservationIgnored private var fedAudioSeconds: Double = 0
+    @ObservationIgnored private var lastVolatileEndSeconds: Double?
     @ObservationIgnored private var isFinishRequested = false
     @ObservationIgnored private var lastChunkAt: Date?
 
     var isRunning: Bool { phase == .running }
+
+    /// Seconds of fed audio the engine has not decoded yet (#158 package 4):
+    /// fed audio seconds minus `volatileRange.end`. `nil` until the engine reports
+    /// its first volatile range, so the waveform stays single-colored before that.
+    var transcriptionLag: TimeInterval? {
+        Self.transcriptionLag(fedSeconds: fedAudioSeconds, volatileEndSeconds: lastVolatileEndSeconds)
+    }
+
+    static func transcriptionLag(fedSeconds: Double, volatileEndSeconds: Double?) -> TimeInterval? {
+        guard let volatileEndSeconds else { return nil }
+        return max(0, fedSeconds - volatileEndSeconds)
+    }
 
     @MainActor
     func runCollectingLoop(_ chunks: AsyncThrowingStream<TranscriptionChunk, Error>) async {
@@ -188,24 +206,36 @@ final class LiveTranscriptionSession {
             return
         }
         continuation.yield(AnalyzerInput(buffer: converted))
-        recordFedBuffer(inputFrames: buffer.frameLength, outputFrames: converted.frameLength)
+        recordFedBuffer(
+            inputFrames: buffer.frameLength,
+            outputFrames: converted.frameLength,
+            duration: Double(buffer.frameLength) / buffer.format.sampleRate
+        )
     }
 
     /// Diagnose für #155: trennt „Engine steht" von „Audio kommt nicht mehr an",
     /// indem gefütterte Buffer und der Fortschritt des Analyzers gemeinsam getickt werden.
     /// Läuft seit #158 über `finish()` hinaus weiter, damit der Drain protokolliert ist.
+    /// Tickt mit 10 Hz, weil `volatileRange.end` dabei die Quelle des
+    /// Fortschritts-Markers in der Wellenform ist (#158 Paket 4); die Log-Zeile
+    /// bleibt 1 Hz.
     private func startProgressProbe(analyzer: SpeechAnalyzer) {
         progressProbeTask = Task { [weak self] in
             var drainObservedFor: Duration = .zero
+            var ticksSinceLog = 0
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
+                try? await Task.sleep(for: Self.progressProbeInterval)
                 guard let self, self.phase == .running else { return }
                 if self.isFinishRequested {
                     // Bound the post-finish window so a hung engine cannot probe forever.
-                    drainObservedFor += .seconds(1)
+                    drainObservedFor += Self.progressProbeInterval
                     if drainObservedFor > Self.drainProbeLimit { return }
                 }
                 let range = await analyzer.volatileRange
+                if let end = range?.end.seconds { self.lastVolatileEndSeconds = end }
+                ticksSinceLog += 1
+                guard ticksSinceLog >= Self.progressProbeLogStride else { continue }
+                ticksSinceLog = 0
                 let start = range.map { $0.start.seconds } ?? .nan
                 let end = range.map { $0.end.seconds } ?? .nan
                 let chunkAge = self.lastChunkAt.map { Date().timeIntervalSince($0) } ?? -1
@@ -216,8 +246,13 @@ final class LiveTranscriptionSession {
         }
     }
 
-    private nonisolated func recordFedBuffer(inputFrames: AVAudioFrameCount, outputFrames: AVAudioFrameCount) {
+    private nonisolated func recordFedBuffer(
+        inputFrames: AVAudioFrameCount,
+        outputFrames: AVAudioFrameCount,
+        duration: TimeInterval
+    ) {
         fedBufferCount += 1
+        fedAudioSeconds += duration
         guard fedBufferCount % Self.feedLogInterval == 0 else { return }
         liveLogger.info(
             "fed \(self.fedBufferCount) buffers (in=\(inputFrames) out=\(outputFrames)) dropped=\(self.droppedBufferCount)"

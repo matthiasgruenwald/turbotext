@@ -191,4 +191,25 @@ final class LiveTranscriptionSessionTests: XCTestCase {
 
         XCTAssertEqual(session.finalizeText(), "Fertig. Schwanz")
     }
+
+    // MARK: - Fortschritts-Marker (#158 Paket 4)
+
+    func testTranscriptionLagIsNilBeforeFirstVolatileRange() {
+        XCTAssertNil(LiveTranscriptionSession.transcriptionLag(fedSeconds: 5, volatileEndSeconds: nil))
+    }
+
+    func testTranscriptionLagIsFedSecondsMinusVolatileEnd() throws {
+        let lag = try XCTUnwrap(
+            LiveTranscriptionSession.transcriptionLag(fedSeconds: 30.5, volatileEndSeconds: 28.2)
+        )
+        XCTAssertEqual(lag, 2.3, accuracy: 0.0001)
+    }
+
+    func testTranscriptionLagNeverGoesNegative() {
+        XCTAssertEqual(LiveTranscriptionSession.transcriptionLag(fedSeconds: 5, volatileEndSeconds: 6), 0)
+    }
+
+    func testSessionLagIsNilBeforeAnyEngineProgress() {
+        XCTAssertNil(makeSession().transcriptionLag)
+    }
 }

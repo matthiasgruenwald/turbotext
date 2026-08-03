@@ -519,4 +519,95 @@ final class RecordingOverlayStateTests: XCTestCase {
 
         XCTAssertEqual(errored, .hidden)
     }
+
+    // MARK: - Engine progress marker (#158 package 4)
+
+    func testUnheardBarCountIsNilBeforeFirstChunk() {
+        XCTAssertNil(RecordingOverlayState.unheardBarCount(forLag: nil))
+    }
+
+    func testUnheardBarCountIsZeroWhenEngineIsCaughtUp() {
+        XCTAssertEqual(RecordingOverlayState.unheardBarCount(forLag: 0), 0)
+    }
+
+    func testUnheardBarCountCountsFromTheRightAtLevelSampleCadence() {
+        XCTAssertEqual(RecordingOverlayState.unheardBarCount(forLag: 2.3), 23)
+    }
+
+    func testUnheardBarCountIsZeroForNegativeLag() {
+        XCTAssertEqual(RecordingOverlayState.unheardBarCount(forLag: -1), 0)
+    }
+
+    func testUnheardBarCountCapsAtTheWindowWhenEngineFallsBehind() {
+        XCTAssertEqual(
+            RecordingOverlayState.unheardBarCount(forLag: TimeInterval(RecordingOverlayState.levelHistoryLimit) * 0.1),
+            RecordingOverlayState.levelHistoryLimit
+        )
+        XCTAssertEqual(RecordingOverlayState.unheardBarCount(forLag: 120), RecordingOverlayState.levelHistoryLimit)
+    }
+
+    func testTranscriptionLagUpdatesWhileRecording() {
+        let recording = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+
+        let updated = recording.receivingTranscriptionLag(2.5)
+
+        XCTAssertEqual(updated.transcriptionLag, 2.5)
+        XCTAssertEqual(updated.phase, .recording)
+    }
+
+    func testTranscriptionLagUpdatesWhileProcessing() {
+        let processing = RecordingOverlayState(phase: .processing, anchor: anchor, levelHistory: [])
+
+        let updated = processing.receivingTranscriptionLag(0.8)
+
+        XCTAssertEqual(updated.transcriptionLag, 0.8)
+        XCTAssertEqual(updated.phase, .processing)
+    }
+
+    func testTranscriptionLagIsIgnoredOutsideRecordingAndProcessing() {
+        XCTAssertEqual(RecordingOverlayState.hidden.receivingTranscriptionLag(1), .hidden)
+
+        let error = RecordingOverlayState(phase: .error, anchor: anchor, levelHistory: [], errorMessage: "boom")
+        XCTAssertEqual(error.receivingTranscriptionLag(1), error)
+
+        let completion = RecordingOverlayState(phase: .completion, anchor: anchor, levelHistory: [], completionLabel: "done")
+        XCTAssertEqual(completion.receivingTranscriptionLag(1), completion)
+    }
+
+    func testIdenticalTranscriptionLagIsANoOp() {
+        let recording = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+            .receivingTranscriptionLag(1.5)
+
+        XCTAssertEqual(recording.receivingTranscriptionLag(1.5), recording)
+    }
+
+    func testTranscriptionLagSurvivesLevelAndTranscriptUpdates() {
+        let recording = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+            .receivingTranscriptionLag(1.5)
+            .receivingLevel(0.6, elapsed: 0.1)
+            .receivingLiveTranscript(LiveTranscriptDisplay(volatileText: "Hallo"))
+
+        XCTAssertEqual(recording.transcriptionLag, 1.5)
+    }
+
+    func testTranscriptionLagSurvivesTransitionToProcessing() {
+        let recording = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+            .receivingTranscriptionLag(1.5)
+
+        let processing = recording.applying(menuBarStatus: .processing(.transcription)) { self.anchor }
+
+        XCTAssertEqual(processing.phase, .processing)
+        XCTAssertEqual(processing.transcriptionLag, 1.5)
+    }
+
+    func testTranscriptionLagResetsOnNewRecording() {
+        let firstRecording = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
+            .receivingTranscriptionLag(1.5)
+        let idle = firstRecording
+            .applying(menuBarStatus: .processing(.transcription)) { self.anchor }
+            .applying(menuBarStatus: .idle) { self.anchor }
+        let secondRecording = idle.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+
+        XCTAssertNil(secondRecording.transcriptionLag)
+    }
 }

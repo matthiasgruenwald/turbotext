@@ -37,6 +37,9 @@ struct RecordingOverlayState: Equatable {
     /// 10 samples/s × 15 s — the wider window keeps the waveform meaningful across
     /// engine delivery bursts instead of showing only the last 3 s (#158).
     static let levelHistoryLimit = 150
+    /// One level sample per poll tick; the engine-progress marker converts the lag
+    /// into bar indices at exactly this cadence (#158 package 4).
+    static let levelSampleInterval: TimeInterval = 0.1
     /// How long a recording must show no usable signal before the silence hint appears.
     static let silenceHintDelay: TimeInterval = 5
     /// How long a known start error stays visible before it auto-dismisses.
@@ -58,6 +61,10 @@ struct RecordingOverlayState: Equatable {
     /// Structured live-dictate transcript shown while `.recording` (#150). Always `nil`
     /// for non-streaming backends (WhisperKit/Groq) since nothing ever updates it.
     let liveTranscriptDisplay: LiveTranscriptDisplay?
+    /// Seconds of fed audio the live engine has not decoded yet (#158 package 4):
+    /// fed audio seconds minus `volatileRange.end`. Drives the two-colored waveform.
+    /// `nil` for non-streaming backends and before the engine's first volatile range.
+    let transcriptionLag: TimeInterval?
     /// Resolved once when entering `.processing` (#128): "lokal" vs. "online mit ‹Anbieter›".
     let processingLabel: String?
     /// Shown while `.completion` (#128), e.g. "Text lokal verbessert · Apple Foundation Models".
@@ -75,6 +82,16 @@ struct RecordingOverlayState: Equatable {
             && silenceElapsed + Self.elapsedTimeTolerance >= Self.silenceHintDelay
     }
 
+    /// How many of the newest bars (counted from the right edge) the engine has not
+    /// decoded yet (#158 package 4). Relative arithmetic only — fed audio seconds
+    /// minus `volatileRange.end` — so nothing can drift against wall-clock time.
+    /// `nil` lag keeps the strip single-colored until the engine reports progress.
+    static func unheardBarCount(forLag lag: TimeInterval?) -> Int? {
+        guard let lag else { return nil }
+        let bars = Int((lag / levelSampleInterval).rounded())
+        return min(max(bars, 0), levelHistoryLimit)
+    }
+
     init(
         phase: RecordingOverlayPhase,
         anchor: RecordingOverlayAnchor?,
@@ -83,6 +100,7 @@ struct RecordingOverlayState: Equatable {
         errorMessage: String? = nil,
         errorElapsed: TimeInterval = 0,
         liveTranscriptDisplay: LiveTranscriptDisplay? = nil,
+        transcriptionLag: TimeInterval? = nil,
         processingLabel: String? = nil,
         completionLabel: String? = nil,
         completionElapsed: TimeInterval = 0,
@@ -95,6 +113,7 @@ struct RecordingOverlayState: Equatable {
         self.errorMessage = errorMessage
         self.errorElapsed = errorElapsed
         self.liveTranscriptDisplay = liveTranscriptDisplay
+        self.transcriptionLag = transcriptionLag
         self.processingLabel = processingLabel
         self.completionLabel = completionLabel
         self.completionElapsed = completionElapsed
@@ -133,6 +152,7 @@ struct RecordingOverlayState: Equatable {
             return RecordingOverlayState(
                 phase: .processing, anchor: anchor, levelHistory: levelHistory,
                 liveTranscriptDisplay: liveTranscriptDisplay,
+                transcriptionLag: transcriptionLag,
                 processingLabel: processingLabel ?? resolveProcessingLabel()
             )
         case .error:
@@ -174,6 +194,7 @@ struct RecordingOverlayState: Equatable {
         return RecordingOverlayState(
             phase: phase, anchor: anchor, levelHistory: nextHistory, silenceElapsed: nextSilence,
             liveTranscriptDisplay: liveTranscriptDisplay,
+            transcriptionLag: transcriptionLag,
             signalReceived: signalReceived || clamped > Self.silenceLevelThreshold
         )
     }
@@ -185,7 +206,21 @@ struct RecordingOverlayState: Equatable {
         guard display != liveTranscriptDisplay else { return self }
         return RecordingOverlayState(
             phase: phase, anchor: anchor, levelHistory: levelHistory, silenceElapsed: silenceElapsed,
-            liveTranscriptDisplay: display, processingLabel: processingLabel,
+            liveTranscriptDisplay: display, transcriptionLag: transcriptionLag,
+            processingLabel: processingLabel,
+            signalReceived: signalReceived
+        )
+    }
+
+    /// Applies a fresh engine-progress sample (#158 package 4). Also accepted while
+    /// `.processing` so the frozen strip shows the drain catching up to the right edge.
+    func receivingTranscriptionLag(_ lag: TimeInterval?) -> RecordingOverlayState {
+        guard phase == .recording || phase == .processing else { return self }
+        guard lag != transcriptionLag else { return self }
+        return RecordingOverlayState(
+            phase: phase, anchor: anchor, levelHistory: levelHistory, silenceElapsed: silenceElapsed,
+            liveTranscriptDisplay: liveTranscriptDisplay,
+            transcriptionLag: lag, processingLabel: processingLabel,
             signalReceived: signalReceived
         )
     }

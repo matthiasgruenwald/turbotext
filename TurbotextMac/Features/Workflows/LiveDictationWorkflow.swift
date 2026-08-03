@@ -17,6 +17,7 @@ final class LiveDictationWorkflow: Workflow {
 
     var isRecording: Bool { pipeline.isRecording }
     var audioLevel: Float { pipeline.audioLevel }
+    var transcriptionLag: TimeInterval? { session.transcriptionLag }
 
     private let pipeline: SpokenWorkflowPipeline
     private let session: LiveTranscriptionSession
