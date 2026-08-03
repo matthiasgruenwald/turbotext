@@ -20,9 +20,11 @@ final class LiveDictationWorkflow: Workflow {
 
     private let pipeline: SpokenWorkflowPipeline
     private let session: LiveTranscriptionSession
-    private let isSmoothingActive: Bool
     private let maxLines: Int
     private let rewritingMessage: String
+    private let smoothingPass: (@Sendable (String) async -> String?)?
+    private let smoothingBudget: Duration
+    private let smoothingMessage: String
     private let rewrite: ((String) async throws -> RewriteStepResult)?
     private let processingLabelResolver: () -> String?
     private let onLiveTranscriptUpdate: ((LiveTranscriptDisplay) -> Void)?
@@ -36,7 +38,9 @@ final class LiveDictationWorkflow: Workflow {
     init(
         type: WorkflowType,
         session: LiveTranscriptionSession,
-        isSmoothingActive: Bool = false,
+        smoothingPass: (@Sendable (String) async -> String?)? = nil,
+        smoothingBudget: Duration = .seconds(5),
+        smoothingMessage: String = "Glättet ...",
         maxLines: Int = 8,
         pipeline: SpokenWorkflowPipeline? = nil,
         gracePeriod: Duration = .milliseconds(250),
@@ -49,7 +53,9 @@ final class LiveDictationWorkflow: Workflow {
     ) {
         self.type = type
         self.session = session
-        self.isSmoothingActive = isSmoothingActive
+        self.smoothingPass = smoothingPass
+        self.smoothingBudget = smoothingBudget
+        self.smoothingMessage = smoothingMessage
         self.maxLines = maxLines
         self.pipeline = pipeline ?? SpokenWorkflowPipeline()
         self.gracePeriod = gracePeriod
@@ -166,7 +172,37 @@ final class LiveDictationWorkflow: Workflow {
             return
         }
 
+        if smoothingPass != nil {
+            processingLabel = smoothingMessage
+            phase = .running(smoothingMessage)
+            if let smoothed = await smoothedWithinBudget(text) {
+                text = smoothed
+            }
+            guard !Task.isCancelled else { return }
+        }
+
         processText(text)
+    }
+
+    // #163: smoothing runs after the drain and never gates the insert — an over-budget
+    // pass degrades to the raw text instead of blowing the completion deadline.
+    // A task group would await its cancelled child until the model call unwinds
+    // (LanguageModelSession.respond ignores cancellation), so the loser is detached.
+    private func smoothedWithinBudget(_ text: String) async -> String? {
+        guard let pass = smoothingPass else { return nil }
+        let budget = smoothingBudget
+        return await withCheckedContinuation { continuation in
+            let resolver = SmoothingBudgetResolver(continuation: continuation)
+            let work = Task {
+                let result = await pass(text)
+                await resolver.resolve(result)
+            }
+            Task {
+                try? await Task.sleep(for: budget)
+                work.cancel()
+                await resolver.resolve(nil)
+            }
+        }
     }
 
     private func processText(_ text: String) {
@@ -250,9 +286,23 @@ final class LiveDictationWorkflow: Workflow {
         let display = LiveTranscriptDisplay(
             finalText: session.finalText,
             volatileText: session.volatileText,
-            isSmoothingActive: isSmoothingActive,
             maxLines: maxLines
         )
         onLiveTranscriptUpdate?(display)
+    }
+}
+
+private actor SmoothingBudgetResolver {
+    private let continuation: CheckedContinuation<String?, Never>
+    private var resolved = false
+
+    init(continuation: CheckedContinuation<String?, Never>) {
+        self.continuation = continuation
+    }
+
+    func resolve(_ value: String?) {
+        guard !resolved else { return }
+        resolved = true
+        continuation.resume(returning: value)
     }
 }

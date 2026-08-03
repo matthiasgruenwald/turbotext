@@ -533,7 +533,7 @@ final class RecordingOverlayControllerTests: XCTestCase {
 
     func testStructuredLiveTranscriptDisplayIsRelayedToState() {
         let (orchestrator, _) = makeOrchestratorWithWorkflow()
-        let display = LiveTranscriptDisplay(finalText: "Fest.", volatileText: "flüchtig", isSmoothingActive: true, maxLines: 3)
+        let display = LiveTranscriptDisplay(finalText: "Fest.", volatileText: "flüchtig", maxLines: 3)
         let controller = RecordingOverlayController(
             orchestrator: orchestrator,
             modeProvider: { .screenBottomCenter },

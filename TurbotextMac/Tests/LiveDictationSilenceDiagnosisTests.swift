@@ -122,7 +122,7 @@ final class LiveDictationSilenceDiagnosisTests: XCTestCase {
     /// `withObservationTracking` und registriert sich erst nach einem Task-Hop neu —
     /// Updates in diesem Fenster können verloren gehen.
     func testEveryTranscriptUpdateReachesTheDisplay() async throws {
-        let session = LiveTranscriptionSession(smoothing: PassthroughSmoothing())
+        let session = LiveTranscriptionSession()
         let recorder = RelayFakeRecorder()
         var relayed: [String] = []
         let workflow = LiveDictationWorkflow(

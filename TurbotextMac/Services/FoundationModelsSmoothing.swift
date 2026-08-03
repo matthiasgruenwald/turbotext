@@ -1,25 +1,32 @@
 import Foundation
 import FoundationModels
+import OSLog
+
+private let smoothingLogger = Logger(subsystem: "app.turbotext.mac", category: "LiveDictation")
 
 @available(macOS 26, *)
-struct FoundationModelsSmoothing: LiveSmoothing {
+struct FoundationModelsSmoothing {
     static var isAvailable: Bool {
         SystemLanguageModel.default.availability == .available
     }
 
-    func smooth(segment: String, context: String?) async -> String? {
+    func smooth(text: String) async -> String? {
         guard Self.isAvailable else { return nil }
+        let started = ContinuousClock.now
+        let result: String?
         do {
-            let content = try await respond(to: Self.message(segment: segment, context: context))
-            let result = content.trimmingCharacters(in: .whitespacesAndNewlines)
-            return result.isEmpty ? nil : result
+            let content = try await respond(to: text)
+            let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            result = trimmed.isEmpty ? nil : trimmed
         } catch {
-            return nil
+            result = nil
         }
+        logPass(chars: text.count, since: started, smoothed: result != nil)
+        return result
     }
 
-    // A stuck on-device session would otherwise block the live transcript indefinitely;
-    // the race caps latency and degrades to the raw segment via the nil path.
+    // A stuck on-device session would otherwise block the transcript indefinitely;
+    // the race caps latency and degrades to the raw text via the nil path.
     private func respond(to message: String) async throws -> String {
         try await withThrowingTaskGroup(of: String.self) { group in
             group.addTask {
@@ -37,14 +44,20 @@ struct FoundationModelsSmoothing: LiveSmoothing {
         }
     }
 
+    // Real-dictation latency data decides whether the smoothing budget (#163)
+    // is ever won on this hardware; without this line the question is unanswerable.
+    private func logPass(chars: Int, since started: ContinuousClock.Instant, smoothed: Bool) {
+        let elapsed = started.duration(to: .now)
+        let seconds = Double(elapsed.components.seconds)
+            + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000_000
+        smoothingLogger.info(
+            "smoothing pass chars=\(chars) latency=\(String(format: "%.1f", seconds), privacy: .public)s smoothed=\(smoothed) cancelled=\(Task.isCancelled)"
+        )
+    }
+
     private static let systemInstruction = """
-        Du glaettest ein Diktat-Segment: korrigiere Satzzeichen, Gross-/Kleinschreibung und \
+        Du glaettest ein Diktat: korrigiere Satzzeichen, Gross-/Kleinschreibung und \
         offensichtliche Erkennungsfehler. Behalte Bedeutung und Wortlaut moeglichst bei. \
         Gib NUR den geglaetteten Text zurueck, keine Erklaerungen.
         """
-
-    private static func message(segment: String, context: String?) -> String {
-        guard let context, !context.isEmpty else { return segment }
-        return "Vorheriger Kontext (endet hier): \(context)\n\nSegment: \(segment)"
-    }
 }

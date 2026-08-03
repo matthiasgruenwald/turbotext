@@ -15,11 +15,10 @@ enum RecordingOverlayPhase: Equatable {
 }
 
 /// Structured live-dictate transcript shown by the pill while `.recording` (#150):
-/// finalized, smoothed text plus the volatile tail Apple Speech still rewrites.
+/// finalized engine text plus the volatile tail Apple Speech still rewrites.
 struct LiveTranscriptDisplay: Equatable {
     var finalText = ""
     var volatileText = ""
-    var isSmoothingActive = false
     var maxLines = 1
 
     var isEmpty: Bool { finalText.isEmpty && volatileText.isEmpty }

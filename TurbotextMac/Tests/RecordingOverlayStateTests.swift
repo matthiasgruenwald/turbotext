@@ -250,7 +250,7 @@ final class RecordingOverlayStateTests: XCTestCase {
     func testLiveTranscriptDisplayCarriesAllFields() {
         let recording = RecordingOverlayState(phase: .recording, anchor: anchor, levelHistory: [])
         let display = LiveTranscriptDisplay(
-            finalText: "Fester Satz.", volatileText: "schwankt", isSmoothingActive: true, maxLines: 3
+            finalText: "Fester Satz.", volatileText: "schwankt", maxLines: 3
         )
 
         let updated = recording.receivingLiveTranscript(display)
