@@ -118,6 +118,11 @@ final class SpokenRewriteWorkflow: Workflow {
                 )
                 try Task.checkCancellation()
 
+                guard !TranscriptionQualityService.isTooShortToRewrite(rawText) else {
+                    phase = .error("Keine Aufnahme erkannt.")
+                    return
+                }
+
                 // Resolved before flipping `phase`: the `didSet` fires `onPhaseChange`
                 // synchronously and `WorkflowOrchestrator` reads `processingLabel` from
                 // within that same callback, so it must already hold the new value.

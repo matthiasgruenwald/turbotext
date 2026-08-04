@@ -79,6 +79,63 @@ final class TextImprovementWorkflowTests: XCTestCase {
         XCTAssertEqual(workflow.phase, .idle, "phase must stay .idle, not be overwritten by the late-arriving improve result")
     }
 
+    /// #175: A single leftover character made the on-device model echo the system
+    /// prompt back out (which then got pasted). Such fragments must be rejected
+    /// before any rewrite model sees them.
+    func testSingleCharacterTranscriptIsRejectedBeforeImproving() async throws {
+        let audioURL = try makeTemporaryAudioFile()
+        let recorder = FakeTextImprovementRecorder(isRecording: true, duration: 1.0, recordingURL: audioURL)
+        let done = expectation(description: "workflow settled")
+        var improverCalled = false
+
+        let workflow = SpokenRewriteWorkflow.textImprovement(
+            settings: TextImprovementSettings(),
+            pipeline: SpokenWorkflowPipeline(recorder: recorder),
+            transcriber: { _, _, _, _ in "a" },
+            improver: { _, _, _ in
+                improverCalled = true
+                return RewriteStepResult(text: "ignored", completionLabel: nil)
+            }
+        )
+        workflow.onOutput = { _ in
+            XCTFail("Single-character fragments must not produce output")
+            done.fulfill()
+        }
+        workflow.onPhaseChange = { phase in
+            if case .error = phase { done.fulfill() }
+        }
+
+        workflow.stop()
+
+        await fulfillment(of: [done], timeout: 1)
+        XCTAssertFalse(improverCalled)
+        XCTAssertEqual(workflow.phase, .error("Keine Aufnahme erkannt."))
+    }
+
+    /// #175 threshold: two characters are the minimum that may reach the model.
+    func testTwoCharacterTranscriptStillReachesImprover() async throws {
+        let audioURL = try makeTemporaryAudioFile()
+        let recorder = FakeTextImprovementRecorder(isRecording: true, duration: 1.0, recordingURL: audioURL)
+        let outputReady = expectation(description: "improved output")
+        var improvedInput: String?
+
+        let workflow = SpokenRewriteWorkflow.textImprovement(
+            settings: TextImprovementSettings(),
+            pipeline: SpokenWorkflowPipeline(recorder: recorder),
+            transcriber: { _, _, _, _ in "Ja" },
+            improver: { text, _, _ in
+                improvedInput = text
+                return RewriteStepResult(text: "Ja.", completionLabel: nil)
+            }
+        )
+        workflow.onOutput = { _ in outputReady.fulfill() }
+
+        workflow.stop()
+
+        await fulfillment(of: [outputReady], timeout: 1)
+        XCTAssertEqual(improvedInput, "Ja")
+    }
+
     private func makeTemporaryAudioFile() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("text-improvement-workflow-\(UUID().uuidString).m4a")

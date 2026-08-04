@@ -3,12 +3,22 @@ import Foundation
 enum TranscriptionQualityService {
     static let minimumRecordingDuration: TimeInterval = 0.3
 
+    /// Shortest transcript the rewrite workflows will send to an LLM. Fed a single
+    /// leftover character, the on-device model echoes the system prompt back out
+    /// instead of improving anything (#175), so anything below a minimal word is
+    /// treated as "no speech" before it ever reaches a model.
+    static let minimumRewriteLength = 2
+
     static func shouldRejectRecording(duration: TimeInterval) -> Bool {
         duration < minimumRecordingDuration
     }
 
     static func cleanedTranscript(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func isTooShortToRewrite(_ text: String) -> Bool {
+        cleanedTranscript(text).count < minimumRewriteLength
     }
 
     static func isLikelyArtifact(_ text: String, recordingDuration: TimeInterval) -> Bool {
