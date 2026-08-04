@@ -247,6 +247,32 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
     // MARK: - Processing label (#128)
 
     /// Regression: `processingLabel` must already hold its resolved value by the time
+    /// #177: a stalled engine surfaces as `.timedOut` from the transcriber; the
+    /// workflow must end in the pill error state instead of staying `.running` forever.
+    @available(macOS 26, *)
+    func testTranscriptionTimeoutSurfacesAsPillError() async throws {
+        let audioURL = try makeTemporaryAudioFile(prefix: "dampf-timeout")
+        let recorder = FakeRewriteRecorder(isRecording: true, duration: 1.0, recordingURL: audioURL)
+        let workflow = SpokenRewriteWorkflow.dampfAblassen(
+            settings: DampfAblassenSettings(systemPrompt: "Bitte sachlich."),
+            pipeline: SpokenWorkflowPipeline(recorder: recorder),
+            transcriber: { _, _, _, _ in throw AppleSpeechTranscriptionError.timedOut },
+            rewriter: { text, _, _ in RewriteStepResult(text: text, completionLabel: nil) }
+        )
+        let errorPhase = expectation(description: "error phase reached")
+        workflow.onPhaseChange = { phase in
+            if case .error = phase { errorPhase.fulfill() }
+        }
+
+        workflow.stop()
+
+        await fulfillment(of: [errorPhase], timeout: 1)
+        XCTAssertEqual(
+            workflow.phase,
+            .error("Apple Gerätetranskription hat nicht rechtzeitig geantwortet – bitte erneut versuchen.")
+        )
+    }
+
     /// `onPhaseChange` fires for the rewrite `.running` phase — `WorkflowOrchestrator`
     /// reads it synchronously from within that same callback.
     func testProcessingLabelIsResolvedBeforeTheRewritePhaseChangeFires() async throws {

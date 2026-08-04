@@ -28,6 +28,18 @@ final class LiveTranscriptionSession {
     var finalText: String { collector.finalText }
     var displayText: String { collector.displayText }
 
+    private let availabilityProvider: @Sendable () async -> AppleSpeechAvailabilityStatus
+
+    /// The provider is injectable because the real asset status is flaky on some
+    /// machines (#177); tests pin it to exercise the early-check path deterministically.
+    init(
+        availabilityProvider: @escaping @Sendable () async -> AppleSpeechAvailabilityStatus = {
+            await AppleSpeechTranscriptionService.availabilityStatus
+        }
+    ) {
+        self.availabilityProvider = availabilityProvider
+    }
+
     private var analyzer: SpeechAnalyzer?
     private var transcriber: DictationTranscriber?
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
@@ -122,6 +134,17 @@ final class LiveTranscriptionSession {
 
     func start(sourceFormat: AVAudioFormat) async throws {
         guard phase == .idle else { return }
+
+        // Without assets the engine silently consumes audio and delivers zero
+        // chunks, ending in a misleading "Keine Aufnahme erkannt." (#177).
+        let availability = await availabilityProvider()
+        guard availability.isAvailable else {
+            liveLogger.error(
+                "live session refused to start, apple speech availability=\(String(describing: availability), privacy: .public)"
+            )
+            phase = .failed(AppleSpeechTranscriptionError.assetsNotInstalled.localizedDescription)
+            return
+        }
 
         let transcriber = AppleSpeechTranscriptionService.makeDictationTranscriber(frequentFinalization: true)
         let analyzer = SpeechAnalyzer(modules: [transcriber])

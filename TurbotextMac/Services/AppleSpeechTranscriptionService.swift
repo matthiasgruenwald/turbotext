@@ -1,6 +1,9 @@
 import AVFAudio
 import Foundation
+import OSLog
 import Speech
+
+private let appleSpeechLogger = Logger(subsystem: "app.turbotext.mac", category: "Transcription")
 
 enum AppleSpeechAvailabilityStatus: Equatable {
     case available
@@ -34,11 +37,105 @@ enum LocalTranscriptionUnavailableError: LocalizedError {
     }
 }
 
+/// Bounds the Apple-Gerätetranskription so a stalled engine (assets broken,
+/// audio consumed but zero results — #177) can never hang a workflow forever.
+/// Ungated so the race logic stays testable without the macOS-26 Speech APIs.
+enum TranscriptionDeadline {
+    struct Exceeded: Error, Equatable {}
+
+    /// Healthy file decoding is faster than realtime, so the recording duration
+    /// bounds a healthy run; the buffer covers engine startup overhead.
+    static func deadline(for duration: TimeInterval) -> Duration {
+        max(.seconds(20), .seconds(duration + 20))
+    }
+
+    // A task group would await its cancelled child until the stalled engine
+    // unwinds — which it never does — so the loser is detached instead,
+    // like `smoothedWithinBudget` (#163). Outer cancellation is wired through
+    // `withTaskCancellationHandler` because unstructured tasks don't inherit it.
+    static func run<T: Sendable>(
+        within deadline: Duration,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        let resolver = DeadlineResultResolver<T>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
+                let work = Task {
+                    do {
+                        await resolver.resolve(.success(try await operation()))
+                    } catch {
+                        await resolver.resolve(.failure(error))
+                    }
+                }
+                let timer = Task {
+                    do {
+                        try await Task.sleep(for: deadline)
+                    } catch {
+                        return
+                    }
+                    await resolver.expire()
+                }
+                Task {
+                    await resolver.arm(continuation: continuation, work: work, timer: timer)
+                }
+            }
+        } onCancel: {
+            Task { await resolver.cancel() }
+        }
+    }
+}
+
+private actor DeadlineResultResolver<T> {
+    private var continuation: CheckedContinuation<T, Error>?
+    private var work: Task<Void, Never>?
+    private var timer: Task<Void, Never>?
+    private var pending: Result<T, Error>?
+    private var finished = false
+
+    func arm(continuation: CheckedContinuation<T, Error>, work: Task<Void, Never>, timer: Task<Void, Never>) {
+        self.work = work
+        self.timer = timer
+        if let pending {
+            continuation.resume(with: pending)
+        } else {
+            self.continuation = continuation
+        }
+    }
+
+    func resolve(_ result: Result<T, Error>) {
+        timer?.cancel()
+        finish(result)
+    }
+
+    func expire() {
+        work?.cancel()
+        finish(.failure(TranscriptionDeadline.Exceeded()))
+    }
+
+    func cancel() {
+        work?.cancel()
+        timer?.cancel()
+        finish(.failure(CancellationError()))
+    }
+
+    private func finish(_ result: Result<T, Error>) {
+        guard !finished else { return }
+        finished = true
+        if let continuation {
+            self.continuation = nil
+            continuation.resume(with: result)
+        } else {
+            pending = result
+        }
+    }
+}
+
 @available(macOS 26, *)
 enum AppleSpeechTranscriptionError: LocalizedError, Equatable {
     case assetsNotInstalled
     case noSpeechDetected
     case cancelled
+    case timedOut
     case transcriptionFailed(String)
 
     var errorDescription: String? {
@@ -49,6 +146,8 @@ enum AppleSpeechTranscriptionError: LocalizedError, Equatable {
             return "Apple Gerätetranskription hat keinen Text erkannt."
         case .cancelled:
             return "Transkription wurde abgebrochen."
+        case .timedOut:
+            return "Apple Gerätetranskription hat nicht rechtzeitig geantwortet – bitte erneut versuchen."
         case .transcriptionFailed(let message):
             return "Apple Gerätetranskription ist fehlgeschlagen: \(message)"
         }
@@ -151,30 +250,20 @@ enum AppleSpeechTranscriptionService {
             throw AppleSpeechTranscriptionError.assetsNotInstalled
         }
 
+        let cap = TranscriptionDeadline.deadline(for: duration)
         do {
-            let audioFile = try AVAudioFile(forReading: audioURL)
-            let analyzer = SpeechAnalyzer(modules: [transcriber])
-
-            let collectingTask = Task {
-                var finalText = ""
-                for try await result in transcriber.results {
-                    let text = String(result.text.characters)
-                    if result.isFinal {
-                        let separator = finalText.isEmpty ? "" : " "
-                        finalText += separator + text
-                    } else {
-                        partialTranscriptHandler?(finalText.isEmpty ? text : finalText + " " + text)
-                    }
-                }
-                return finalText
+            return try await TranscriptionDeadline.run(within: cap) {
+                try await decode(
+                    audioURL: audioURL,
+                    transcriber: transcriber,
+                    partialTranscriptHandler: partialTranscriptHandler
+                )
             }
-
-            try await analyzer.start(inputAudioFile: audioFile, finishAfterFile: true)
-            let text = try await collectingTask.value.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else {
-                throw AppleSpeechTranscriptionError.noSpeechDetected
-            }
-            return text
+        } catch is TranscriptionDeadline.Exceeded {
+            appleSpeechLogger.error(
+                "transcription deadline exceeded cap=\(cap.components.seconds)s recording=\(String(format: "%.1f", duration), privacy: .public)s"
+            )
+            throw AppleSpeechTranscriptionError.timedOut
         } catch is CancellationError {
             throw AppleSpeechTranscriptionError.cancelled
         } catch let error as AppleSpeechTranscriptionError {
@@ -182,6 +271,44 @@ enum AppleSpeechTranscriptionService {
         } catch {
             throw AppleSpeechTranscriptionError.transcriptionFailed(error.localizedDescription)
         }
+    }
+
+    private static func decode(
+        audioURL: URL,
+        transcriber: DictationTranscriber,
+        partialTranscriptHandler: ((String) -> Void)?
+    ) async throws -> String {
+        let audioFile = try AVAudioFile(forReading: audioURL)
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+
+        async let collected = collectResults(
+            of: transcriber,
+            partialTranscriptHandler: partialTranscriptHandler
+        )
+
+        try await analyzer.start(inputAudioFile: audioFile, finishAfterFile: true)
+        let text = try await collected.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            throw AppleSpeechTranscriptionError.noSpeechDetected
+        }
+        return text
+    }
+
+    private static func collectResults(
+        of transcriber: DictationTranscriber,
+        partialTranscriptHandler: ((String) -> Void)?
+    ) async throws -> String {
+        var finalText = ""
+        for try await result in transcriber.results {
+            let text = String(result.text.characters)
+            if result.isFinal {
+                let separator = finalText.isEmpty ? "" : " "
+                finalText += separator + text
+            } else {
+                partialTranscriptHandler?(finalText.isEmpty ? text : finalText + " " + text)
+            }
+        }
+        return finalText
     }
 
     /// Baut eine Transkriptions-Closure, die direkt als `SpokenWorkflowPipeline.Transcriber`

@@ -83,6 +83,13 @@ final class AppleSpeechTranscriptionServiceTests: XCTestCase {
         )
     }
 
+    func testTimedOutHasGermanErrorDescription() {
+        XCTAssertEqual(
+            AppleSpeechTranscriptionError.timedOut.errorDescription,
+            "Apple Gerätetranskription hat nicht rechtzeitig geantwortet – bitte erneut versuchen."
+        )
+    }
+
     func testTranscriptionFailedWrapsUnderlyingMessage() {
         XCTAssertEqual(
             AppleSpeechTranscriptionError.transcriptionFailed("Sprachfehler xyz").errorDescription,

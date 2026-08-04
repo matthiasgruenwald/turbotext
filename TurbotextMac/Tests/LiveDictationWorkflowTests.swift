@@ -285,6 +285,65 @@ final class LiveDictationWorkflowTests: XCTestCase {
         XCTAssertEqual(output, "Geretteter Text", "bei Fallback-Fehler muss der gesammelte Text verwendet werden")
     }
 
+    // MARK: - Transkriptions-Deadline im Datei-Fallback (#177)
+
+    func testFallbackTimeoutKeepsCollectedText() async {
+        let session = LiveTranscriptionSession()
+        session.phase = .running
+        let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
+            continuation.yield(TranscriptionChunk(text: "Geretteter Text", isFinal: true))
+            continuation.finish(throwing: NSError(domain: "test", code: 1))
+        }
+        await session.runCollectingLoop(stream)
+
+        let (workflow, _, _) = makeWorkflow(
+            session: session,
+            fileFallbackTranscriber: { _, _ in throw AppleSpeechTranscriptionError.timedOut }
+        )
+        workflow.start()
+
+        let expectation = expectation(description: "output delivered")
+        var output: String?
+        workflow.onOutput = { text in
+            output = text
+            expectation.fulfill()
+        }
+
+        workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertEqual(output, "Geretteter Text", "nach Deadline-Ablauf des Fallbacks wird der gesammelte Text eingefügt")
+    }
+
+    func testFallbackTimeoutWithoutCollectedTextShowsNoRecordingError() async {
+        let session = LiveTranscriptionSession()
+        session.phase = .running
+        let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
+            continuation.finish(throwing: NSError(domain: "test", code: 1))
+        }
+        await session.runCollectingLoop(stream)
+
+        let (workflow, _, _) = makeWorkflow(
+            session: session,
+            fileFallbackTranscriber: { _, _ in throw AppleSpeechTranscriptionError.timedOut }
+        )
+        workflow.start()
+
+        let expectation = expectation(description: "no-recording error reached")
+        var sawNoRecordingError = false
+        workflow.onPhaseChange = { phase in
+            if case .error(let message) = phase, message == "Keine Aufnahme erkannt." {
+                sawNoRecordingError = true
+                expectation.fulfill()
+            }
+        }
+
+        workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertTrue(sawNoRecordingError)
+    }
+
     func testBergungDoesNotFireDuringDrain() async {
         let session = LiveTranscriptionSession()
         await feedSession(session, text: "Text")

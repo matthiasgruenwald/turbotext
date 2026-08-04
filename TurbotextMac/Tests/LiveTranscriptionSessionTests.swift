@@ -1,3 +1,4 @@
+import AVFAudio
 import XCTest
 @testable import Turbotext
 
@@ -211,5 +212,33 @@ final class LiveTranscriptionSessionTests: XCTestCase {
 
     func testSessionLagIsNilBeforeAnyEngineProgress() {
         XCTAssertNil(makeSession().transcriptionLag)
+    }
+
+    // MARK: - Asset-Frühcheck (#177)
+
+    private func microphoneFormat() throws -> AVAudioFormat {
+        try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1))
+    }
+
+    func testStartFailsImmediatelyWhenAssetsAreMissing() async throws {
+        let session = LiveTranscriptionSession(availabilityProvider: { .assetsNotInstalled })
+
+        try await session.start(sourceFormat: try microphoneFormat())
+
+        XCTAssertEqual(
+            session.phase,
+            .failed("Deutsche Sprachassets für die Gerätetranskription sind nicht installiert.")
+        )
+    }
+
+    func testStartFailsImmediatelyWhenAssetsAreStillDownloading() async throws {
+        let session = LiveTranscriptionSession(availabilityProvider: { .assetsDownloading })
+
+        try await session.start(sourceFormat: try microphoneFormat())
+
+        XCTAssertEqual(
+            session.phase,
+            .failed("Deutsche Sprachassets für die Gerätetranskription sind nicht installiert.")
+        )
     }
 }
