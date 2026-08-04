@@ -9,6 +9,11 @@ enum TranscriptionQualityService {
     /// treated as "no speech" before it ever reaches a model.
     static let minimumRewriteLength = 2
 
+    /// Longest transcript the rewrite workflows insert raw instead of sending
+    /// to an LLM (#173): fed 2–4 characters, the on-device model hallucinates
+    /// or echoes the system prompt, so such fragments are pasted untouched.
+    static let rawInsertionMaxLength = 4
+
     static func shouldRejectRecording(duration: TimeInterval) -> Bool {
         duration < minimumRecordingDuration
     }
@@ -19,6 +24,10 @@ enum TranscriptionQualityService {
 
     static func isTooShortToRewrite(_ text: String) -> Bool {
         cleanedTranscript(text).count < minimumRewriteLength
+    }
+
+    static func isShortEnoughForRawInsertion(_ text: String) -> Bool {
+        cleanedTranscript(text).count <= rawInsertionMaxLength
     }
 
     static func isLikelyArtifact(_ text: String, recordingDuration: TimeInterval) -> Bool {

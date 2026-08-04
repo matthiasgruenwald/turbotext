@@ -112,8 +112,41 @@ final class TextImprovementWorkflowTests: XCTestCase {
         XCTAssertEqual(workflow.phase, .error("Keine Aufnahme erkannt."))
     }
 
-    /// #175 threshold: two characters are the minimum that may reach the model.
-    func testTwoCharacterTranscriptStillReachesImprover() async throws {
+    /// #173: empty transcripts never reach the rewrite step — the pipeline
+    /// rejects them as artifacts and the workflow reports "no recording".
+    func testEmptyTranscriptIsRejectedBeforeImproving() async throws {
+        let audioURL = try makeTemporaryAudioFile()
+        let recorder = FakeTextImprovementRecorder(isRecording: true, duration: 1.0, recordingURL: audioURL)
+        let done = expectation(description: "workflow settled")
+        var improverCalled = false
+
+        let workflow = SpokenRewriteWorkflow.textImprovement(
+            settings: TextImprovementSettings(),
+            pipeline: SpokenWorkflowPipeline(recorder: recorder),
+            transcriber: { _, _, _, _ in "" },
+            improver: { _, _, _ in
+                improverCalled = true
+                return RewriteStepResult(text: "ignored", completionLabel: nil)
+            }
+        )
+        workflow.onOutput = { _ in
+            XCTFail("Empty transcripts must not produce output")
+            done.fulfill()
+        }
+        workflow.onPhaseChange = { phase in
+            if case .error = phase { done.fulfill() }
+        }
+
+        workflow.stop()
+
+        await fulfillment(of: [done], timeout: 1)
+        XCTAssertFalse(improverCalled)
+        XCTAssertEqual(workflow.phase, .error("Keine Aufnahme erkannt."))
+    }
+
+    /// #173 threshold: five characters are the minimum that may reach the model;
+    /// 2–4 characters are inserted raw (#173), below two is rejected (#175).
+    func testFiveCharacterTranscriptStillReachesImprover() async throws {
         let audioURL = try makeTemporaryAudioFile()
         let recorder = FakeTextImprovementRecorder(isRecording: true, duration: 1.0, recordingURL: audioURL)
         let outputReady = expectation(description: "improved output")
@@ -122,10 +155,10 @@ final class TextImprovementWorkflowTests: XCTestCase {
         let workflow = SpokenRewriteWorkflow.textImprovement(
             settings: TextImprovementSettings(),
             pipeline: SpokenWorkflowPipeline(recorder: recorder),
-            transcriber: { _, _, _, _ in "Ja" },
+            transcriber: { _, _, _, _ in "Danke" },
             improver: { text, _, _ in
                 improvedInput = text
-                return RewriteStepResult(text: "Ja.", completionLabel: nil)
+                return RewriteStepResult(text: "Danke.", completionLabel: nil)
             }
         )
         workflow.onOutput = { _ in outputReady.fulfill() }
@@ -133,7 +166,40 @@ final class TextImprovementWorkflowTests: XCTestCase {
         workflow.stop()
 
         await fulfillment(of: [outputReady], timeout: 1)
-        XCTAssertEqual(improvedInput, "Ja")
+        XCTAssertEqual(improvedInput, "Danke")
+    }
+
+    /// #173: 2–4-character transcripts never made it through the LLM without
+    /// prompt-echo hallucinations, so they are inserted raw and skip the
+    /// improver entirely.
+    func testShortTranscriptIsInsertedRawWithoutImproving() async throws {
+        let audioURL = try makeTemporaryAudioFile()
+        let recorder = FakeTextImprovementRecorder(isRecording: true, duration: 1.0, recordingURL: audioURL)
+        let outputReady = expectation(description: "raw output")
+        var improverCalled = false
+        var output: String?
+
+        let workflow = SpokenRewriteWorkflow.textImprovement(
+            settings: TextImprovementSettings(),
+            pipeline: SpokenWorkflowPipeline(recorder: recorder),
+            transcriber: { _, _, _, _ in " Nein " },
+            improver: { _, _, _ in
+                improverCalled = true
+                return RewriteStepResult(text: "ignored", completionLabel: nil)
+            }
+        )
+        workflow.onOutput = { text in
+            output = text
+            outputReady.fulfill()
+        }
+
+        workflow.stop()
+
+        await fulfillment(of: [outputReady], timeout: 1)
+        XCTAssertFalse(improverCalled)
+        XCTAssertEqual(output, "Nein")
+        XCTAssertEqual(workflow.phase, .done("Nein"))
+        XCTAssertEqual(workflow.completionLabel, "Sehr kurze Eingabe – ohne Nachbearbeitung eingefügt")
     }
 
     private func makeTemporaryAudioFile() throws -> URL {

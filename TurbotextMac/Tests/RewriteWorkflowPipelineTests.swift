@@ -182,6 +182,68 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
         XCTAssertEqual(workflow.phase, .idle, "phase must stay .idle, not be overwritten by the late-arriving rewrite result")
     }
 
+    // MARK: - Raw insertion of very short transcripts (#173)
+
+    func testDampfAblassenShortTranscriptSkipsRewriterAndInsertsRaw() async throws {
+        let audioURL = try makeTemporaryAudioFile(prefix: "dampf-raw")
+        let recorder = FakeRewriteRecorder(isRecording: true, duration: 1.0, recordingURL: audioURL)
+        let outputReady = expectation(description: "raw output")
+        var rewriterCalled = false
+        var output: String?
+
+        let workflow = SpokenRewriteWorkflow.dampfAblassen(
+            settings: DampfAblassenSettings(systemPrompt: "Bitte sachlich."),
+            pipeline: SpokenWorkflowPipeline(recorder: recorder),
+            transcriber: { _, _, _, _ in "Mist" },
+            rewriter: { _, _, _ in
+                rewriterCalled = true
+                return RewriteStepResult(text: "ignored", completionLabel: nil)
+            }
+        )
+        workflow.onOutput = { text in
+            output = text
+            outputReady.fulfill()
+        }
+
+        workflow.stop()
+
+        await fulfillment(of: [outputReady], timeout: 1)
+        XCTAssertFalse(rewriterCalled)
+        XCTAssertEqual(output, "Mist")
+        XCTAssertEqual(workflow.phase, .done("Mist"))
+        XCTAssertEqual(workflow.completionLabel, "Sehr kurze Eingabe – ohne Nachbearbeitung eingefügt")
+    }
+
+    func testEmojiShortTranscriptSkipsRewriterAndInsertsRaw() async throws {
+        let audioURL = try makeTemporaryAudioFile(prefix: "emoji-raw")
+        let recorder = FakeRewriteRecorder(isRecording: true, duration: 1.0, recordingURL: audioURL)
+        let outputReady = expectation(description: "raw output")
+        var rewriterCalled = false
+        var output: String?
+
+        let workflow = SpokenRewriteWorkflow.emojiText(
+            settings: EmojiTextSettings(),
+            pipeline: SpokenWorkflowPipeline(recorder: recorder),
+            transcriber: { _, _, _, _ in "Ok" },
+            rewriter: { _, _, _ in
+                rewriterCalled = true
+                return RewriteStepResult(text: "ignored", completionLabel: nil)
+            }
+        )
+        workflow.onOutput = { text in
+            output = text
+            outputReady.fulfill()
+        }
+
+        workflow.stop()
+
+        await fulfillment(of: [outputReady], timeout: 1)
+        XCTAssertFalse(rewriterCalled)
+        XCTAssertEqual(output, "Ok")
+        XCTAssertEqual(workflow.phase, .done("Ok"))
+        XCTAssertEqual(workflow.completionLabel, "Sehr kurze Eingabe – ohne Nachbearbeitung eingefügt")
+    }
+
     // MARK: - Processing label (#128)
 
     /// Regression: `processingLabel` must already hold its resolved value by the time

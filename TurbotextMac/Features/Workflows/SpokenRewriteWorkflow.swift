@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+import OSLog
+
+private let rewriteLogger = Logger(subsystem: "app.turbotext.mac", category: "Rewrite")
 
 /// Shared lifecycle for the "record -> transcribe -> rewrite" workflows
 /// (Turbotext+, DampfAblassen, EmojiText — see the factory methods below).
@@ -118,8 +121,15 @@ final class SpokenRewriteWorkflow: Workflow {
                 )
                 try Task.checkCancellation()
 
+                rewriteLogger.info("Rewrite decision pending: recording \(recording.duration, format: .fixed(precision: 2))s, transcript \(rawText.count) chars")
+
                 guard !TranscriptionQualityService.isTooShortToRewrite(rawText) else {
                     phase = .error("Keine Aufnahme erkannt.")
+                    return
+                }
+
+                guard !TranscriptionQualityService.isShortEnoughForRawInsertion(rawText) else {
+                    finishWithRawInsertion(rawText)
                     return
                 }
 
@@ -147,6 +157,17 @@ final class SpokenRewriteWorkflow: Workflow {
                 phase = .error(error.localizedDescription)
             }
         }
+    }
+
+    /// `completionLabel` is set before `phase` so the orchestrator already sees
+    /// it when the `.done` phase change fires `onPhaseChange` (#128). The user
+    /// did not choose to skip the LLM here (unlike the consent raw path), so the
+    /// label explains it (#173).
+    private func finishWithRawInsertion(_ rawText: String) {
+        let cleanedRaw = TranscriptionQualityService.cleanedTranscript(rawText)
+        completionLabel = "Sehr kurze Eingabe – ohne Nachbearbeitung eingefügt"
+        phase = .done(cleanedRaw)
+        onOutput?(cleanedRaw)
     }
 }
 

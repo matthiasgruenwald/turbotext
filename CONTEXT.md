@@ -30,6 +30,8 @@ Architekturentscheidungen (ADRs) liegen in `docs/adr/`, nicht in dieser Datei.
 
 **Sprach-Workflow** — Besteht aus einer Transkriptionsstufe und optionalen, davon getrennten Nachbearbeitungsstufen. Die Transkriptions-Backend-Wahl gilt einheitlich für alle Sprach-Workflows.
 
+**Kurzinput-Roh-Einfügung** — Pfad in allen drei Rewrite-Workflows (Turbotext+, DampfAblassen, EmojiText) für sehr kurze Transkripte: Unter 2 Zeichen (nach Reinigung) bleibt die Ablehnung „Keine Aufnahme erkannt."; 2–4 Zeichen werden ungeglättet als Rohtext eingefügt, ohne LLM-Aufruf, ohne Consent-Dialog und offline-fähig, weil das On-Device-Modell auf solchen Fragmenten halluziniert (Prompt-Echo) und 8–14 s Latenz kostet; ab 5 Zeichen läuft der reguläre Rewrite-Pfad. Das Completion-Label „Sehr kurze Eingabe – ohne Nachbearbeitung eingefügt" macht den LLM-Übersprung sichtbar, den die Nutzerin hier — anders als beim Consent-Rohpfad — nicht selbst gewählt hat. Schwellen: `TranscriptionQualityService.minimumRewriteLength = 2`, `rawInsertionMaxLength = 4`. Siehe [ADR 0009](docs/adr/0009-kurzinput-roh-einfuegung.md).
+
 **GroqTranscriptionProvider** — Kapselt Groq-first-mit-OpenAI-Fallback-Routing sowie die intern gehaltenen `GroqQuotaManager`/`GroqFallbackManager`. `AppState` hält genau eine Instanz; Views lesen Quota/Fallback-Status ausschließlich über die berechnete Eigenschaft `quotaUIStatus` (statt die beiden Manager direkt anzusprechen).
 
 **Groq-Kontingent** — Tägliches Free-Tier-Budget bei Groq (Audio-Sekunden). Kommt aus HTTP-Response-Header `x-ratelimit-remaining-audio-seconds`; `x-ratelimit-reset-audio` ist optional und wird von Groq offenbar nur kurz vor Limit-Erreichen mitgeschickt. Wird persistent in `UserDefaults` via `GroqQuotaManager` gespeichert.
