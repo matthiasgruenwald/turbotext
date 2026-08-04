@@ -221,24 +221,50 @@ final class LiveTranscriptionSessionTests: XCTestCase {
     }
 
     func testStartFailsImmediatelyWhenAssetsAreMissing() async throws {
-        let session = LiveTranscriptionSession(availabilityProvider: { .assetsNotInstalled })
+        var installationStarted = false
+        let session = LiveTranscriptionSession(
+            availabilityProvider: { .assetsNotInstalled },
+            startAssetInstallation: { installationStarted = true }
+        )
 
         try await session.start(sourceFormat: try microphoneFormat())
 
         XCTAssertEqual(
             session.phase,
-            .failed("Deutsche Sprachassets für die Gerätetranskription sind nicht installiert.")
+            .failed("Sprachassets werden geladen – bitte gleich erneut versuchen.")
         )
+        XCTAssertTrue(installationStarted)
     }
 
     func testStartFailsImmediatelyWhenAssetsAreStillDownloading() async throws {
-        let session = LiveTranscriptionSession(availabilityProvider: { .assetsDownloading })
+        var installationStarted = false
+        let session = LiveTranscriptionSession(
+            availabilityProvider: { .assetsDownloading },
+            startAssetInstallation: { installationStarted = true }
+        )
 
         try await session.start(sourceFormat: try microphoneFormat())
 
         XCTAssertEqual(
             session.phase,
-            .failed("Deutsche Sprachassets für die Gerätetranskription sind nicht installiert.")
+            .failed("Sprachassets werden geladen – bitte gleich erneut versuchen.")
         )
+        XCTAssertTrue(installationStarted)
+    }
+
+    func testStartRefusesWithoutInstallationKickOffWhenGermanAssetsAreUnsupported() async throws {
+        var installationStarted = false
+        let session = LiveTranscriptionSession(
+            availabilityProvider: { .germanAssetsUnsupported },
+            startAssetInstallation: { installationStarted = true }
+        )
+
+        try await session.start(sourceFormat: try microphoneFormat())
+
+        XCTAssertEqual(
+            session.phase,
+            .failed("Deutsche Sprachassets für Apple-Gerätetranskription werden auf diesem Mac nicht unterstützt.")
+        )
+        XCTAssertFalse(installationStarted)
     }
 }

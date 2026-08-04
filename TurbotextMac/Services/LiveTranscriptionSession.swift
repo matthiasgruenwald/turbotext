@@ -29,15 +29,20 @@ final class LiveTranscriptionSession {
     var displayText: String { collector.displayText }
 
     private let availabilityProvider: @Sendable () async -> AppleSpeechAvailabilityStatus
+    private let startAssetInstallation: @Sendable () -> Void
 
     /// The provider is injectable because the real asset status is flaky on some
     /// machines (#177); tests pin it to exercise the early-check path deterministically.
+    /// `startAssetInstallation` is the Sprachasset-Sicherstellung kick-off (#178) and is
+    /// wired to `AppState` in production so the session itself stays free of app state.
     init(
         availabilityProvider: @escaping @Sendable () async -> AppleSpeechAvailabilityStatus = {
             await AppleSpeechTranscriptionService.availabilityStatus
-        }
+        },
+        startAssetInstallation: @escaping @Sendable () -> Void = {}
     ) {
         self.availabilityProvider = availabilityProvider
+        self.startAssetInstallation = startAssetInstallation
     }
 
     private var analyzer: SpeechAnalyzer?
@@ -142,7 +147,10 @@ final class LiveTranscriptionSession {
             liveLogger.error(
                 "live session refused to start, apple speech availability=\(String(describing: availability), privacy: .public)"
             )
-            phase = .failed(AppleSpeechTranscriptionError.assetsNotInstalled.localizedDescription)
+            if availability.isAssetInstallationPossible {
+                startAssetInstallation()
+            }
+            phase = .failed(AppleSpeechUnavailableHint.refusalText(for: availability))
             return
         }
 

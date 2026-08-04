@@ -44,7 +44,8 @@ final class AppleSpeechAvailabilityStateTests: XCTestCase {
                     osSupportsAppleSpeech: true,
                     assetStatus: assetStatus
                 )
-            }
+            },
+            reserveAssets: {}
         )
 
         state.installAssets()
@@ -64,7 +65,8 @@ final class AppleSpeechAvailabilityStateTests: XCTestCase {
             checkStatus: { .assetsNotInstalled },
             requestAssetInstallation: {
                 throw AppleSpeechAssetInstallationError.requestUnavailable
-            }
+            },
+            reserveAssets: {}
         )
 
         state.installAssets()
@@ -78,5 +80,145 @@ final class AppleSpeechAvailabilityStateTests: XCTestCase {
             "Die Installation der Apple-Sprachassets ist fehlgeschlagen: Die Apple-Sprachassets können auf diesem Mac derzeit nicht zur Installation reserviert werden."
         )
         XCTAssertEqual(state.status, .assetsNotInstalled)
+    }
+
+    // MARK: - Sprachasset-Sicherstellung (#178)
+
+    func testLaunchSecuringReservesAssetsBeforeCheckingStatus() async {
+        var events: [String] = []
+        let state = AppleSpeechAvailabilityState(
+            checkStatus: {
+                events.append("status-check")
+                return .available
+            },
+            reserveAssets: { events.append("reserve") }
+        )
+
+        state.secureAssetsAtLaunch()
+
+        for _ in 0..<50 where state.status != .available {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(events, ["reserve", "status-check"])
+        XCTAssertEqual(state.status, .available)
+    }
+
+    func testLaunchSecuringStartsInstallationWhenAssetsAreStillMissing() async {
+        var installationRequested = false
+        let state = AppleSpeechAvailabilityState(
+            checkStatus: { .assetsNotInstalled },
+            requestAssetInstallation: {
+                installationRequested = true
+                return .available
+            },
+            reserveAssets: {}
+        )
+
+        state.secureAssetsAtLaunch()
+
+        for _ in 0..<50 where state.status != .available {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertTrue(installationRequested)
+        XCTAssertEqual(state.status, .available)
+    }
+
+    func testLaunchSecuringSkipsInstallationWhenAssetsAreAvailable() async {
+        var installationRequested = false
+        let state = AppleSpeechAvailabilityState(
+            checkStatus: { .available },
+            requestAssetInstallation: {
+                installationRequested = true
+                return .available
+            },
+            reserveAssets: {}
+        )
+
+        state.secureAssetsAtLaunch()
+
+        for _ in 0..<50 where state.status != .available {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertFalse(installationRequested)
+    }
+
+    func testLaunchSecuringDoesNotInstallWhenGermanAssetsAreUnsupported() async {
+        var installationRequested = false
+        let state = AppleSpeechAvailabilityState(
+            checkStatus: { .germanAssetsUnsupported },
+            requestAssetInstallation: {
+                installationRequested = true
+                return .available
+            },
+            reserveAssets: {}
+        )
+
+        state.secureAssetsAtLaunch()
+
+        for _ in 0..<50 where state.status != .germanAssetsUnsupported {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertFalse(installationRequested)
+    }
+
+    func testOnDemandSecuringRefreshesStatusBeforeInstallation() async {
+        var installationRequested = false
+        let state = AppleSpeechAvailabilityState(
+            checkStatus: { .assetsNotInstalled },
+            requestAssetInstallation: {
+                installationRequested = true
+                return .available
+            },
+            reserveAssets: {}
+        )
+
+        state.secureAssetsOnDemand()
+
+        for _ in 0..<50 where state.status != .available {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertTrue(installationRequested)
+    }
+
+    func testSuccessfulInstallationReservesAssetsAgain() async {
+        var reserveCount = 0
+        let state = AppleSpeechAvailabilityState(
+            checkStatus: { .assetsNotInstalled },
+            requestAssetInstallation: { .available },
+            reserveAssets: { reserveCount += 1 }
+        )
+
+        state.installAssets()
+
+        for _ in 0..<50 where reserveCount < 1 {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(reserveCount, 1)
+        XCTAssertEqual(state.status, .available)
+    }
+
+    func testFailedInstallationDoesNotReserveAssets() async {
+        var reserveCount = 0
+        let state = AppleSpeechAvailabilityState(
+            checkStatus: { .assetsNotInstalled },
+            requestAssetInstallation: {
+                throw AppleSpeechAssetInstallationError.requestUnavailable
+            },
+            reserveAssets: { reserveCount += 1 }
+        )
+
+        state.installAssets()
+
+        for _ in 0..<50 where state.isInstallingAssets || state.assetInstallationErrorText == nil {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(reserveCount, 0)
     }
 }

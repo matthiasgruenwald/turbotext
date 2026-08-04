@@ -204,7 +204,7 @@ final class AppState {
         microphoneState.start()
         networkPingService.start()
         checkGroqQuotaIfNeeded()
-        appleSpeechAvailabilityState.refresh()
+        appleSpeechAvailabilityState.secureAssetsAtLaunch()
     }
 
     func checkGroqQuotaIfNeeded() {
@@ -256,6 +256,12 @@ final class AppState {
 
     func installAppleSpeechAssets() {
         appleSpeechAvailabilityState.installAssets()
+    }
+
+    /// Sprachasset-Sicherstellung (#178): Kick-off aus dem Frühcheck der Live-Session,
+    /// wenn die Diktat-Taste ohne bereite Sprachassets gedrückt wurde.
+    func secureAppleSpeechAssetsOnDemand() {
+        appleSpeechAvailabilityState.secureAssetsOnDemand()
     }
 
     var transcriptionModeStatus: TranscriptionModeStatus {
@@ -421,7 +427,9 @@ final class AppState {
             smoothingPass = { text in await smoothing.smooth(text: text) }
             smoothingMessage = "Glättet online mit \(smoothing.predictedProvider.displayName) ..."
         }
-        let session = LiveTranscriptionSession()
+        let session = LiveTranscriptionSession(startAssetInstallation: { [weak self] in
+            Task { @MainActor in self?.secureAppleSpeechAssetsOnDemand() }
+        })
         let orchestrator = workflowLifecycle.orchestrator
         return LiveDictationWorkflow(
             type: .transcription,

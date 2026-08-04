@@ -24,6 +24,11 @@ enum AppleSpeechAvailability {
         return try await AppleSpeechTranscriptionService.installAssets()
     }
 
+    static func reserveAssets() async {
+        guard #available(macOS 26, *) else { return }
+        await AppleSpeechTranscriptionService.reserveAssets()
+    }
+
     static func makeTranscriber(
         partialTranscriptHandler: ((String) -> Void)? = nil
     ) -> SpokenWorkflowPipeline.Transcriber? {

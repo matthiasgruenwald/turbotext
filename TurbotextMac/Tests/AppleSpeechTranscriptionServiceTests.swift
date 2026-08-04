@@ -72,8 +72,15 @@ final class AppleSpeechTranscriptionServiceTests: XCTestCase {
     func testAssetsNotInstalledHasGermanErrorDescription() {
         XCTAssertEqual(
             AppleSpeechTranscriptionError.assetsNotInstalled.errorDescription,
-            "Deutsche Sprachassets für die Gerätetranskription sind nicht installiert."
+            "Sprachassets werden geladen – bitte gleich erneut versuchen."
         )
+    }
+
+    /// The launch reservation (#178) must never crash the app: `AssetInventory.reserve`
+    /// throws when the locale is unsupported and reports an existing reservation — both
+    /// outcomes are absorbed inside `reserveAssets()`.
+    func testReserveAssetsAbsorbsEveryOutcomeWithoutThrowing() async {
+        await AppleSpeechTranscriptionService.reserveAssets()
     }
 
     func testCancelledHasGermanErrorDescription() {

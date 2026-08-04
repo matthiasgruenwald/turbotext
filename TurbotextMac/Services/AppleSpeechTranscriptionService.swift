@@ -4,6 +4,7 @@ import OSLog
 import Speech
 
 private let appleSpeechLogger = Logger(subsystem: "app.turbotext.mac", category: "Transcription")
+private let assetReservationLogger = Logger(subsystem: "app.turbotext.mac", category: "LiveDictation")
 
 enum AppleSpeechAvailabilityStatus: Equatable {
     case available
@@ -13,6 +14,16 @@ enum AppleSpeechAvailabilityStatus: Equatable {
     case germanAssetsUnsupported
 
     var isAvailable: Bool { self == .available }
+
+    /// Sprachasset-Sicherstellung (#178): Bei `.assetsNotInstalled` kann Turbotext die
+    /// Installation anstoßen, bei `.assetsDownloading` läuft sie bereits — im Gegensatz
+    /// zu den unsupported-Zuständen, in denen kein installierbares de-Asset existiert.
+    var isAssetInstallationPossible: Bool {
+        switch self {
+        case .assetsNotInstalled, .assetsDownloading: return true
+        case .available, .unsupportedOS, .germanAssetsUnsupported: return false
+        }
+    }
 }
 
 enum AppleSpeechAssetInstallationError: LocalizedError, Equatable {
@@ -141,7 +152,7 @@ enum AppleSpeechTranscriptionError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .assetsNotInstalled:
-            return "Deutsche Sprachassets für die Gerätetranskription sind nicht installiert."
+            return AppleSpeechUnavailableHint.assetsLoadingMessage
         case .noSpeechDetected:
             return "Apple Gerätetranskription hat keinen Text erkannt."
         case .cancelled:
@@ -231,6 +242,22 @@ enum AppleSpeechTranscriptionService {
         }
         try await request.downloadAndInstall()
         return await availabilityStatus
+    }
+
+    /// Sprachasset-Sicherstellung (#178): Ohne Reservierung meldet die API für das
+    /// Cryptex-Modell `.supported`, obwohl die Datei auf Disk liegt, und der Zustand
+    /// flackert. Die Reservierung hebt ihn auf `.installed` und hält ihn dort; sie ist
+    /// an die laufende App gebunden und muss pro Start erneut erfolgen. Wirft nie —
+    /// ein Fehlschlag darf den App-Start nicht beenden.
+    static func reserveAssets() async {
+        do {
+            let result = try await AssetInventory.reserve(locale: locale)
+            assetReservationLogger.info("de-DE asset reservation succeeded (result=\(result))")
+        } catch {
+            assetReservationLogger.error(
+                "de-DE asset reservation failed: \(error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 
     /// Transkribiert eine Audiodatei lokal auf dem Gerät. `customTerms` und
