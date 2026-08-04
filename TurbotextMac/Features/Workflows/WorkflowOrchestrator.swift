@@ -142,8 +142,8 @@ final class WorkflowOrchestrator {
         bergungMessage = nil
         pasteFailureMessage = nil
 
-        workflow.onOutput = { [weak self] text in
-            self?.handleWorkflowOutput(text)
+        workflow.onOutput = { [weak self, weak workflow] text in
+            self?.handleWorkflowOutput(text, workflow: workflow)
         }
         workflow.onPhaseChange = { [weak self, weak workflow] phase in
             guard let self, let workflow else { return }
@@ -170,8 +170,8 @@ final class WorkflowOrchestrator {
 
     // MARK: - Output / Paste
 
-    private func handleWorkflowOutput(_ text: String) {
-        pasteAtCursor(text, target: activePasteTarget)
+    private func handleWorkflowOutput(_ text: String, workflow: (any Workflow)?) {
+        pasteAtCursor(text, target: activePasteTarget, originatingWorkflow: workflow)
         onWorkflowOutput?(text)
         onWorkflowFinished?(.outputDelivered(source: activeLaunchSource))
         scheduleWorkflowCleanup(after: 1.05)
@@ -179,7 +179,7 @@ final class WorkflowOrchestrator {
 
     /// Copies the text, restores focus when needed, then simulates Cmd+V.
     /// The text intentionally remains on the clipboard as a fallback if paste is blocked.
-    func pasteAtCursor(_ text: String, target: PasteTarget?) {
+    func pasteAtCursor(_ text: String, target: PasteTarget?, originatingWorkflow: (any Workflow)? = nil) {
         writeToPasteboard(text)
         onWillPaste?()
 
@@ -198,6 +198,7 @@ final class WorkflowOrchestrator {
         attemptPasteTrusted(
             target: target,
             workflowType: activeWorkflow?.type,
+            originatingWorkflowID: originatingWorkflow.map(ObjectIdentifier.init),
             fastAttemptsRemaining: Self.pasteRetryInitialAttempts,
             slowAttemptsRemaining: Self.pasteRetrySlowAttempts
         )
@@ -206,6 +207,7 @@ final class WorkflowOrchestrator {
     private func attemptPasteTrusted(
         target: PasteTarget?,
         workflowType: WorkflowType?,
+        originatingWorkflowID: ObjectIdentifier?,
         fastAttemptsRemaining: Int,
         slowAttemptsRemaining: Int
     ) {
@@ -226,7 +228,9 @@ final class WorkflowOrchestrator {
         onPasteTargetActivationNeeded?(target)
 
         guard let step = nextRetryStep(fastRemaining: fastAttemptsRemaining, slowRemaining: slowAttemptsRemaining) else {
-            reportPasteRetryExhausted(target: target, workflowType: workflowType)
+            reportPasteRetryExhausted(
+                target: target, workflowType: workflowType, originatingWorkflowID: originatingWorkflowID
+            )
             return
         }
 
@@ -234,6 +238,7 @@ final class WorkflowOrchestrator {
             self?.attemptPasteTrusted(
                 target: target,
                 workflowType: workflowType,
+                originatingWorkflowID: originatingWorkflowID,
                 fastAttemptsRemaining: step.fastRemaining,
                 slowAttemptsRemaining: step.slowRemaining
             )
@@ -262,7 +267,21 @@ final class WorkflowOrchestrator {
         return nil
     }
 
-    private func reportPasteRetryExhausted(target: PasteTarget, workflowType: WorkflowType?) {
+    private func reportPasteRetryExhausted(
+        target: PasteTarget,
+        workflowType: WorkflowType?,
+        originatingWorkflowID: ObjectIdentifier?
+    ) {
+        // The ~1.5s retry window outlives the 1.05s post-output cleanup, so a `nil`
+        // `activeWorkflow` is the normal, expected case here — but a *different* live
+        // workflow means the user already started a new run; signaling then would show
+        // a stale error for a workflow they have left behind (#176).
+        if let originatingWorkflowID,
+           let activeWorkflow,
+           ObjectIdentifier(activeWorkflow) != originatingWorkflowID {
+            pasteLogger.debug("Paste retry exhaustion ignored: a newer workflow replaced the originating one")
+            return
+        }
         pasteLogger.error(
             "Paste retry exhausted: \(target.bundleIdentifier ?? "<none>", privacy: .public) (pid \(target.processIdentifier)) never became frontmost; text stays on the clipboard"
         )

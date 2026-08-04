@@ -86,10 +86,7 @@ final class RecordingOverlayController {
 
     /// Exposed for tests: applies one polling step without a real `Timer`.
     func tick() {
-        if let message = orchestrator.takePasteFailureMessage() {
-            handlePasteFailure(message)
-            return
-        }
+        if consumePendingPasteFailure() { return }
 
         guard modeProvider() != .off else {
             applyHiddenAndReset()
@@ -135,6 +132,15 @@ final class RecordingOverlayController {
 
         guard state != previousState else { return }
         render()
+    }
+
+    /// Consumes a pending paste failure before any other polling step (#176) — even with
+    /// the pill disabled, so the Dock-bounce fallback is never skipped. Returns whether
+    /// the tick was handled by the failure path.
+    private func consumePendingPasteFailure() -> Bool {
+        guard let message = orchestrator.takePasteFailureMessage() else { return false }
+        handlePasteFailure(message)
+        return true
     }
 
     /// A paste whose retry window ran out (#176): surface the persistent pill error when

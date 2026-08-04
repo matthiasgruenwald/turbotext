@@ -425,6 +425,33 @@ final class WorkflowOrchestratorTests: XCTestCase {
         XCTAssertEqual(orchestrator.menuBarStatus, .error(.transcription))
     }
 
+    func testPasteExhaustionIsIgnoredWhenANewerWorkflowTookOver() {
+        let target = makeFakePasteTarget(pid: 99)
+        let box = WorkflowBox()
+        let orchestrator = WorkflowOrchestrator(
+            workflowFactory: { type, _ in
+                let workflow = FakeWorkflow(type: type)
+                box.workflows.append(workflow)
+                return workflow
+            },
+            pasteAction: {},
+            trustCheck: { _ in true },
+            frontmostPidProvider: { 1 },
+            writeToPasteboard: { _ in }
+        )
+
+        orchestrator.start(.transcription, source: .manual, pasteTarget: target)
+        box.workflows[0].emitOutput("first")
+        orchestrator.start(.transcription, source: .manual, pasteTarget: target)
+
+        let windowElapsed = expectation(description: "first retry window elapsed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { windowElapsed.fulfill() }
+        wait(for: [windowElapsed], timeout: 4)
+
+        XCTAssertNil(orchestrator.pasteFailureMessage, "the replaced workflow's retry chain must not signal a failure")
+        XCTAssertEqual(orchestrator.menuBarStatus, .recording(.transcription))
+    }
+
     func testStartClearsPendingPasteFailureMessage() {
         let target = makeFakePasteTarget(pid: 99)
         let orchestrator = WorkflowOrchestrator(

@@ -164,10 +164,6 @@ struct RecordingOverlayState: Equatable {
         case .error:
             switch phase {
             case .hidden:
-                // Only a known error message may surface a pill out of `.hidden`; a
-                // message-less `.error` (e.g. the paste-retry exhaustion status #176,
-                // which the pill already acknowledged via `.pasteError`) would otherwise
-                // reappear as an unexplained error right after being dismissed.
                 guard let message = resolveErrorMessage() else { return self }
                 return RecordingOverlayState(
                     phase: .error, anchor: resolveAnchor(), levelHistory: [], errorMessage: message
