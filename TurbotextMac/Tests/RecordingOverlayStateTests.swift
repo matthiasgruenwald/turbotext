@@ -395,6 +395,85 @@ final class RecordingOverlayStateTests: XCTestCase {
         XCTAssertEqual(recovered.anchor, mouseAnchor)
     }
 
+    // MARK: - Paste error (#176)
+
+    func testPasteErrorEntersFromCompletionKeepingTheAnchor() {
+        let completion = RecordingOverlayState(
+            phase: .completion, anchor: anchor, levelHistory: [], completionLabel: "fertig"
+        )
+
+        let pasteError = completion.enteringPasteError(message: "Einfügen fehlgeschlagen") { self.mouseAnchor }
+
+        XCTAssertEqual(pasteError.phase, .pasteError)
+        XCTAssertEqual(pasteError.anchor, anchor)
+        XCTAssertEqual(pasteError.errorMessage, "Einfügen fehlgeschlagen")
+    }
+
+    func testPasteErrorEntersFromHiddenResolvingAnAnchor() {
+        var resolveCount = 0
+        let pasteError = RecordingOverlayState.hidden.enteringPasteError(message: "boom") {
+            resolveCount += 1
+            return self.anchor
+        }
+
+        XCTAssertEqual(pasteError.phase, .pasteError)
+        XCTAssertEqual(pasteError.anchor, anchor)
+        XCTAssertEqual(resolveCount, 1)
+    }
+
+    func testPasteErrorNeverAutoDismisses() {
+        var state = RecordingOverlayState.hidden.enteringPasteError(message: "boom") { self.anchor }
+
+        for _ in 0..<200 {
+            state = state.advancingError(by: 0.1)
+        }
+
+        XCTAssertEqual(state.phase, .pasteError)
+        XCTAssertEqual(state.errorMessage, "boom")
+    }
+
+    func testPasteErrorSurvivesRepeatedIdleAndErrorObservations() {
+        let pasteError = RecordingOverlayState.hidden.enteringPasteError(message: "boom") { self.anchor }
+
+        let afterIdle = pasteError.applying(menuBarStatus: .idle) { self.anchor }
+        let afterError = afterIdle.applying(
+            menuBarStatus: .error(.transcription),
+            resolveAnchor: { self.anchor },
+            resolveErrorMessage: { "boom" }
+        )
+
+        XCTAssertEqual(afterIdle.phase, .pasteError)
+        XCTAssertEqual(afterError.phase, .pasteError)
+        XCTAssertEqual(afterError.errorMessage, "boom")
+    }
+
+    func testPasteErrorCanBeDismissedManually() {
+        let pasteError = RecordingOverlayState.hidden.enteringPasteError(message: "boom") { self.anchor }
+
+        XCTAssertEqual(pasteError.dismissingPasteError(), .hidden)
+    }
+
+    func testDismissingPasteErrorIsIgnoredOutsidePasteErrorPhase() {
+        let recording = RecordingOverlayState.hidden.applying(menuBarStatus: .recording(.transcription)) { self.anchor }
+
+        XCTAssertEqual(recording.dismissingPasteError(), recording)
+    }
+
+    func testEnteringPasteErrorIsIdempotentWhileAlreadyShowing() {
+        let pasteError = RecordingOverlayState.hidden.enteringPasteError(message: "boom") { self.anchor }
+
+        XCTAssertEqual(pasteError.enteringPasteError(message: "again") { self.mouseAnchor }, pasteError)
+    }
+
+    func testNewRecordingOverridesPasteError() {
+        let pasteError = RecordingOverlayState.hidden.enteringPasteError(message: "boom") { self.anchor }
+
+        let recovered = pasteError.applying(menuBarStatus: .recording(.transcription)) { self.mouseAnchor }
+
+        XCTAssertEqual(recovered.phase, .recording)
+        XCTAssertEqual(recovered.anchor, mouseAnchor)
+    }
+
     // MARK: - Processing label (#128)
 
     func testProcessingLabelIsResolvedOnceEnteringProcessing() {

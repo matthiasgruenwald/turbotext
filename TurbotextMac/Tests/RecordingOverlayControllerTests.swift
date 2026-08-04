@@ -626,4 +626,108 @@ final class RecordingOverlayControllerTests: XCTestCase {
         XCTAssertEqual(controller.state.phase, .recording)
         XCTAssertNil(controller.state.transcriptionLag)
     }
+
+    // MARK: - Paste error (#176)
+
+    private func makePasteFailingOrchestrator(pasteTarget: PasteTarget) -> (WorkflowOrchestrator, FakeOverlayWorkflow) {
+        var createdWorkflow: FakeOverlayWorkflow!
+        let orchestrator = WorkflowOrchestrator(
+            workflowFactory: { type, _ in
+                let workflow = FakeOverlayWorkflow(type: type)
+                createdWorkflow = workflow
+                return workflow
+            },
+            pasteAction: {},
+            trustCheck: { _ in true },
+            frontmostPidProvider: { 1 },
+            writeToPasteboard: { _ in }
+        )
+        orchestrator.start(.transcription, source: .manual, pasteTarget: pasteTarget)
+        return (orchestrator, createdWorkflow)
+    }
+
+    private func waitUntilPasteFailurePending(_ orchestrator: WorkflowOrchestrator, deadline: Date = Date().addingTimeInterval(5)) {
+        guard orchestrator.pasteFailureMessage == nil else { return }
+        guard Date() < deadline else {
+            XCTFail("paste retry window did not exhaust within the timeout")
+            return
+        }
+        let pollTick = expectation(description: "poll tick")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { pollTick.fulfill() }
+        wait(for: [pollTick], timeout: 1)
+        waitUntilPasteFailurePending(orchestrator, deadline: deadline)
+    }
+
+    func testPasteExhaustionShowsPersistentPasteErrorPill() {
+        let target = makeFakePasteTarget(pid: 4242)
+        let (orchestrator, workflow) = makePasteFailingOrchestrator(pasteTarget: target)
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { workflow.audioLevel }
+        )
+        controller.tick()
+        XCTAssertEqual(controller.state.phase, .recording)
+        workflow.onOutput?("hello")
+
+        waitUntilPasteFailurePending(orchestrator)
+        controller.tick()
+
+        XCTAssertEqual(controller.state.phase, .pasteError)
+        XCTAssertEqual(controller.state.errorMessage, WorkflowOrchestrator.pasteRetryExhaustedMessage)
+        XCTAssertEqual(controller.state.anchor, anchor)
+
+        controller.tick()
+        XCTAssertEqual(controller.state.phase, .pasteError, "must persist through repeated polling")
+
+        controller.dismissPasteError()
+        XCTAssertEqual(controller.state, .hidden)
+
+        controller.tick()
+        XCTAssertEqual(controller.state, .hidden, "the consumed failure must not reappear after dismissal")
+    }
+
+    func testPasteErrorPanelAcceptsMouseEventsSoItCanBeClosedManually() throws {
+        let target = makeFakePasteTarget(pid: 4242)
+        let (orchestrator, workflow) = makePasteFailingOrchestrator(pasteTarget: target)
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .screenBottomCenter },
+            anchorResolver: { self.anchor },
+            levelProvider: { workflow.audioLevel }
+        )
+        controller.tick()
+        workflow.onOutput?("hello")
+
+        waitUntilPasteFailurePending(orchestrator)
+        controller.tick()
+
+        let panel = try XCTUnwrap(controller.debugPanel)
+        XCTAssertFalse(panel.ignoresMouseEvents, "the paste-error pill must be clickable so it can be dismissed manually")
+    }
+
+    func testPasteExhaustionBouncesDockWhenPillDisabled() {
+        let target = makeFakePasteTarget(pid: 4242)
+        let (orchestrator, workflow) = makePasteFailingOrchestrator(pasteTarget: target)
+        var attentionRequests = 0
+        let controller = RecordingOverlayController(
+            orchestrator: orchestrator,
+            modeProvider: { .off },
+            anchorResolver: { self.anchor },
+            levelProvider: { workflow.audioLevel },
+            requestUserAttention: { attentionRequests += 1 }
+        )
+        controller.tick()
+        workflow.onOutput?("hello")
+
+        waitUntilPasteFailurePending(orchestrator)
+        controller.tick()
+
+        XCTAssertEqual(attentionRequests, 1)
+        XCTAssertEqual(controller.state, .hidden)
+
+        controller.tick()
+        XCTAssertEqual(attentionRequests, 1, "the dock bounce must fire exactly once per failure")
+    }
 }

@@ -15,6 +15,7 @@ struct RecordingOverlaySignalPillView: View {
     var completionLabel: String?
     var onDismissError: () -> Void = {}
     var onDismissBergungError: () -> Void = {}
+    var onDismissPasteError: () -> Void = {}
     var onDismissCompletionLabel: () -> Void = {}
 
     var body: some View {
@@ -36,6 +37,8 @@ struct RecordingOverlaySignalPillView: View {
                     onDismissError()
                 case .bergungError:
                     onDismissBergungError()
+                case .pasteError:
+                    onDismissPasteError()
                 case .completion:
                     onDismissCompletionLabel()
                 default:
@@ -96,6 +99,15 @@ struct RecordingOverlaySignalPillView: View {
                         .foregroundStyle(.white.opacity(0.7))
                         .lineLimit(1)
                 }
+            }
+        case .pasteError:
+            HStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                Text(errorMessage ?? "Einfügen fehlgeschlagen – Text ist in der Zwischenablage")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
             }
         case .completion:
             HStack(spacing: 12) {

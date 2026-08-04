@@ -1,5 +1,8 @@
 import AppKit
 import Observation
+import OSLog
+
+private let pasteLogger = Logger(subsystem: "app.turbotext.mac", category: "Paste")
 
 /// Owns the lifecycle of the currently active `Workflow`: starting, stopping, resetting,
 /// reacting to phase changes, and delivering output via paste-at-cursor (with retry).
@@ -11,6 +14,12 @@ import Observation
 @MainActor
 final class WorkflowOrchestrator {
     private static let pasteRetryInitialAttempts = 22
+    /// Slow tail appended to the fast retry phase; together they span ~1.5s so a target
+    /// app that takes ~1s to regain the foreground after a window switch still receives
+    /// the paste (#176).
+    private static let pasteRetrySlowAttempts = 9
+    private static let pasteRetrySlowInterval: TimeInterval = 0.1
+    static let pasteRetryExhaustedMessage = "Einfügen fehlgeschlagen – Text ist in der Zwischenablage"
     private static let concealedPasteboardType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
 
     /// Creates the workflow instance for a given type, or `nil` if unavailable.
@@ -38,6 +47,11 @@ final class WorkflowOrchestrator {
     /// Set when the live engine failed mid-dictation and rescued segments were pasted
     /// (ADR 0005). Read by `RecordingOverlayController` to enter `.bergungError`.
     private(set) var bergungMessage: String?
+    /// Set when the paste retry window ran out without the target becoming frontmost
+    /// (#176). Consumed by `RecordingOverlayController`, which surfaces the persistent
+    /// pill error or bounces the Dock. Deliberately outlives the post-output workflow
+    /// cleanup — the ~1.5s retry window ends after the 1.05s cleanup already ran.
+    private(set) var pasteFailureMessage: String?
     /// Snapshot of `Workflow.processingLabel` (#128), captured while the workflow is still
     /// live so `RecordingOverlayController` can read it after the workflow resets.
     private(set) var lastProcessingLabel: String?
@@ -126,6 +140,7 @@ final class WorkflowOrchestrator {
         lastProcessingLabel = nil
         lastCompletionLabel = nil
         bergungMessage = nil
+        pasteFailureMessage = nil
 
         workflow.onOutput = { [weak self] text in
             self?.handleWorkflowOutput(text)
@@ -168,42 +183,91 @@ final class WorkflowOrchestrator {
         writeToPasteboard(text)
         onWillPaste?()
 
+        pasteLogger.info(
+            "Paste start: target \(target?.bundleIdentifier ?? "<none>", privacy: .public) (pid \(target?.processIdentifier ?? -1))"
+        )
+
         let trusted = trustCheck(true)
         accessibilityPermissionGranted = trusted
         guard trusted else {
+            pasteLogger.error("Paste aborted: accessibility trust check failed")
             menuBarStatus = .error(activeWorkflow?.type)
             return
         }
 
-        attemptPasteTrusted(target: target, attemptsRemaining: Self.pasteRetryInitialAttempts)
+        attemptPasteTrusted(
+            target: target,
+            workflowType: activeWorkflow?.type,
+            fastAttemptsRemaining: Self.pasteRetryInitialAttempts,
+            slowAttemptsRemaining: Self.pasteRetrySlowAttempts
+        )
     }
 
-    private func attemptPasteTrusted(target: PasteTarget?, attemptsRemaining: Int) {
+    private func attemptPasteTrusted(
+        target: PasteTarget?,
+        workflowType: WorkflowType?,
+        fastAttemptsRemaining: Int,
+        slowAttemptsRemaining: Int
+    ) {
         guard let target else { return }
 
         let frontmostPid = frontmostPidProvider()
         if frontmostPid == target.processIdentifier {
+            pasteLogger.info(
+                "Paste: Cmd+V dispatched to \(target.bundleIdentifier ?? "<none>", privacy: .public) (pid \(target.processIdentifier))"
+            )
             pasteAction()
             return
         }
 
+        pasteLogger.debug(
+            "Paste retry: target pid \(target.processIdentifier) not frontmost, requesting activation (fast \(fastAttemptsRemaining), slow \(slowAttemptsRemaining))"
+        )
         onPasteTargetActivationNeeded?(target)
 
-        guard attemptsRemaining > 0 else { return }
-
-        let delay: TimeInterval
-        switch attemptsRemaining {
-        case 16...:
-            delay = 0.015
-        case 8...15:
-            delay = 0.025
-        default:
-            delay = 0.04
+        guard let step = nextRetryStep(fastRemaining: fastAttemptsRemaining, slowRemaining: slowAttemptsRemaining) else {
+            reportPasteRetryExhausted(target: target, workflowType: workflowType)
+            return
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            self?.attemptPasteTrusted(target: target, attemptsRemaining: attemptsRemaining - 1)
+        DispatchQueue.main.asyncAfter(deadline: .now() + step.delay) { [weak self] in
+            self?.attemptPasteTrusted(
+                target: target,
+                workflowType: workflowType,
+                fastAttemptsRemaining: step.fastRemaining,
+                slowAttemptsRemaining: step.slowRemaining
+            )
         }
+    }
+
+    private func nextRetryStep(
+        fastRemaining: Int,
+        slowRemaining: Int
+    ) -> (delay: TimeInterval, fastRemaining: Int, slowRemaining: Int)? {
+        if fastRemaining > 0 {
+            let delay: TimeInterval
+            switch fastRemaining {
+            case 16...:
+                delay = 0.015
+            case 8...15:
+                delay = 0.025
+            default:
+                delay = 0.04
+            }
+            return (delay, fastRemaining - 1, slowRemaining)
+        }
+        if slowRemaining > 0 {
+            return (Self.pasteRetrySlowInterval, 0, slowRemaining - 1)
+        }
+        return nil
+    }
+
+    private func reportPasteRetryExhausted(target: PasteTarget, workflowType: WorkflowType?) {
+        pasteLogger.error(
+            "Paste retry exhausted: \(target.bundleIdentifier ?? "<none>", privacy: .public) (pid \(target.processIdentifier)) never became frontmost; text stays on the clipboard"
+        )
+        pasteFailureMessage = Self.pasteRetryExhaustedMessage
+        menuBarStatus = .error(workflowType)
     }
 
     /// Records a fresh structured live transcript from the streaming callback (#150/#151).
@@ -219,6 +283,13 @@ final class WorkflowOrchestrator {
     /// Signals that the live engine failed and rescued segments were pasted (ADR 0005).
     func reportBergung(message: String?) {
         bergungMessage = message
+    }
+
+    /// Returns the pending paste-failure message exactly once, so the consumer can act
+    /// on it without a second delivery on the next poll (#176).
+    func takePasteFailureMessage() -> String? {
+        defer { pasteFailureMessage = nil }
+        return pasteFailureMessage
     }
 
     // MARK: - Phase Handling

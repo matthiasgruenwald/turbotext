@@ -12,6 +12,10 @@ enum RecordingOverlayPhase: Equatable {
     /// (ADR 0005). Unlike `.error` it never auto-dismisses — the text was inserted
     /// without final post-processing, so the user must acknowledge it actively.
     case bergungError
+    /// Paste retry window ran out without the target becoming frontmost (#176). The
+    /// text is safely on the clipboard but nothing was inserted; like `.bergungError`
+    /// it never auto-dismisses — the user must acknowledge it actively.
+    case pasteError
 }
 
 /// Structured live-dictate transcript shown by the pill while `.recording` (#150):
@@ -125,7 +129,9 @@ struct RecordingOverlayState: Equatable {
     /// the overlay keeps the position chosen when the workflow begins.
     ///
     /// A known recording-start error (`.error` observed while the overlay was still
-    /// `.hidden`, i.e. recording never visibly began) surfaces as an `.error` phase.
+    /// `.hidden`, i.e. recording never visibly began) surfaces as an `.error` phase —
+    /// but only when an error message is known; a message-less `.error` status stays
+    /// hidden so an already-acknowledged failure (#176) cannot resurface unexplained.
     /// An error observed mid-recording/processing still just hides, matching the
     /// pre-#107 behavior — that path covers post-start failures out of this issue's scope.
     ///
@@ -158,10 +164,15 @@ struct RecordingOverlayState: Equatable {
         case .error:
             switch phase {
             case .hidden:
+                // Only a known error message may surface a pill out of `.hidden`; a
+                // message-less `.error` (e.g. the paste-retry exhaustion status #176,
+                // which the pill already acknowledged via `.pasteError`) would otherwise
+                // reappear as an unexplained error right after being dismissed.
+                guard let message = resolveErrorMessage() else { return self }
                 return RecordingOverlayState(
-                    phase: .error, anchor: resolveAnchor(), levelHistory: [], errorMessage: resolveErrorMessage()
+                    phase: .error, anchor: resolveAnchor(), levelHistory: [], errorMessage: message
                 )
-            case .error, .bergungError:
+            case .error, .bergungError, .pasteError:
                 // Ignore: this is the orchestrator repeating the still-ongoing error on
                 // every poll, not a distinguishable new attempt (see doc comment above).
                 return self
@@ -170,10 +181,10 @@ struct RecordingOverlayState: Equatable {
             }
         case .idle:
             switch phase {
-            case .error, .completion, .bergungError:
+            case .error, .completion, .bergungError, .pasteError:
                 // `.error` waits for its own timer/manual dismiss; `.completion` likewise
-                // (see below); `.bergungError` waits for manual dismiss only — a repeated
-                // `.idle` observation must not cut any of them short.
+                // (see below); `.bergungError` and `.pasteError` wait for manual dismiss
+                // only — a repeated `.idle` observation must not cut any of them short.
                 return self
             case .processing:
                 guard let label = resolveCompletionLabel() else { return .hidden }
@@ -254,6 +265,29 @@ struct RecordingOverlayState: Equatable {
     /// User-initiated close of the rescue-failure state — the only way it ends.
     func dismissingBergungError() -> RecordingOverlayState {
         guard phase == .bergungError else { return self }
+        return .hidden
+    }
+
+    /// Enters the persistent paste-failure state (#176). Reachable from every phase:
+    /// the failure arrives after output delivery, when the pill may already show
+    /// `.completion` or be `.hidden` again because the workflow cleanup ran first.
+    /// The anchor is kept when one exists, resolved fresh otherwise.
+    func enteringPasteError(
+        message: String?,
+        resolveAnchor: () -> RecordingOverlayAnchor
+    ) -> RecordingOverlayState {
+        guard phase != .pasteError else { return self }
+        return RecordingOverlayState(
+            phase: .pasteError,
+            anchor: anchor ?? resolveAnchor(),
+            levelHistory: levelHistory,
+            errorMessage: message
+        )
+    }
+
+    /// User-initiated close of the paste-failure state — the only way it ends.
+    func dismissingPasteError() -> RecordingOverlayState {
+        guard phase == .pasteError else { return self }
         return .hidden
     }
 

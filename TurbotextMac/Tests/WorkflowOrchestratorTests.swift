@@ -329,6 +329,121 @@ final class WorkflowOrchestratorTests: XCTestCase {
         XCTAssertFalse(orchestrator.accessibilityPermissionGranted)
     }
 
+    // MARK: - Extended retry window and failure signal (#176)
+
+    /// Polls on the main run loop until `condition` holds; robust against retry-chain
+    /// scheduling jitter, which fixed `asyncAfter` waits are not.
+    private func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            guard Date() < deadline else {
+                XCTFail("condition not met within \(timeout)s")
+                return
+            }
+            let tick = expectation(description: "poll tick")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { tick.fulfill() }
+            wait(for: [tick], timeout: 1)
+        }
+    }
+
+    func testPasteSucceedsWhenTargetActivationTakesAboutOneSecond() {
+        let target = makeFakePasteTarget(pid: 99)
+        var currentFrontmostPid: pid_t? = 1
+        var pasteCount = 0
+        let orchestrator = WorkflowOrchestrator(
+            workflowFactory: { type, _ in FakeWorkflow(type: type) },
+            pasteAction: { pasteCount += 1 },
+            trustCheck: { _ in true },
+            frontmostPidProvider: { currentFrontmostPid },
+            writeToPasteboard: { _ in }
+        )
+
+        orchestrator.pasteAtCursor("hello", target: target)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            currentFrontmostPid = 99
+        }
+
+        waitUntil { pasteCount == 1 }
+
+        XCTAssertEqual(pasteCount, 1, "the ~1.5s retry window must cover target activations that take ~1s")
+        XCTAssertNil(orchestrator.pasteFailureMessage)
+    }
+
+    func testPasteExhaustionSignalsFailureWithoutPasting() {
+        let target = makeFakePasteTarget(pid: 99)
+        var pasteCount = 0
+        var pasteboardWrites: [String] = []
+        let orchestrator = WorkflowOrchestrator(
+            workflowFactory: { type, _ in FakeWorkflow(type: type) },
+            pasteAction: { pasteCount += 1 },
+            trustCheck: { _ in true },
+            frontmostPidProvider: { 1 },
+            writeToPasteboard: { pasteboardWrites.append($0) }
+        )
+
+        orchestrator.pasteAtCursor("hello", target: target)
+        waitUntil { orchestrator.pasteFailureMessage != nil }
+
+        XCTAssertEqual(pasteCount, 0)
+        XCTAssertEqual(orchestrator.takePasteFailureMessage(), WorkflowOrchestrator.pasteRetryExhaustedMessage)
+        XCTAssertEqual(orchestrator.menuBarStatus, .error(nil))
+        XCTAssertEqual(pasteboardWrites, ["hello"], "the clipboard fallback must stay filled")
+        XCTAssertNil(orchestrator.takePasteFailureMessage(), "the failure message must be consumed exactly once")
+    }
+
+    func testPasteExhaustionFailureArrivesAfterWorkflowCleanup() {
+        let target = makeFakePasteTarget(pid: 99)
+        let box = WorkflowBox()
+        var pasteCount = 0
+        let orchestrator = WorkflowOrchestrator(
+            workflowFactory: { type, _ in
+                let workflow = FakeWorkflow(type: type)
+                box.workflows.append(workflow)
+                return workflow
+            },
+            pasteAction: { pasteCount += 1 },
+            trustCheck: { _ in true },
+            frontmostPidProvider: { 1 },
+            writeToPasteboard: { _ in }
+        )
+
+        orchestrator.start(.transcription, source: .manual, pasteTarget: target)
+        box.workflows[0].emitOutput("hello")
+
+        let cleanupElapsed = expectation(description: "workflow cleanup ran before retry exhaustion")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            XCTAssertNil(orchestrator.activeWorkflow, "sanity: the 1.05s cleanup already reset the workflow")
+            XCTAssertNil(orchestrator.pasteFailureMessage, "sanity: retries are still running at 1.2s")
+            cleanupElapsed.fulfill()
+        }
+        wait(for: [cleanupElapsed], timeout: 3)
+
+        waitUntil { orchestrator.pasteFailureMessage != nil }
+
+        XCTAssertEqual(pasteCount, 0)
+        XCTAssertEqual(orchestrator.takePasteFailureMessage(), WorkflowOrchestrator.pasteRetryExhaustedMessage)
+        XCTAssertEqual(orchestrator.menuBarStatus, .error(.transcription))
+    }
+
+    func testStartClearsPendingPasteFailureMessage() {
+        let target = makeFakePasteTarget(pid: 99)
+        let orchestrator = WorkflowOrchestrator(
+            workflowFactory: { type, _ in FakeWorkflow(type: type) },
+            pasteAction: {},
+            trustCheck: { _ in true },
+            frontmostPidProvider: { 1 },
+            writeToPasteboard: { _ in }
+        )
+
+        orchestrator.pasteAtCursor("hello", target: target)
+        waitUntil { orchestrator.pasteFailureMessage != nil }
+
+        orchestrator.start(.transcription, source: .manual, pasteTarget: target)
+
+        XCTAssertNil(orchestrator.pasteFailureMessage)
+        XCTAssertNil(orchestrator.takePasteFailureMessage())
+    }
+
     func testOutputDeliveryWritesToPasteboardAndAttemptsPaste() {
         var pasteCount = 0
         var pasteboardWrites: [String] = []

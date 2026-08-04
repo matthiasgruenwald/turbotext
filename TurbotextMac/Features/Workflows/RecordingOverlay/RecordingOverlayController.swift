@@ -24,6 +24,7 @@ final class RecordingOverlayController {
     private let transcriptionLagProvider: () -> TimeInterval?
     private let processingLabelProvider: () -> String?
     private let completionLabelProvider: () -> String?
+    private let requestUserAttention: () -> Void
 
     private(set) var state: RecordingOverlayState = .hidden
     private var panel: NSPanel?
@@ -47,7 +48,8 @@ final class RecordingOverlayController {
         liveTranscriptDisplayProvider: (() -> LiveTranscriptDisplay?)? = nil,
         transcriptionLagProvider: (() -> TimeInterval?)? = nil,
         processingLabelProvider: (() -> String?)? = nil,
-        completionLabelProvider: (() -> String?)? = nil
+        completionLabelProvider: (() -> String?)? = nil,
+        requestUserAttention: (() -> Void)? = nil
     ) {
         self.orchestrator = orchestrator
         self.modeProvider = modeProvider
@@ -67,6 +69,7 @@ final class RecordingOverlayController {
         self.transcriptionLagProvider = transcriptionLagProvider ?? { [weak orchestrator] in orchestrator?.activeWorkflow?.transcriptionLag }
         self.processingLabelProvider = processingLabelProvider ?? { [weak orchestrator] in orchestrator?.lastProcessingLabel }
         self.completionLabelProvider = completionLabelProvider ?? { [weak orchestrator] in orchestrator?.lastCompletionLabel }
+        self.requestUserAttention = requestUserAttention ?? { _ = NSApp.requestUserAttention(.criticalRequest) }
     }
 
     func start() {
@@ -83,6 +86,11 @@ final class RecordingOverlayController {
 
     /// Exposed for tests: applies one polling step without a real `Timer`.
     func tick() {
+        if let message = orchestrator.takePasteFailureMessage() {
+            handlePasteFailure(message)
+            return
+        }
+
         guard modeProvider() != .off else {
             applyHiddenAndReset()
             return
@@ -121,9 +129,7 @@ final class RecordingOverlayController {
             state = state.advancingCompletion(by: Self.pollInterval)
         case .error:
             state = state.advancingError(by: Self.pollInterval)
-        case .bergungError:
-            break
-        case .hidden:
+        case .bergungError, .pasteError, .hidden:
             break
         }
 
@@ -131,10 +137,29 @@ final class RecordingOverlayController {
         render()
     }
 
+    /// A paste whose retry window ran out (#176): surface the persistent pill error when
+    /// the pill is enabled, otherwise bounce the Dock — the failure must never go unnoticed.
+    private func handlePasteFailure(_ message: String?) {
+        guard modeProvider() != .off else {
+            applyHiddenAndReset()
+            requestUserAttention()
+            return
+        }
+        state = state.enteringPasteError(message: message, resolveAnchor: anchorResolver)
+        render()
+    }
+
     /// Manual close of a visible start error, e.g. from a click on the pill.
     func dismissError() {
         guard state.phase == .error else { return }
         state = state.dismissingError()
+        render()
+    }
+
+    /// Manual close of the persistent paste-failure state, e.g. from a click on the pill.
+    func dismissPasteError() {
+        guard state.phase == .pasteError else { return }
+        state = state.dismissingPasteError()
         render()
     }
 
@@ -168,7 +193,7 @@ final class RecordingOverlayController {
         switch state.phase {
         case .hidden:
             panel?.orderOut(nil)
-        case .recording, .processing, .error, .completion, .bergungError:
+        case .recording, .processing, .error, .completion, .bergungError, .pasteError:
             let activePanel = panel ?? makePanel()
             panel = activePanel
             // The error, completion and rescue pills accept clicks (manual dismiss); every
@@ -176,6 +201,7 @@ final class RecordingOverlayController {
             activePanel.ignoresMouseEvents = state.phase != .error
                 && state.phase != .completion
                 && state.phase != .bergungError
+                && state.phase != .pasteError
             updateContent(of: activePanel)
             positionPanel(activePanel)
             activePanel.orderFrontRegardless()
@@ -213,6 +239,7 @@ final class RecordingOverlayController {
             completionLabel: state.completionLabel,
             onDismissError: { [weak self] in self?.dismissError() },
             onDismissBergungError: { [weak self] in self?.dismissBergungError() },
+            onDismissPasteError: { [weak self] in self?.dismissPasteError() },
             onDismissCompletionLabel: { [weak self] in self?.dismissCompletionLabel() }
         )
         // Reuse the hosting view and update rootView in place. Recreating it on
