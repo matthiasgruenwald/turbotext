@@ -326,8 +326,13 @@ final class AppState {
         switch type {
         case .transcription:
             let resolved = resolvedTranscriber(backendOverride: backendOverride)
-            if resolved.resolution == .appleSpeech, #available(macOS 26, *) {
-                return makeLiveTranscriptionWorkflow()
+            if routesToLiveDictation(resolved.resolution), #available(macOS 26, *) {
+                let smoothing = liveDictationSmoothing()
+                return makeLiveDictationWorkflow(
+                    type: .transcription,
+                    smoothingPass: smoothing.pass,
+                    smoothingMessage: smoothing.message
+                )
             }
             return TranscriptionWorkflow(
                 customTerms: textImprovementSettings.customTerms,
@@ -344,56 +349,77 @@ final class AppState {
                 transcriber: transcriber(for: .local)
             )
         case .textImprover:
-            return SpokenRewriteWorkflow.textImprovement(
-                settings: textImprovementSettings,
-                language: transcriptionSettings.language,
-                providerMode: appSettings.rewritingProviderMode,
-                transcriber: defaultResolvedTranscriber,
-                processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
-                improver: { [rewriteConsentCoordinator] text, settings, providerMode in
-                    try await LLMService.improveLocalFirst(
-                        text: text,
-                        settings: settings,
-                        providerMode: providerMode,
-                        consent: rewriteConsentCoordinator
-                    )
-                }
-            )
+            return makeTextImproverWorkflow()
         case .dampfAblassen:
-            return SpokenRewriteWorkflow.dampfAblassen(
-                settings: dampfAblassenSettings,
-                customTerms: textImprovementSettings.customTerms,
-                language: transcriptionSettings.language,
-                providerMode: appSettings.rewritingProviderMode,
-                transcriber: defaultResolvedTranscriber,
-                processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
-                rewriter: { [rewriteConsentCoordinator] text, settings, providerMode in
-                    try await LLMService.dampfAblassenLocalFirst(
-                        text: text,
-                        systemPrompt: settings.systemPrompt,
-                        providerMode: providerMode,
-                        consent: rewriteConsentCoordinator
-                    )
-                }
-            )
+            return makeDampfAblassenWorkflow()
         case .emojiText:
-            return SpokenRewriteWorkflow.emojiText(
-                settings: emojiTextSettings,
-                customTerms: textImprovementSettings.customTerms,
-                language: transcriptionSettings.language,
-                providerMode: appSettings.rewritingProviderMode,
-                transcriber: defaultResolvedTranscriber,
-                processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
-                rewriter: { [rewriteConsentCoordinator] text, settings, providerMode in
-                    try await LLMService.addEmojisLocalFirst(
-                        text: text,
-                        settings: settings,
-                        providerMode: providerMode,
-                        consent: rewriteConsentCoordinator
-                    )
-                }
-            )
+            return makeEmojiTextWorkflow()
         }
+    }
+
+    /// Live rule (F1, #182): the live-dictation path is taken only when the backend
+    /// resolution is Apple Speech and macOS 26 is available. Single source of truth —
+    /// #186/#187 route the three rewrite workflows through the same predicate.
+    private func routesToLiveDictation(_ resolution: ResolvedTranscriptionBackend) -> Bool {
+        guard resolution == .appleSpeech else { return false }
+        if #available(macOS 26, *) { return true }
+        return false
+    }
+
+    private func makeTextImproverWorkflow() -> any Workflow {
+        SpokenRewriteWorkflow.textImprovement(
+            settings: textImprovementSettings,
+            language: transcriptionSettings.language,
+            providerMode: appSettings.rewritingProviderMode,
+            transcriber: defaultResolvedTranscriber,
+            processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
+            improver: { [rewriteConsentCoordinator] text, settings, providerMode in
+                try await LLMService.improveLocalFirst(
+                    text: text,
+                    settings: settings,
+                    providerMode: providerMode,
+                    consent: rewriteConsentCoordinator
+                )
+            }
+        )
+    }
+
+    private func makeDampfAblassenWorkflow() -> any Workflow {
+        SpokenRewriteWorkflow.dampfAblassen(
+            settings: dampfAblassenSettings,
+            customTerms: textImprovementSettings.customTerms,
+            language: transcriptionSettings.language,
+            providerMode: appSettings.rewritingProviderMode,
+            transcriber: defaultResolvedTranscriber,
+            processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
+            rewriter: { [rewriteConsentCoordinator] text, settings, providerMode in
+                try await LLMService.dampfAblassenLocalFirst(
+                    text: text,
+                    systemPrompt: settings.systemPrompt,
+                    providerMode: providerMode,
+                    consent: rewriteConsentCoordinator
+                )
+            }
+        )
+    }
+
+    private func makeEmojiTextWorkflow() -> any Workflow {
+        SpokenRewriteWorkflow.emojiText(
+            settings: emojiTextSettings,
+            customTerms: textImprovementSettings.customTerms,
+            language: transcriptionSettings.language,
+            providerMode: appSettings.rewritingProviderMode,
+            transcriber: defaultResolvedTranscriber,
+            processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
+            rewriter: { [rewriteConsentCoordinator] text, settings, providerMode in
+                try await LLMService.addEmojisLocalFirst(
+                    text: text,
+                    settings: settings,
+                    providerMode: providerMode,
+                    consent: rewriteConsentCoordinator
+                )
+            }
+        )
     }
 
     /// Predicted processing-label routing for the signal pill (#128): known synchronously
@@ -407,32 +433,44 @@ final class AppState {
     }
 
     @available(macOS 26, *)
-    private func makeLiveTranscriptionWorkflow() -> any Workflow {
-        var smoothingPass: (@Sendable (String) async -> String?)?
-        var smoothingMessage = "Glättet ..."
+    private func liveDictationSmoothing() -> (pass: (@Sendable (String) async -> String?)?, message: String) {
+        var pass: (@Sendable (String) async -> String?)?
+        var message = "Glättet ..."
         switch transcriptionSettings.liveSmoothingBackend {
         case .off:
             break
         case .onDevice:
             if FoundationModelsSmoothing.isAvailable {
                 let smoothing = FoundationModelsSmoothing()
-                smoothingPass = { text in await smoothing.smooth(text: text) }
-                smoothingMessage = "Glättet lokal auf diesem Mac ..."
+                pass = { text in await smoothing.smooth(text: text) }
+                message = "Glättet lokal auf diesem Mac ..."
             }
         case .online:
             let smoothing = OnlineSmoothing(
                 providerMode: appSettings.rewritingProviderMode,
                 hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil
             )
-            smoothingPass = { text in await smoothing.smooth(text: text) }
-            smoothingMessage = "Glättet online mit \(smoothing.predictedProvider.displayName) ..."
+            pass = { text in await smoothing.smooth(text: text) }
+            message = "Glättet online mit \(smoothing.predictedProvider.displayName) ..."
         }
+        return (pass, message)
+    }
+
+    // `rewriteStage` is accepted now so #186/#187 can route the rewrite workflows
+    // here; forwarding to `LiveDictationWorkflow` lands with its stage seam (#184).
+    @available(macOS 26, *)
+    private func makeLiveDictationWorkflow(
+        type: WorkflowType,
+        smoothingPass: (@Sendable (String) async -> String?)? = nil,
+        smoothingMessage: String = "Glättet ...",
+        rewriteStage: RewriteStage? = nil
+    ) -> any Workflow {
         let session = LiveTranscriptionSession(startAssetInstallation: { [weak self] in
             Task { @MainActor in self?.secureAppleSpeechAssetsOnDemand() }
         })
         let orchestrator = workflowLifecycle.orchestrator
         return LiveDictationWorkflow(
-            type: .transcription,
+            type: type,
             session: session,
             smoothingPass: smoothingPass,
             smoothingMessage: smoothingMessage,
