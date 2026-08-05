@@ -326,7 +326,7 @@ final class AppState {
         switch type {
         case .transcription:
             let resolved = resolvedTranscriber(backendOverride: backendOverride)
-            if routesToLiveDictation(resolved.resolution), #available(macOS 26, *) {
+            if Self.routesToLiveDictation(resolved.resolution), #available(macOS 26, *) {
                 let smoothing = liveDictationSmoothing()
                 return makeLiveDictationWorkflow(
                     type: .transcription,
@@ -360,27 +360,41 @@ final class AppState {
     /// Live rule (F1, #182): the live-dictation path is taken only when the backend
     /// resolution is Apple Speech and macOS 26 is available. Single source of truth —
     /// #186/#187 route the three rewrite workflows through the same predicate.
-    private func routesToLiveDictation(_ resolution: ResolvedTranscriptionBackend) -> Bool {
+    static func routesToLiveDictation(_ resolution: ResolvedTranscriptionBackend) -> Bool {
         guard resolution == .appleSpeech else { return false }
         if #available(macOS 26, *) { return true }
         return false
     }
 
     private func makeTextImproverWorkflow() -> any Workflow {
-        SpokenRewriteWorkflow.textImprovement(
+        let improver: SpokenRewriteWorkflow.Improver = { [rewriteConsentCoordinator] text, settings, providerMode in
+            try await LLMService.improveLocalFirst(
+                text: text,
+                settings: settings,
+                providerMode: providerMode,
+                consent: rewriteConsentCoordinator
+            )
+        }
+        let resolved = resolvedTranscriber(backendOverride: nil)
+        if Self.routesToLiveDictation(resolved.resolution), #available(macOS 26, *) {
+            let settings = textImprovementSettings
+            let providerMode = appSettings.rewritingProviderMode
+            return makeLiveDictationWorkflow(
+                type: .textImprover,
+                rewritingMessage: "Text wird verbessert ...",
+                rewriteStage: RewriteStage { text in
+                    try await improver(text, settings, providerMode)
+                },
+                processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() }
+            )
+        }
+        return SpokenRewriteWorkflow.textImprovement(
             settings: textImprovementSettings,
             language: transcriptionSettings.language,
             providerMode: appSettings.rewritingProviderMode,
-            transcriber: defaultResolvedTranscriber,
+            transcriber: resolved.transcriber,
             processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
-            improver: { [rewriteConsentCoordinator] text, settings, providerMode in
-                try await LLMService.improveLocalFirst(
-                    text: text,
-                    settings: settings,
-                    providerMode: providerMode,
-                    consent: rewriteConsentCoordinator
-                )
-            }
+            improver: improver
         )
     }
 
@@ -456,14 +470,14 @@ final class AppState {
         return (pass, message)
     }
 
-    // `rewriteStage` is accepted now so #186/#187 can route the rewrite workflows
-    // here; forwarding to `LiveDictationWorkflow` lands with its stage seam (#184).
     @available(macOS 26, *)
     private func makeLiveDictationWorkflow(
         type: WorkflowType,
         smoothingPass: (@Sendable (String) async -> String?)? = nil,
         smoothingMessage: String = "Glättet ...",
-        rewriteStage: RewriteStage? = nil
+        rewritingMessage: String = "Wird verarbeitet ...",
+        rewriteStage: RewriteStage? = nil,
+        processingLabelResolver: @escaping () -> String? = { nil }
     ) -> any Workflow {
         let session = LiveTranscriptionSession(startAssetInstallation: { [weak self] in
             Task { @MainActor in self?.secureAppleSpeechAssetsOnDemand() }
@@ -475,6 +489,9 @@ final class AppState {
             smoothingPass: smoothingPass,
             smoothingMessage: smoothingMessage,
             maxLines: transcriptionSettings.livePillMaxLines,
+            rewritingMessage: rewritingMessage,
+            rewriteStage: rewriteStage,
+            processingLabelResolver: processingLabelResolver,
             onLiveTranscriptUpdate: { [weak orchestrator] display in
                 orchestrator?.updateLiveTranscriptDisplay(display)
             },
@@ -484,7 +501,7 @@ final class AppState {
         )
     }
 
-    /// The resolved transcriber for the three rewrite workflows, which never carry a
+    /// The resolved transcriber for the rewrite workflows, which never carry a
     /// `backendOverride` — only the `.transcription` factory closure does (from the
     /// hotkey-time offline-fallback decision).
     private var defaultResolvedTranscriber: SpokenWorkflowPipeline.Transcriber {
