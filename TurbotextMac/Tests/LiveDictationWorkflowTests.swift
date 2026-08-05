@@ -643,6 +643,43 @@ final class LiveDictationWorkflowTests: XCTestCase {
         XCTAssertFalse(recorder.isRecording)
         XCTAssertEqual(recorder.stopCount, 1, "Bergung stoppt sofort, der Grace-Task feuert nicht nach")
     }
+
+    // MARK: - Rewrite workflows on the live path (#186)
+
+    func testFileFallbackTextRunsThroughTextImproverStage() async {
+        let session = LiveTranscriptionSession()
+        session.phase = .running
+        let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
+            continuation.yield(TranscriptionChunk(text: "Teiltext", isFinal: true))
+            continuation.finish(throwing: NSError(domain: "test", code: 1))
+        }
+        await session.runCollectingLoop(stream)
+
+        var improverInput: String?
+        let (workflow, _, _) = makeWorkflow(
+            session: session,
+            rewriteStage: RewriteStage { text in
+                improverInput = text
+                return RewriteStepResult(text: "Verbessert: \(text)", completionLabel: "test")
+            },
+            fileFallbackTranscriber: { _, _ in "Fallback-Text" }
+        )
+        workflow.start()
+
+        let expectation = expectation(description: "output delivered")
+        var output: String?
+        workflow.onOutput = { text in
+            output = text
+            expectation.fulfill()
+        }
+
+        workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertEqual(improverInput, "Fallback-Text", "die Stage läuft auf dem Datei-Fallback-Ergebnis")
+        XCTAssertEqual(output, "Verbessert: Fallback-Text")
+        XCTAssertEqual(workflow.completionLabel, "test")
+    }
 }
 
 @available(macOS 26, *)
