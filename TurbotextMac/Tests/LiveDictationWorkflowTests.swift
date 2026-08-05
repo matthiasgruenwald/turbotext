@@ -3,7 +3,7 @@ import XCTest
 @testable import Turbotext
 
 @MainActor
-private final class FakeLiveRecorder: SpokenWorkflowRecording {
+final class FakeLiveRecorder: SpokenWorkflowRecording {
     var isRecording = false
     var recordingURL: URL? = URL(fileURLWithPath: "/tmp/fake-live.m4a")
     var errorMessage: String?
@@ -680,117 +680,31 @@ final class LiveDictationWorkflowTests: XCTestCase {
         XCTAssertEqual(output, "Verbessert: Fallback-Text")
         XCTAssertEqual(workflow.completionLabel, "test")
     }
-}
 
-@available(macOS 26, *)
-@MainActor
-final class LiveDictationWorkflowBergungTests: XCTestCase {
+    // MARK: - Sentinel on the live path (#187)
 
-    func testBergungCallbackFiresOnSessionFailureWithRescuedText() async {
+    func testSentinelRewriteOutcomeIsRejectedOnTheLivePath() async {
         let session = LiveTranscriptionSession()
-        let recorder = FakeLiveRecorder()
-        let pipeline = SpokenWorkflowPipeline(recorder: recorder)
-        var bergungMessage: String??
-        var output: String?
-
-        let workflow = LiveDictationWorkflow(
-            type: .transcription,
-            session: session,
-            pipeline: pipeline,
-            onBergung: { bergungMessage = $0 }
-        )
-        workflow.onOutput = { output = $0 }
-        workflow.start()
-
-        let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
-            continuation.yield(TranscriptionChunk(text: "Geretteter Text", isFinal: true))
-            continuation.finish(throwing: NSError(domain: "test", code: 1))
-        }
-        session.phase = .running
-        await session.runCollectingLoop(stream)
-
-        let expectation = expectation(description: "bergung processed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            expectation.fulfill()
-        }
-        await fulfillment(of: [expectation], timeout: 2)
-
-        XCTAssertNotNil(bergungMessage)
-        XCTAssertEqual(output, "Geretteter Text")
-    }
-
-    func testStreamEndWithoutFinishRequestStopsRecordingAndBergsImmediately() async {
-        let session = LiveTranscriptionSession()
-        let recorder = FakeLiveRecorder()
-        let pipeline = SpokenWorkflowPipeline(recorder: recorder)
-        var bergungMessage: String??
-        var output: String?
-
-        let workflow = LiveDictationWorkflow(
-            type: .transcription,
-            session: session,
-            pipeline: pipeline,
-            onBergung: { bergungMessage = $0 }
-        )
-        workflow.onOutput = { output = $0 }
-        workflow.start()
-        XCTAssertTrue(recorder.isRecording)
-
-        session.phase = .running
-        let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
-            continuation.yield(TranscriptionChunk(text: "Geretteter Text", isFinal: true))
-            continuation.finish()
-        }
-        await session.runCollectingLoop(stream)
-
-        let expectation = expectation(description: "bergung processed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            expectation.fulfill()
-        }
-        await fulfillment(of: [expectation], timeout: 2)
-
-        XCTAssertFalse(recorder.isRecording, "Aufnahme muss sofort stoppen, nicht erst beim Nutzer-Stop")
-        XCTAssertNotNil(bergungMessage)
-        XCTAssertEqual(output, "Geretteter Text")
-    }
-
-    func testBergungInsertsRawTextWithoutInvokingTheRewriteStage() async {
-        let session = LiveTranscriptionSession()
-        let recorder = FakeLiveRecorder()
-        let pipeline = SpokenWorkflowPipeline(recorder: recorder)
+        await feedSession(session, text: "Hallo Welt")
         var rewriteCalled = false
-        var bergungMessage: String??
-
-        let workflow = LiveDictationWorkflow(
-            type: .transcription,
+        let (workflow, _, _) = makeWorkflow(
             session: session,
-            pipeline: pipeline,
-            rewriteStage: RewriteStage { text in
+            rewriteStage: RewriteStage(noSpeechSentinel: RewriteStage.noSpeechSentinel) { _ in
                 rewriteCalled = true
-                return RewriteStepResult(text: text.uppercased(), completionLabel: nil)
-            },
-            onBergung: { bergungMessage = $0 }
+                return RewriteStepResult(text: " KEINE_AUFNAHME_ERKANNT ", completionLabel: nil)
+            }
         )
-        var output: String?
-        workflow.onOutput = { output = $0 }
         workflow.start()
 
-        session.phase = .running
-        let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
-            // Shorter than the stage's minimum length: only a stage-less raw insertion can deliver it.
-            continuation.yield(TranscriptionChunk(text: "x", isFinal: true))
-            continuation.finish(throwing: NSError(domain: "test", code: 1))
+        let expectation = expectation(description: "error phase reached")
+        workflow.onPhaseChange = { phase in
+            if case .error = phase { expectation.fulfill() }
         }
-        await session.runCollectingLoop(stream)
 
-        let expectation = expectation(description: "bergung processed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            expectation.fulfill()
-        }
+        workflow.stop()
         await fulfillment(of: [expectation], timeout: 2)
 
-        XCTAssertNotNil(bergungMessage)
-        XCTAssertEqual(output, "x", "geborgener Text wird roh und unabhängig von der Länge eingefügt")
-        XCTAssertFalse(rewriteCalled, "die Bergung ruft die Rewrite-Stage nicht auf")
+        XCTAssertTrue(rewriteCalled)
+        XCTAssertEqual(workflow.phase, .error("Keine Aufnahme erkannt."))
     }
 }

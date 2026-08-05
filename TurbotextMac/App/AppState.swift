@@ -399,40 +399,68 @@ final class AppState {
     }
 
     private func makeDampfAblassenWorkflow() -> any Workflow {
-        SpokenRewriteWorkflow.dampfAblassen(
+        let rewriter: SpokenRewriteWorkflow.DampfAblassenRewriter = { [rewriteConsentCoordinator] text, settings, providerMode in
+            try await LLMService.dampfAblassenLocalFirst(
+                text: text,
+                systemPrompt: settings.systemPrompt,
+                providerMode: providerMode,
+                consent: rewriteConsentCoordinator
+            )
+        }
+        let resolved = resolvedTranscriber(backendOverride: nil)
+        if Self.routesToLiveDictation(resolved.resolution), #available(macOS 26, *) {
+            let settings = dampfAblassenSettings
+            let providerMode = appSettings.rewritingProviderMode
+            return makeLiveDictationWorkflow(
+                type: .dampfAblassen,
+                rewritingMessage: "Wird umformuliert ...",
+                rewriteStage: RewriteStage(noSpeechSentinel: RewriteStage.noSpeechSentinel) { text in
+                    try await rewriter(text, settings, providerMode)
+                },
+                processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() }
+            )
+        }
+        return SpokenRewriteWorkflow.dampfAblassen(
             settings: dampfAblassenSettings,
             customTerms: textImprovementSettings.customTerms,
             language: transcriptionSettings.language,
             providerMode: appSettings.rewritingProviderMode,
-            transcriber: defaultResolvedTranscriber,
+            transcriber: resolved.transcriber,
             processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
-            rewriter: { [rewriteConsentCoordinator] text, settings, providerMode in
-                try await LLMService.dampfAblassenLocalFirst(
-                    text: text,
-                    systemPrompt: settings.systemPrompt,
-                    providerMode: providerMode,
-                    consent: rewriteConsentCoordinator
-                )
-            }
+            rewriter: rewriter
         )
     }
 
     private func makeEmojiTextWorkflow() -> any Workflow {
-        SpokenRewriteWorkflow.emojiText(
+        let rewriter: SpokenRewriteWorkflow.EmojiTextRewriter = { [rewriteConsentCoordinator] text, settings, providerMode in
+            try await LLMService.addEmojisLocalFirst(
+                text: text,
+                settings: settings,
+                providerMode: providerMode,
+                consent: rewriteConsentCoordinator
+            )
+        }
+        let resolved = resolvedTranscriber(backendOverride: nil)
+        if Self.routesToLiveDictation(resolved.resolution), #available(macOS 26, *) {
+            let settings = emojiTextSettings
+            let providerMode = appSettings.rewritingProviderMode
+            return makeLiveDictationWorkflow(
+                type: .emojiText,
+                rewritingMessage: "Emojis werden eingefügt ...",
+                rewriteStage: RewriteStage(noSpeechSentinel: RewriteStage.noSpeechSentinel) { text in
+                    try await rewriter(text, settings, providerMode)
+                },
+                processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() }
+            )
+        }
+        return SpokenRewriteWorkflow.emojiText(
             settings: emojiTextSettings,
             customTerms: textImprovementSettings.customTerms,
             language: transcriptionSettings.language,
             providerMode: appSettings.rewritingProviderMode,
-            transcriber: defaultResolvedTranscriber,
+            transcriber: resolved.transcriber,
             processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
-            rewriter: { [rewriteConsentCoordinator] text, settings, providerMode in
-                try await LLMService.addEmojisLocalFirst(
-                    text: text,
-                    settings: settings,
-                    providerMode: providerMode,
-                    consent: rewriteConsentCoordinator
-                )
-            }
+            rewriter: rewriter
         )
     }
 
@@ -499,13 +527,6 @@ final class AppState {
                 orchestrator?.reportBergung(message: message)
             }
         )
-    }
-
-    /// The resolved transcriber for the rewrite workflows, which never carry a
-    /// `backendOverride` — only the `.transcription` factory closure does (from the
-    /// hotkey-time offline-fallback decision).
-    private var defaultResolvedTranscriber: SpokenWorkflowPipeline.Transcriber {
-        resolvedTranscriber(backendOverride: nil).transcriber
     }
 
     /// Resolves the transcriber for the four cloud-capable spoken workflows via
