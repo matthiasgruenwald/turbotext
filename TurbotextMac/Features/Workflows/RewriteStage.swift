@@ -12,6 +12,7 @@ enum RewriteStageOutcome: Equatable {
 @MainActor
 struct RewriteStage {
     static let rawInsertionCompletionLabel = "Sehr kurze Eingabe – ohne Nachbearbeitung eingefügt"
+    static let noSpeechSentinel = "KEINE_AUFNAHME_ERKANNT"
 
     private let noSpeechSentinel: String?
     private let rewrite: @MainActor (String) async throws -> RewriteStepResult

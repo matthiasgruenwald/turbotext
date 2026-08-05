@@ -1,4 +1,7 @@
 import Foundation
+import OSLog
+
+private let rewriteLogger = Logger(subsystem: "app.turbotext.mac", category: "Rewrite")
 
 /// The concrete online backend a rewrite request can be routed to once the user
 /// consents to leaving the device. Persisted per-workflow in `AppSettings.rewriteConsents`.
@@ -41,6 +44,9 @@ enum RewriteOutcome: Equatable {
     /// Raw, unmodified text was inserted (user declined the consent dialog) — nothing
     /// was actually improved, so no completion label is shown.
     case rawTextInserted
+    /// The local rewrite output was unusable (prompt echo, no input reference, or
+    /// fabrication, #180): the raw dictation text is inserted instead.
+    case localRewriteFailed
 
     var completionLabel: String? {
         switch self {
@@ -50,6 +56,8 @@ enum RewriteOutcome: Equatable {
             return "Text online verbessert · \(provider.displayName) · \(model)"
         case .rawTextInserted:
             return nil
+        case .localRewriteFailed:
+            return "Nachbearbeitung fehlgeschlagen – Rohtext eingefügt"
         }
     }
 }
@@ -141,6 +149,16 @@ struct RewriteRouter {
 
         do {
             let result = try await appleProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+            // The hypothetical no-speech sentinel must reach `RewriteStage` untouched,
+            // which rejects it — validating it would misclassify it as unusable output (#180).
+            if TranscriptionQualityService.cleanedTranscript(result) == RewriteStage.noSpeechSentinel {
+                return (result, .local(model: appleProvider.modelName))
+            }
+            let failure = RewriteOutputValidator.validate(input: text, output: result, systemPrompt: systemPrompt)
+            logLocalRewrite(inputLength: text.count, outputLength: result.count, failure: failure)
+            guard failure == nil else {
+                return (text, .localRewriteFailed)
+            }
             return (result, .local(model: appleProvider.modelName))
         } catch let error as AppleRewriteError {
             switch error {
@@ -163,6 +181,11 @@ struct RewriteRouter {
                 )
             }
         }
+    }
+
+    private func logLocalRewrite(inputLength: Int, outputLength: Int, failure: RewriteOutputFailure?) {
+        let check = failure.map { String(describing: $0) } ?? "none"
+        rewriteLogger.info("Local rewrite: input \(inputLength) chars, output \(outputLength) chars, check \(check, privacy: .public)")
     }
 
     private func fallbackToExistingRouter(

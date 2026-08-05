@@ -68,11 +68,11 @@ final class RewriteRouterTests: XCTestCase {
         let store = ConsentStore()
 
         let result = try await makeRouter().complete(
-            text: "hallo welt",
+            text: "das meeting morgen absagen",
             systemPrompt: "system",
             temperature: 0.3,
             workflow: .textImprover,
-            appleProvider: FakeProvider(result: .success("Lokal-Ergebnis")),
+            appleProvider: FakeProvider(result: .success("Das Meeting morgen wurde abgesagt.")),
             openAIProvider: FakeProvider(result: .success("OpenAI-Ergebnis")),
             groqProvider: FakeProvider(result: .success("Groq-Ergebnis")),
             presentConsent: consentSpy.present,
@@ -80,7 +80,7 @@ final class RewriteRouterTests: XCTestCase {
             writeConsent: store.write
         )
 
-        XCTAssertEqual(result, "Lokal-Ergebnis")
+        XCTAssertEqual(result, "Das Meeting morgen wurde abgesagt.")
         XCTAssertTrue(consentSpy.calls.isEmpty)
     }
 
@@ -307,11 +307,11 @@ final class RewriteRouterTests: XCTestCase {
         let store = ConsentStore()
 
         let result = try await makeRouter().completeWithOutcome(
-            text: "hallo welt",
+            text: "das meeting morgen absagen",
             systemPrompt: "system",
             temperature: 0.3,
             workflow: .textImprover,
-            appleProvider: FakeProvider(result: .success("Lokal-Ergebnis"), modelName: "Apple Foundation Models"),
+            appleProvider: FakeProvider(result: .success("Das Meeting morgen wurde abgesagt."), modelName: "Apple Foundation Models"),
             openAIProvider: FakeProvider(result: .success("OpenAI-Ergebnis")),
             groqProvider: FakeProvider(result: .success("Groq-Ergebnis")),
             presentConsent: consentSpy.present,
@@ -319,7 +319,7 @@ final class RewriteRouterTests: XCTestCase {
             writeConsent: store.write
         )
 
-        XCTAssertEqual(result.text, "Lokal-Ergebnis")
+        XCTAssertEqual(result.text, "Das Meeting morgen wurde abgesagt.")
         XCTAssertEqual(result.outcome, .local(model: "Apple Foundation Models"))
         XCTAssertEqual(result.outcome.completionLabel, "Text lokal verbessert · Apple Foundation Models")
     }
@@ -365,6 +365,121 @@ final class RewriteRouterTests: XCTestCase {
 
         XCTAssertEqual(result.outcome, .rawTextInserted)
         XCTAssertNil(result.outcome.completionLabel)
+    }
+
+    // MARK: - Local output validation (#180)
+
+    private let localFailureLabel = "Nachbearbeitung fehlgeschlagen – Rohtext eingefügt"
+
+    func testLocalPromptEchoInsertsRawTextWithFailureLabel() async throws {
+        let consentSpy = ConsentSpy()
+        let store = ConsentStore()
+        let echoedPrompt = "Du bist ein Lektor. Verbessere den folgenden Text und gib nur das Ergebnis zurueck."
+
+        let result = try await makeRouter().completeWithOutcome(
+            text: "das meeting morgen absagen",
+            systemPrompt: echoedPrompt,
+            temperature: 0.3,
+            workflow: .textImprover,
+            appleProvider: FakeProvider(result: .success(echoedPrompt)),
+            openAIProvider: FakeProvider(result: .success("OpenAI-Ergebnis")),
+            groqProvider: FakeProvider(result: .success("Groq-Ergebnis")),
+            presentConsent: consentSpy.present,
+            readConsent: store.read,
+            writeConsent: store.write
+        )
+
+        XCTAssertEqual(result.text, "das meeting morgen absagen")
+        XCTAssertEqual(result.outcome, .localRewriteFailed)
+        XCTAssertEqual(result.outcome.completionLabel, localFailureLabel)
+        XCTAssertTrue(consentSpy.calls.isEmpty)
+    }
+
+    func testLocalOutputWithoutInputReferenceInsertsRawText() async throws {
+        let consentSpy = ConsentSpy()
+        let store = ConsentStore()
+
+        let result = try await makeRouter().completeWithOutcome(
+            text: "das meeting morgen absagen",
+            systemPrompt: "system",
+            temperature: 0.3,
+            workflow: .textImprover,
+            appleProvider: FakeProvider(result: .success("Hier ist eine vollstaendig andere Antwort ohne jeden Bezug.")),
+            openAIProvider: FakeProvider(result: .success("OpenAI-Ergebnis")),
+            groqProvider: FakeProvider(result: .success("Groq-Ergebnis")),
+            presentConsent: consentSpy.present,
+            readConsent: store.read,
+            writeConsent: store.write
+        )
+
+        XCTAssertEqual(result.text, "das meeting morgen absagen")
+        XCTAssertEqual(result.outcome, .localRewriteFailed)
+        XCTAssertEqual(result.outcome.completionLabel, localFailureLabel)
+    }
+
+    func testLocalFabricatedOutputInsertsRawText() async throws {
+        let consentSpy = ConsentSpy()
+        let store = ConsentStore()
+
+        let result = try await makeRouter().completeWithOutcome(
+            text: "kurzer satz hier",
+            systemPrompt: "system",
+            temperature: 0.3,
+            workflow: .textImprover,
+            appleProvider: FakeProvider(result: .success(String(repeating: "satz ", count: 25))),
+            openAIProvider: FakeProvider(result: .success("OpenAI-Ergebnis")),
+            groqProvider: FakeProvider(result: .success("Groq-Ergebnis")),
+            presentConsent: consentSpy.present,
+            readConsent: store.read,
+            writeConsent: store.write
+        )
+
+        XCTAssertEqual(result.text, "kurzer satz hier")
+        XCTAssertEqual(result.outcome, .localRewriteFailed)
+        XCTAssertEqual(result.outcome.completionLabel, localFailureLabel)
+    }
+
+    func testLocalSentinelOutputBypassesValidationForRewriteStageRejection() async throws {
+        let consentSpy = ConsentSpy()
+        let store = ConsentStore()
+
+        let result = try await makeRouter().completeWithOutcome(
+            text: "ich habe gerade etwas gesagt",
+            systemPrompt: "system",
+            temperature: 0.3,
+            workflow: .dampfAblassen,
+            appleProvider: FakeProvider(result: .success(" KEINE_AUFNAHME_ERKANNT "), modelName: "Apple Foundation Models"),
+            openAIProvider: FakeProvider(result: .success("OpenAI-Ergebnis")),
+            groqProvider: FakeProvider(result: .success("Groq-Ergebnis")),
+            presentConsent: consentSpy.present,
+            readConsent: store.read,
+            writeConsent: store.write
+        )
+
+        XCTAssertEqual(result.text, " KEINE_AUFNAHME_ERKANNT ")
+        XCTAssertEqual(result.outcome, .local(model: "Apple Foundation Models"))
+    }
+
+    func testOnlineOutputIsNotValidated() async throws {
+        let consentSpy = ConsentSpy()
+        let store = ConsentStore()
+        let echoedPrompt = "Du bist ein Lektor. Verbessere den folgenden Text und gib nur das Ergebnis zurueck."
+
+        let result = try await makeRouter().completeWithOutcome(
+            text: "das meeting morgen absagen",
+            systemPrompt: echoedPrompt,
+            temperature: 0.3,
+            workflow: .textImprover,
+            appleProvider: nil,
+            openAIProvider: FakeProvider(result: .success("OpenAI-Ergebnis")),
+            groqProvider: FakeProvider(result: .success(echoedPrompt), modelName: "openai/gpt-oss-120b"),
+            presentConsent: consentSpy.present,
+            readConsent: store.read,
+            writeConsent: store.write
+        )
+
+        XCTAssertEqual(result.text, echoedPrompt)
+        XCTAssertEqual(result.outcome, .online(provider: .groq, model: "openai/gpt-oss-120b"))
     }
 
     // MARK: - Processing label (#128)
