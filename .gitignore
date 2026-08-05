@@ -31,3 +31,6 @@ Secrets.swift
 
 # Tooling
 node_modules/
+
+# Agent worktrees
+.claude/worktrees/
