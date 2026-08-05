@@ -10,14 +10,15 @@ private let rewriteLogger = Logger(subsystem: "app.turbotext.mac", category: "Re
 /// Implements `start`/`stop`/`reset`, cancellation, error handling, and phase
 /// transitions exactly once. Callers supply the rewrite step via the `rewrite`
 /// closure and, optionally, a sentinel value the rewriter returns to signal
-/// "no usable speech" instead of throwing.
+/// "no usable speech" instead of throwing; both feed the shared `RewriteStage`,
+/// whose outcome is mapped onto phases here.
 ///
 /// `cleanedTranscript()` is applied twice by design: once inside
 /// `SpokenWorkflowPipeline.transcribeRecording` on the raw transcript (so the
-/// rewriter always receives trimmed input), and once here on the rewriter's
-/// output (so trailing/leading whitespace the rewriter introduces doesn't leak
-/// into the pasted result). `TranscriptionWorkflow` only needs the first call,
-/// since it has no rewrite step.
+/// rewriter always receives trimmed input), and once in `RewriteStage` on the
+/// rewriter's output (so trailing/leading whitespace the rewriter introduces
+/// doesn't leak into the pasted result). `TranscriptionWorkflow` only needs
+/// the first call, since it has no rewrite step.
 @Observable
 @MainActor
 final class SpokenRewriteWorkflow: Workflow {
@@ -123,32 +124,22 @@ final class SpokenRewriteWorkflow: Workflow {
 
                 rewriteLogger.info("Rewrite decision pending: recording \(recording.duration, format: .fixed(precision: 2))s, transcript \(rawText.count) chars")
 
-                guard !TranscriptionQualityService.isTooShortToRewrite(rawText) else {
+                let stage = RewriteStage(noSpeechSentinel: noSpeechSentinel) { transcript in
+                    // Resolved before flipping `phase`: the `didSet` fires `onPhaseChange`
+                    // synchronously and `WorkflowOrchestrator` reads `processingLabel` from
+                    // within that same callback, so it must already hold the new value.
+                    self.processingLabel = self.processingLabelResolver()
+                    self.phase = .running(self.rewritingMessage)
+                    return try await self.rewrite(transcript)
+                }
+                switch try await stage.run(rawText) {
+                case .rejected:
                     phase = .error("Keine Aufnahme erkannt.")
-                    return
+                case .rawInsertion(let text, let label):
+                    finish(withText: text, completionLabel: label)
+                case .rewritten(let text, let label):
+                    finish(withText: text, completionLabel: label)
                 }
-
-                guard !TranscriptionQualityService.isShortEnoughForRawInsertion(rawText) else {
-                    finishWithRawInsertion(rawText)
-                    return
-                }
-
-                // Resolved before flipping `phase`: the `didSet` fires `onPhaseChange`
-                // synchronously and `WorkflowOrchestrator` reads `processingLabel` from
-                // within that same callback, so it must already hold the new value.
-                processingLabel = processingLabelResolver()
-                phase = .running(rewritingMessage)
-                let result = try await rewrite(rawText)
-                try Task.checkCancellation()
-
-                let cleanedResult = TranscriptionQualityService.cleanedTranscript(result.text)
-                if let noSpeechSentinel, cleanedResult == noSpeechSentinel {
-                    phase = .error("Keine Aufnahme erkannt.")
-                    return
-                }
-                completionLabel = result.completionLabel
-                phase = .done(cleanedResult)
-                onOutput?(cleanedResult)
             } catch is CancellationError {
                 return
             } catch SpokenWorkflowPipeline.Error.noSpeech {
@@ -160,14 +151,11 @@ final class SpokenRewriteWorkflow: Workflow {
     }
 
     /// `completionLabel` is set before `phase` so the orchestrator already sees
-    /// it when the `.done` phase change fires `onPhaseChange` (#128). The user
-    /// did not choose to skip the LLM here (unlike the consent raw path), so the
-    /// label explains it (#173).
-    private func finishWithRawInsertion(_ rawText: String) {
-        let cleanedRaw = TranscriptionQualityService.cleanedTranscript(rawText)
-        completionLabel = "Sehr kurze Eingabe – ohne Nachbearbeitung eingefügt"
-        phase = .done(cleanedRaw)
-        onOutput?(cleanedRaw)
+    /// it when the `.done` phase change fires `onPhaseChange` (#128).
+    private func finish(withText text: String, completionLabel: String?) {
+        self.completionLabel = completionLabel
+        phase = .done(text)
+        onOutput?(text)
     }
 }
 
