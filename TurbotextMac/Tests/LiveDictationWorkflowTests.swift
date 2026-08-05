@@ -40,7 +40,7 @@ final class LiveDictationWorkflowTests: XCTestCase {
         session: LiveTranscriptionSession? = nil,
         smoothingPass: (@Sendable (String) async -> String?)? = nil,
         smoothingBudget: Duration = .seconds(5),
-        rewrite: ((String) async throws -> RewriteStepResult)? = nil,
+        rewriteStage: RewriteStage? = nil,
         onBergung: ((String?) -> Void)? = nil,
         fileFallbackTranscriber: ((URL, TimeInterval) async throws -> String)? = nil,
         gracePeriod: Duration = .zero
@@ -55,7 +55,7 @@ final class LiveDictationWorkflowTests: XCTestCase {
             smoothingBudget: smoothingBudget,
             pipeline: pipeline,
             gracePeriod: gracePeriod,
-            rewrite: rewrite,
+            rewriteStage: rewriteStage,
             onBergung: onBergung,
             fileFallbackTranscriber: fileFallbackTranscriber
         )
@@ -137,12 +137,12 @@ final class LiveDictationWorkflowTests: XCTestCase {
         XCTAssertEqual(workflow.phase, .error("Keine Aufnahme erkannt."))
     }
 
-    func testStopWithRewriteAppliesRewriteStep() async {
+    func testStopWithRewriteStageAppliesRewrittenOutcome() async {
         let session = LiveTranscriptionSession()
         await feedSession(session, text: "rohtext")
         let (workflow, _, _) = makeWorkflow(
             session: session,
-            rewrite: { text in RewriteStepResult(text: text.uppercased(), completionLabel: "test") }
+            rewriteStage: RewriteStage { text in RewriteStepResult(text: text.uppercased(), completionLabel: "test") }
         )
         workflow.start()
 
@@ -157,7 +157,62 @@ final class LiveDictationWorkflowTests: XCTestCase {
         await fulfillment(of: [expectation], timeout: 2)
 
         XCTAssertEqual(output, "ROHTEXT")
+        XCTAssertEqual(workflow.phase, .done("ROHTEXT"))
         XCTAssertEqual(workflow.completionLabel, "test")
+    }
+
+    func testStopWithRewriteStageRejectsTranscriptBelowMinimumLength() async {
+        let session = LiveTranscriptionSession()
+        await feedSession(session, text: "a")
+        var rewriteCalled = false
+        let (workflow, _, _) = makeWorkflow(
+            session: session,
+            rewriteStage: RewriteStage { _ in
+                rewriteCalled = true
+                return RewriteStepResult(text: "ignored", completionLabel: nil)
+            }
+        )
+        workflow.start()
+
+        let expectation = expectation(description: "error phase reached")
+        workflow.onPhaseChange = { phase in
+            if case .error = phase { expectation.fulfill() }
+        }
+
+        workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertEqual(workflow.phase, .error("Keine Aufnahme erkannt."))
+        XCTAssertFalse(rewriteCalled)
+    }
+
+    func testStopWithRewriteStageInsertsShortTranscriptRawWithLabel() async {
+        let session = LiveTranscriptionSession()
+        await feedSession(session, text: "Nein")
+        var rewriteCalled = false
+        let (workflow, _, _) = makeWorkflow(
+            session: session,
+            rewriteStage: RewriteStage { _ in
+                rewriteCalled = true
+                return RewriteStepResult(text: "ignored", completionLabel: nil)
+            }
+        )
+        workflow.start()
+
+        let expectation = expectation(description: "output delivered")
+        var output: String?
+        workflow.onOutput = { text in
+            output = text
+            expectation.fulfill()
+        }
+
+        workflow.stop()
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertEqual(output, "Nein")
+        XCTAssertEqual(workflow.phase, .done("Nein"))
+        XCTAssertEqual(workflow.completionLabel, "Sehr kurze Eingabe – ohne Nachbearbeitung eingefügt")
+        XCTAssertFalse(rewriteCalled)
     }
 
     func testResetCancelsSilentlyWithoutOutput() {
@@ -660,5 +715,45 @@ final class LiveDictationWorkflowBergungTests: XCTestCase {
         XCTAssertFalse(recorder.isRecording, "Aufnahme muss sofort stoppen, nicht erst beim Nutzer-Stop")
         XCTAssertNotNil(bergungMessage)
         XCTAssertEqual(output, "Geretteter Text")
+    }
+
+    func testBergungInsertsRawTextWithoutInvokingTheRewriteStage() async {
+        let session = LiveTranscriptionSession()
+        let recorder = FakeLiveRecorder()
+        let pipeline = SpokenWorkflowPipeline(recorder: recorder)
+        var rewriteCalled = false
+        var bergungMessage: String??
+
+        let workflow = LiveDictationWorkflow(
+            type: .transcription,
+            session: session,
+            pipeline: pipeline,
+            rewriteStage: RewriteStage { text in
+                rewriteCalled = true
+                return RewriteStepResult(text: text.uppercased(), completionLabel: nil)
+            },
+            onBergung: { bergungMessage = $0 }
+        )
+        var output: String?
+        workflow.onOutput = { output = $0 }
+        workflow.start()
+
+        session.phase = .running
+        let stream = AsyncThrowingStream<TranscriptionChunk, Error> { continuation in
+            // Shorter than the stage's minimum length: only a stage-less raw insertion can deliver it.
+            continuation.yield(TranscriptionChunk(text: "x", isFinal: true))
+            continuation.finish(throwing: NSError(domain: "test", code: 1))
+        }
+        await session.runCollectingLoop(stream)
+
+        let expectation = expectation(description: "bergung processed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            expectation.fulfill()
+        }
+        await fulfillment(of: [expectation], timeout: 2)
+
+        XCTAssertNotNil(bergungMessage)
+        XCTAssertEqual(output, "x", "geborgener Text wird roh und unabhängig von der Länge eingefügt")
+        XCTAssertFalse(rewriteCalled, "die Bergung ruft die Rewrite-Stage nicht auf")
     }
 }

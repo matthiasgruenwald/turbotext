@@ -26,7 +26,7 @@ final class LiveDictationWorkflow: Workflow {
     private let smoothingPass: (@Sendable (String) async -> String?)?
     private let smoothingBudget: Duration
     private let smoothingMessage: String
-    private let rewrite: ((String) async throws -> RewriteStepResult)?
+    private let rewriteStage: RewriteStage?
     private let processingLabelResolver: () -> String?
     private let onLiveTranscriptUpdate: ((LiveTranscriptDisplay) -> Void)?
     private let onBergung: ((String?) -> Void)?
@@ -46,7 +46,7 @@ final class LiveDictationWorkflow: Workflow {
         pipeline: SpokenWorkflowPipeline? = nil,
         gracePeriod: Duration = .milliseconds(250),
         rewritingMessage: String = "Wird verarbeitet ...",
-        rewrite: ((String) async throws -> RewriteStepResult)? = nil,
+        rewriteStage: RewriteStage? = nil,
         processingLabelResolver: @escaping () -> String? = { nil },
         onLiveTranscriptUpdate: ((LiveTranscriptDisplay) -> Void)? = nil,
         onBergung: ((String?) -> Void)? = nil,
@@ -61,7 +61,7 @@ final class LiveDictationWorkflow: Workflow {
         self.pipeline = pipeline ?? SpokenWorkflowPipeline()
         self.gracePeriod = gracePeriod
         self.rewritingMessage = rewritingMessage
-        self.rewrite = rewrite
+        self.rewriteStage = rewriteStage
         self.processingLabelResolver = processingLabelResolver
         self.onLiveTranscriptUpdate = onLiveTranscriptUpdate
         self.onBergung = onBergung
@@ -207,7 +207,7 @@ final class LiveDictationWorkflow: Workflow {
     }
 
     private func processText(_ text: String) {
-        guard let rewrite else {
+        guard let rewriteStage else {
             let cleaned = TranscriptionQualityService.cleanedTranscript(text)
             phase = .done(cleaned)
             onOutput?(cleaned)
@@ -218,12 +218,20 @@ final class LiveDictationWorkflow: Workflow {
         phase = .running(rewritingMessage)
         processingTask = Task {
             do {
-                let result = try await rewrite(text)
+                let outcome = try await rewriteStage.run(text)
                 try Task.checkCancellation()
-                let cleaned = TranscriptionQualityService.cleanedTranscript(result.text)
-                completionLabel = result.completionLabel
-                phase = .done(cleaned)
-                onOutput?(cleaned)
+                switch outcome {
+                case .rejected:
+                    phase = .error("Keine Aufnahme erkannt.")
+                case .rawInsertion(let finalText, let label):
+                    completionLabel = label
+                    phase = .done(finalText)
+                    onOutput?(finalText)
+                case .rewritten(let finalText, let label):
+                    completionLabel = label
+                    phase = .done(finalText)
+                    onOutput?(finalText)
+                }
             } catch is CancellationError {
                 return
             } catch {
