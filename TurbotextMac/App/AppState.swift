@@ -17,7 +17,7 @@ final class AppState {
     let groqTranscriptionProvider: GroqTranscriptionProvider
     let microphoneState: MicrophoneState
     private let localModelState: LocalModelState
-    private let appleSpeechAvailabilityState: AppleSpeechAvailabilityState
+    private let appleSpeechAvailability: AppleSpeechAvailability
     private let rewriteConsentCoordinator: RewriteConsentCoordinating
 
     var activeWorkflow: (any Workflow)? { workflowLifecycle.activeWorkflow }
@@ -92,14 +92,14 @@ final class AppState {
 
     /// Exposed so `TurbotextMacApp`'s hotkey-time offline-fallback decision
     /// (`TranscriptionFallbackResolver`) can prefer Apple Speech over WhisperKit too (#123).
-    var isAppleSpeechAvailable: Bool { appleSpeechAvailabilityState.isAvailable }
+    var isAppleSpeechAvailable: Bool { appleSpeechAvailability.readiness.isReady }
     var selectedLocalTranscriptionBackend: LocalTranscriptionBackend {
         get { appSettings.selectedLocalTranscriptionBackend }
         set { appSettings.selectedLocalTranscriptionBackend = newValue }
     }
-    var appleSpeechAvailabilityStatus: AppleSpeechAvailabilityStatus { appleSpeechAvailabilityState.status }
-    var isInstallingAppleSpeechAssets: Bool { appleSpeechAvailabilityState.isInstallingAssets }
-    var appleSpeechAssetInstallationErrorText: String? { appleSpeechAvailabilityState.assetInstallationErrorText }
+    var appleSpeechAvailabilityStatus: AppleSpeechAvailabilityStatus { appleSpeechAvailability.status }
+    var isInstallingAppleSpeechAssets: Bool { appleSpeechAvailability.isInstallingAssets }
+    var appleSpeechAssetInstallationErrorText: String? { appleSpeechAvailability.assetInstallationErrorText }
     var shouldShowOnboarding: Bool {
         !isConfigured && !appSettings.hasSeenOnboarding
     }
@@ -159,7 +159,7 @@ final class AppState {
             getHasAutoSelectedFastLocalModel: { settings.appSettings.hasAutoSelectedFastLocalModel },
             setHasAutoSelectedFastLocalModel: { settings.appSettings.hasAutoSelectedFastLocalModel = $0 }
         )
-        self.appleSpeechAvailabilityState = AppleSpeechAvailabilityState()
+        self.appleSpeechAvailability = AppleSpeechAvailability()
         self.rewriteConsentCoordinator = rewriteConsentCoordinator ?? RewriteConsentCoordinator(
             getConsents: { settings.appSettings.rewriteConsents },
             setConsents: { settings.appSettings.rewriteConsents = $0 }
@@ -204,7 +204,6 @@ final class AppState {
         microphoneState.start()
         networkPingService.start()
         checkGroqQuotaIfNeeded()
-        appleSpeechAvailabilityState.secureAssetsAtLaunch()
     }
 
     func checkGroqQuotaIfNeeded() {
@@ -255,13 +254,14 @@ final class AppState {
     }
 
     func installAppleSpeechAssets() {
-        appleSpeechAvailabilityState.installAssets()
+        Task { [appleSpeechAvailability] in await appleSpeechAvailability.ensureAssetsReady() }
     }
 
-    /// Sprachasset-Sicherstellung (#178): Kick-off aus dem Frühcheck der Live-Session,
-    /// wenn die Diktat-Taste ohne bereite Sprachassets gedrückt wurde.
+    /// Sprachasset-Bereitschaft (#189, vormals Sprachasset-Sicherstellung #178): Kick-off
+    /// aus dem Frühcheck der Live-Session, wenn die Diktat-Taste ohne bereite Sprachassets
+    /// gedrückt wurde — delegiert an denselben Sicherstellungs-Aufruf wie App-Start/Aufwachen.
     func secureAppleSpeechAssetsOnDemand() {
-        appleSpeechAvailabilityState.secureAssetsOnDemand()
+        Task { [appleSpeechAvailability] in await appleSpeechAvailability.ensureAssetsReady() }
     }
 
     var transcriptionModeStatus: TranscriptionModeStatus {
@@ -541,7 +541,7 @@ final class AppState {
         let resolution = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: appSettings.alwaysLocalTranscription,
             selectedLocalBackend: selectedLocalTranscriptionBackend,
-            appleSpeechAvailable: appleSpeechAvailabilityState.isAvailable,
+            appleSpeechAvailable: appleSpeechAvailability.readiness.isReady,
             isOnline: networkPingService.status != .red,
             autoFallbackToLocalOnOffline: appSettings.autoFallbackToLocalOnOffline,
             legacyWhisperKitRequested: backendOverride == .local,
@@ -549,11 +549,14 @@ final class AppState {
         )
         switch resolution {
         case .appleSpeech:
-            let appleTranscriber = AppleSpeechAvailability.makeTranscriber(
-                partialTranscriptHandler: { [weak self] text in
-                    Task { @MainActor in self?.workflowLifecycle.orchestrator.updatePartialTranscript(text) }
-                }
-            )
+            var appleTranscriber: SpokenWorkflowPipeline.Transcriber?
+            if #available(macOS 26, *) {
+                appleTranscriber = AppleSpeechTranscriptionService.makeTranscriber(
+                    partialTranscriptHandler: { [weak self] text in
+                        Task { @MainActor in self?.workflowLifecycle.orchestrator.updatePartialTranscript(text) }
+                    }
+                )
+            }
             return (appleTranscriber ?? unavailableTranscriber, .local, resolution)
         case .remote:
             return (transcriber(for: .remote), .remote, resolution)
@@ -602,7 +605,7 @@ final class AppState {
                 return KeychainService.isConfigured
             }
             switch selectedLocalTranscriptionBackend {
-            case .appleSpeech: return appleSpeechAvailabilityState.isAvailable
+            case .appleSpeech: return appleSpeechAvailability.readiness.isReady
             case .whisperKit: return transcriptionModeStatus.selectedLocalModelInstalled
             }
         case .textImprover, .dampfAblassen, .emojiText:
@@ -620,7 +623,7 @@ final class AppState {
 
     func enableAlwaysLocalTranscription() {
         appSettings.alwaysLocalTranscription = true
-        appleSpeechAvailabilityState.refresh()
+        Task { [appleSpeechAvailability] in await appleSpeechAvailability.ensureAssetsReady() }
         if selectedLocalTranscriptionBackend == .whisperKit, !selectedLocalModelIsInstalled {
             installSelectedLocalModel()
         }

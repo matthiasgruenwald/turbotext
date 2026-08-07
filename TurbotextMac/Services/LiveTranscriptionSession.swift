@@ -33,8 +33,9 @@ final class LiveTranscriptionSession {
 
     /// The provider is injectable because the real asset status is flaky on some
     /// machines (#177); tests pin it to exercise the early-check path deterministically.
-    /// `startAssetInstallation` is the Sprachasset-Sicherstellung kick-off (#178) and is
-    /// wired to `AppState` in production so the session itself stays free of app state.
+    /// `startAssetInstallation` delegates to the Sprachasset-Bereitschaft module's
+    /// `ensureAssetsReady()` (#189) and is wired to `AppState` in production so the
+    /// session itself stays free of app state and doesn't decide installability itself.
     init(
         availabilityProvider: @escaping @Sendable () async -> AppleSpeechAvailabilityStatus = {
             await AppleSpeechTranscriptionService.availabilityStatus
