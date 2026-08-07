@@ -62,6 +62,11 @@ final class WorkflowLifecycleManagerTests: XCTestCase {
             writeToPasteboard: { _ in }
         )
         let manager = WorkflowLifecycleManager(orchestrator: orchestrator, isPopoverShown: isPopoverShown)
+        if !available {
+            manager.startGate = { _ in
+                WorkflowStartRejection(reason: "test", message: "nicht verfügbar", canRetryImmediately: false)
+            }
+        }
         return (manager, box)
     }
 
@@ -70,7 +75,7 @@ final class WorkflowLifecycleManagerTests: XCTestCase {
         var routedPage: PopoverPage?
         manager.onPageChangeNeeded = { page in routedPage = page }
 
-        manager.start(.transcription, source: .manual, isAvailable: true, pasteTarget: nil)
+        manager.start(.transcription, source: .manual, pasteTarget: nil)
 
         XCTAssertEqual(routedPage, .workflow)
     }
@@ -80,35 +85,50 @@ final class WorkflowLifecycleManagerTests: XCTestCase {
         var routedPage: PopoverPage?
         manager.onPageChangeNeeded = { page in routedPage = page }
 
-        manager.start(.transcription, source: .hotkeyBackground, isAvailable: true, pasteTarget: nil)
+        manager.start(.transcription, source: .hotkeyBackground, pasteTarget: nil)
 
         XCTAssertEqual(routedPage, .main)
     }
 
-    func testStartRoutesToSettingsWhenUnavailableAndSourceIsManual() {
+    func testStartReturnsStartedOutcomeWhenGateAllows() {
+        let (manager, _) = makeManager()
+
+        let outcome = manager.start(.transcription, source: .manual, pasteTarget: nil)
+
+        XCTAssertEqual(outcome, .started)
+    }
+
+    func testStartRoutesToSettingsWhenRejectedAndSourceIsManual() {
         let (manager, _) = makeManager(available: false)
         var routedPage: PopoverPage?
         manager.onPageChangeNeeded = { page in routedPage = page }
 
-        manager.start(.textImprover, source: .manual, isAvailable: false, pasteTarget: nil)
+        manager.start(.textImprover, source: .manual, pasteTarget: nil)
 
         XCTAssertEqual(routedPage, .settings)
     }
 
-    func testStartDoesNothingWhenUnavailableAndSourceIsNotManual() {
+    /// Reverses the previous silent-veto expectation (#190, fixes F1 from #188): a
+    /// rejected hotkey-triggered start must never create a workflow, but it must also
+    /// never go unreported — the recording overlay's error state has to show it.
+    func testStartReportsRejectionAndNeverCreatesWorkflowWhenSourceIsNotManual() {
         let (manager, workflows) = makeManager(available: false)
         var routedPage: PopoverPage?
         manager.onPageChangeNeeded = { page in routedPage = page }
 
-        manager.start(.textImprover, source: .hotkeyBackground, isAvailable: false, pasteTarget: nil)
+        let outcome = manager.start(.textImprover, source: .hotkeyBackground, pasteTarget: nil)
 
         XCTAssertNil(routedPage)
         XCTAssertTrue(workflows.workflows.isEmpty)
+        XCTAssertEqual(outcome, .rejected(
+            WorkflowStartRejection(reason: "test", message: "nicht verfügbar", canRetryImmediately: false)
+        ))
+        XCTAssertEqual(manager.orchestrator.menuBarStatus, .error(.textImprover))
     }
 
     func testResetRoutesToMainPageAndClearsActiveWorkflow() {
         let (manager, _) = makeManager()
-        manager.start(.transcription, source: .manual, isAvailable: true, pasteTarget: nil)
+        manager.start(.transcription, source: .manual, pasteTarget: nil)
         var routedPage: PopoverPage?
         manager.onPageChangeNeeded = { page in routedPage = page }
 
@@ -122,7 +142,7 @@ final class WorkflowLifecycleManagerTests: XCTestCase {
 
     func testOutputCleanupRoutesToMainPageWhenPopoverIsNotShown() {
         let (manager, workflows) = makeManager(isPopoverShown: { false })
-        manager.start(.transcription, source: .manual, isAvailable: true, pasteTarget: nil)
+        manager.start(.transcription, source: .manual, pasteTarget: nil)
         var routedPages: [PopoverPage] = []
         manager.onPageChangeNeeded = { page in routedPages.append(page) }
 
@@ -138,7 +158,7 @@ final class WorkflowLifecycleManagerTests: XCTestCase {
 
     func testOutputCleanupDoesNotRouteToMainPageWhenPopoverIsShown() {
         let (manager, workflows) = makeManager(isPopoverShown: { true })
-        manager.start(.transcription, source: .manual, isAvailable: true, pasteTarget: nil)
+        manager.start(.transcription, source: .manual, pasteTarget: nil)
         var routedPages: [PopoverPage] = []
         manager.onPageChangeNeeded = { page in routedPages.append(page) }
 
@@ -154,7 +174,7 @@ final class WorkflowLifecycleManagerTests: XCTestCase {
 
     func testHotkeyBackgroundErrorRoutesToMainPageRegardlessOfPopover() {
         let (manager, workflows) = makeManager(isPopoverShown: { true })
-        manager.start(.transcription, source: .hotkeyBackground, isAvailable: true, pasteTarget: nil)
+        manager.start(.transcription, source: .hotkeyBackground, pasteTarget: nil)
         var routedPage: PopoverPage?
         manager.onPageChangeNeeded = { page in routedPage = page }
 

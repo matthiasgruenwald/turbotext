@@ -289,6 +289,18 @@ final class WorkflowOrchestrator {
         menuBarStatus = .error(workflowType)
     }
 
+    /// Surfaces a workflow-start rejection (#190, fixes F1 from #188) through the same
+    /// signal-pill error state an in-flight failure uses. No workflow is created here, so
+    /// this path can never start audio capture — `RecordingOverlayController` can't tell a
+    /// rejected start apart from a real one, which is the point: reuse the existing,
+    /// auto-dismissing error state instead of inventing a new display state.
+    func reportStartRejection(_ type: WorkflowType, message: String) {
+        menuBarStatusResetTask?.cancel()
+        lastErrorMessage = message
+        menuBarStatus = .error(type)
+        scheduleMenuBarStatusReset(after: 1.6)
+    }
+
     /// Records a fresh structured live transcript from the streaming callback (#150/#151).
     func updateLiveTranscriptDisplay(_ display: LiveTranscriptDisplay) {
         lastLiveTranscriptDisplay = display

@@ -172,6 +172,9 @@ final class AppState {
         lifecycle.workflowFactory = { [weak self] type, backendOverride in
             self?.makeWorkflow(type, backendOverride: backendOverride)
         }
+        lifecycle.startGate = { [weak self] type in
+            self?.startRejection(for: type)
+        }
         lifecycle.orchestrator.onPasteTargetActivationNeeded = { target in
             target.application.activate(options: [])
         }
@@ -313,10 +316,59 @@ final class AppState {
         workflowLifecycle.start(
             type,
             source: source,
-            isAvailable: isWorkflowAvailable(type),
             backendOverride: backendOverride,
             pasteTarget: capturePasteTarget(for: source)
         )
+    }
+
+    /// Derives whether `type` can start right now from Sprachasset-Bereitschaft and the
+    /// access configuration (#190) — wired in as `workflowLifecycle`'s `startGate`. `nil`
+    /// means "start it". Fixes F1 from #188: the hotkey path used to veto silently here.
+    private func startRejection(for type: WorkflowType) -> WorkflowStartRejection? {
+        guard type != .localTranscription else {
+            guard !isWorkflowAvailable(type) else { return nil }
+            return WorkflowStartRejection(
+                reason: "localModelNotInstalled",
+                message: "Lokales Modell nicht installiert – in den Einstellungen herunterladen.",
+                canRetryImmediately: false
+            )
+        }
+
+        if wantsAppleSpeechLive {
+            if case .notReady(let status, let canInstall) = appleSpeechAvailability.readiness {
+                if canInstall {
+                    secureAppleSpeechAssetsOnDemand()
+                }
+                return WorkflowStartRejection(
+                    reason: "appleSpeech.\(String(describing: status))",
+                    message: AppleSpeechUnavailableHint.refusalText(for: status),
+                    canRetryImmediately: canInstall
+                )
+            }
+            return nil
+        }
+
+        guard KeychainService.isConfigured else {
+            return WorkflowStartRejection(
+                reason: "accessNotConfigured",
+                message: "Kein API-Schlüssel konfiguriert – in den Einstellungen hinterlegen.",
+                canRetryImmediately: false
+            )
+        }
+        return nil
+    }
+
+    /// Whether the configured backend wants Apple Speech live dictation regardless of
+    /// current asset readiness (#190) — what a start rejection checks readiness against.
+    /// Mirrors the `alwaysLocalTranscription`+`.appleSpeech` branch of
+    /// `TranscriptionBackendResolver`, which only sees readiness as an input and so can't
+    /// distinguish "doesn't want Apple Speech" from "wants it but assets aren't ready".
+    private var wantsAppleSpeechLive: Bool {
+        guard appSettings.alwaysLocalTranscription, selectedLocalTranscriptionBackend == .appleSpeech else {
+            return false
+        }
+        if #available(macOS 26, *) { return true }
+        return false
     }
 
     private func makeWorkflow(

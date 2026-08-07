@@ -193,6 +193,20 @@ final class WorkflowOrchestratorTests: XCTestCase {
         XCTAssertNotNil(orchestrator.activeWorkflow)
     }
 
+    // MARK: - Start rejection (#190)
+
+    func testReportStartRejectionSetsErrorMenuBarStatusAndMessageWithoutActiveWorkflow() {
+        let box = WorkflowBox()
+        let orchestrator = makeOrchestrator(createdWorkflows: box)
+
+        orchestrator.reportStartRejection(.transcription, message: "Sprachassets werden geladen – bitte gleich erneut versuchen.")
+
+        XCTAssertEqual(orchestrator.menuBarStatus, .error(.transcription))
+        XCTAssertEqual(orchestrator.lastErrorMessage, "Sprachassets werden geladen – bitte gleich erneut versuchen.")
+        XCTAssertNil(orchestrator.activeWorkflow)
+        XCTAssertTrue(box.workflows.isEmpty)
+    }
+
     // MARK: - Stop / Reset
 
     func testStopDelegatesToActiveWorkflow() {

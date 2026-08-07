@@ -1,5 +1,27 @@
 import AppKit
 import Observation
+import OSLog
+
+private let lifecycleLogger = Logger(subsystem: "app.turbotext.mac", category: "WorkflowLifecycle")
+
+/// A named, user-visible reason a workflow start was refused (#190, fixes F1 from #188) —
+/// replaces the previous silent no-op on the hotkey path. `reason` is a short, non-content
+/// category for the diagnostics log line; `message` is what the recording overlay shows.
+struct WorkflowStartRejection: Equatable {
+    let reason: String
+    let message: String
+    /// Whether pressing the shortcut again right now has a realistic chance of succeeding
+    /// (e.g. assets are installing) as opposed to needing the user to change something
+    /// first (e.g. configure access, upgrade macOS).
+    let canRetryImmediately: Bool
+}
+
+/// What a workflow start actually did (#190) — callers used to get nothing back and
+/// couldn't distinguish "started" from "silently vetoed".
+enum WorkflowStartOutcome: Equatable {
+    case started
+    case rejected(WorkflowStartRejection)
+}
 
 /// Owns the `WorkflowOrchestrator` plus the page-routing decisions around starting,
 /// stopping, and resetting a workflow. `AppState` delegates here; this type does not
@@ -51,18 +73,28 @@ final class WorkflowLifecycleManager {
         set { orchestrator.workflowFactory = newValue }
     }
 
+    /// Derives whether `type` can start right now from Sprachasset-Bereitschaft and the
+    /// access configuration (#190), instead of `start()` taking a precomputed bool — this
+    /// module now owns the start decision. `nil` means "go ahead". Defaults to always-allow
+    /// so callers/tests that don't care about rejection keep working unmodified.
+    var startGate: (WorkflowType) -> WorkflowStartRejection? = { _ in nil }
+
+    @discardableResult
     func start(
         _ type: WorkflowType,
         source: WorkflowLaunchSource,
-        isAvailable: Bool,
         backendOverride: TranscriptionBackend? = nil,
         pasteTarget: PasteTarget?
-    ) {
-        guard isAvailable else {
+    ) -> WorkflowStartOutcome {
+        if let rejection = startGate(type) {
+            lifecycleLogger.info(
+                "Workflow start rejected: type=\(type.rawValue, privacy: .public) reason=\(rejection.reason, privacy: .public) source=\(String(describing: source), privacy: .public)"
+            )
+            orchestrator.reportStartRejection(type, message: rejection.message)
             if source == .manual {
                 onPageChangeNeeded?(.settings)
             }
-            return
+            return .rejected(rejection)
         }
 
         orchestrator.start(
@@ -73,6 +105,7 @@ final class WorkflowLifecycleManager {
         )
 
         onPageChangeNeeded?(source.presentsWorkflowPage ? .workflow : .main)
+        return .started
     }
 
     func stop() {
