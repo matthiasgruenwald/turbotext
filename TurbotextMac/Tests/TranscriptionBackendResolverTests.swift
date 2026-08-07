@@ -1,164 +1,172 @@
 import XCTest
 @testable import Turbotext
 
+/// Covers `TranscriptionBackendResolver.resolve` (#123, #193): the single decider for both
+/// the resolved backend and the warning sound that belongs to it. Before #193 the sound was
+/// decided separately, by `OfflineWarningSoundDecision`/`TranscriptionFallbackResolver`
+/// (removed) — those tests live here now, expressed against the merged decision.
 final class TranscriptionBackendResolverTests: XCTestCase {
 
-    // MARK: Rule 1 — alwaysLocalTranscription + Apple Speech available wins outright
+    // MARK: Rule 1 — alwaysLocalTranscription wins outright, never plays a sound
 
     func testAlwaysLocalWithAppleSpeechAvailablePicksAppleSpeechEvenWhenOnline() {
-        let result = TranscriptionBackendResolver.resolve(
+        let decision = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: true,
             appleSpeechAvailable: true,
             isOnline: true,
             autoFallbackToLocalOnOffline: false,
-            legacyWhisperKitRequested: false,
             whisperKitModelInstalled: false
         )
-        XCTAssertEqual(result, .appleSpeech)
+        XCTAssertEqual(decision.backend, .appleSpeech)
+        XCTAssertNil(decision.warningSound)
     }
 
     func testAlwaysLocalWithAppleSpeechAvailablePicksAppleSpeechEvenWhenOffline() {
-        let result = TranscriptionBackendResolver.resolve(
+        let decision = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: true,
             appleSpeechAvailable: true,
             isOnline: false,
             autoFallbackToLocalOnOffline: false,
-            legacyWhisperKitRequested: false,
             whisperKitModelInstalled: false
         )
-        XCTAssertEqual(result, .appleSpeech)
+        XCTAssertEqual(decision.backend, .appleSpeech)
+        XCTAssertNil(decision.warningSound)
     }
 
     func testAlwaysLocalWithWhisperKitSelectedPicksWhisperKit() {
-        let result = TranscriptionBackendResolver.resolve(
+        let decision = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: true,
             selectedLocalBackend: .whisperKit,
             appleSpeechAvailable: true,
             isOnline: true,
             autoFallbackToLocalOnOffline: false,
-            legacyWhisperKitRequested: false,
             whisperKitModelInstalled: true
         )
-        XCTAssertEqual(result, .whisperKit)
+        XCTAssertEqual(decision.backend, .whisperKit)
+        XCTAssertNil(decision.warningSound)
     }
 
     func testAlwaysLocalWithUnavailableAppleSpeechDoesNotSilentlyUseRemote() {
-        let result = TranscriptionBackendResolver.resolve(
+        let decision = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: true,
             selectedLocalBackend: .appleSpeech,
             appleSpeechAvailable: false,
             isOnline: true,
             autoFallbackToLocalOnOffline: false,
-            legacyWhisperKitRequested: false,
             whisperKitModelInstalled: true
         )
-        XCTAssertEqual(result, .unavailable)
-    }
-
-    // MARK: Rule 2 — online wins once Apple Speech isn't forced/available
-
-    func testOnlinePicksRemoteWhenAlwaysLocalIsOff() {
-        let result = TranscriptionBackendResolver.resolve(
-            alwaysLocalTranscription: false,
-            appleSpeechAvailable: true,
-            isOnline: true,
-            autoFallbackToLocalOnOffline: true,
-            legacyWhisperKitRequested: false,
-            whisperKitModelInstalled: true
-        )
-        XCTAssertEqual(result, .remote)
+        XCTAssertEqual(decision.backend, .unavailable)
+        XCTAssertNil(decision.warningSound)
     }
 
     func testAlwaysLocalWithUnavailableAppleSpeechDoesNotFallThroughToRemoteWhenOnline() {
-        let result = TranscriptionBackendResolver.resolve(
+        let decision = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: true,
             selectedLocalBackend: .appleSpeech,
             appleSpeechAvailable: false,
             isOnline: true,
             autoFallbackToLocalOnOffline: false,
-            legacyWhisperKitRequested: false,
             whisperKitModelInstalled: false
         )
-        XCTAssertEqual(result, .unavailable)
+        XCTAssertEqual(decision.backend, .unavailable)
+        XCTAssertNil(decision.warningSound)
     }
 
-    // MARK: Rule 3 — offline auto-fallback to Apple Speech
+    // MARK: Rule 2 — online wins once Apple Speech isn't forced, never plays a sound
+
+    func testOnlinePicksRemoteWhenAlwaysLocalIsOff() {
+        let decision = TranscriptionBackendResolver.resolve(
+            alwaysLocalTranscription: false,
+            appleSpeechAvailable: true,
+            isOnline: true,
+            autoFallbackToLocalOnOffline: true,
+            whisperKitModelInstalled: true
+        )
+        XCTAssertEqual(decision.backend, .remote)
+        XCTAssertNil(decision.warningSound)
+    }
+
+    // MARK: Rule 3 — offline auto-fallback to Apple Speech plays the "local fallback" sound
 
     func testOfflineWithAutoFallbackAndAppleSpeechAvailablePicksAppleSpeech() {
-        let result = TranscriptionBackendResolver.resolve(
+        let decision = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: false,
             appleSpeechAvailable: true,
             isOnline: false,
             autoFallbackToLocalOnOffline: true,
-            legacyWhisperKitRequested: false,
             whisperKitModelInstalled: false
         )
-        XCTAssertEqual(result, .appleSpeech)
+        XCTAssertEqual(decision.backend, .appleSpeech)
+        XCTAssertEqual(decision.warningSound, .localFallbackActive)
     }
 
-    func testOfflineWithAutoFallbackDisabledDoesNotPickAppleSpeech() {
-        let result = TranscriptionBackendResolver.resolve(
+    func testOfflineWithAutoFallbackDisabledDoesNotPickAppleSpeechAndWarns() {
+        let decision = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: false,
             appleSpeechAvailable: true,
             isOnline: false,
             autoFallbackToLocalOnOffline: false,
-            legacyWhisperKitRequested: false,
             whisperKitModelInstalled: false
         )
-        XCTAssertEqual(result, .remote)
+        XCTAssertEqual(decision.backend, .remote)
+        XCTAssertEqual(decision.warningSound, .networkUnavailable)
     }
 
-    // MARK: Rule 4 — explicit legacy WhisperKit request, only when a model is installed
+    // MARK: Rule 4 — legacy WhisperKit, derived from the settings' selected local backend
+    // (#193) rather than a caller-supplied override, only when a model is installed
 
-    func testOfflineLegacyWhisperKitRequestedWithModelInstalledPicksWhisperKit() {
-        let result = TranscriptionBackendResolver.resolve(
+    func testOfflineWhisperKitSelectedWithModelInstalledPicksWhisperKitAndPlaysFallbackSound() {
+        let decision = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: false,
+            selectedLocalBackend: .whisperKit,
             appleSpeechAvailable: false,
             isOnline: false,
             autoFallbackToLocalOnOffline: false,
-            legacyWhisperKitRequested: true,
             whisperKitModelInstalled: true
         )
-        XCTAssertEqual(result, .whisperKit)
+        XCTAssertEqual(decision.backend, .whisperKit)
+        XCTAssertEqual(decision.warningSound, .localFallbackActive)
     }
 
-    func testOfflineLegacyWhisperKitRequestedWithoutModelInstalledFallsBackToRemote() {
-        let result = TranscriptionBackendResolver.resolve(
+    func testOfflineWhisperKitSelectedWithoutModelInstalledFallsBackToRemoteAndWarns() {
+        let decision = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: false,
+            selectedLocalBackend: .whisperKit,
             appleSpeechAvailable: false,
             isOnline: false,
             autoFallbackToLocalOnOffline: false,
-            legacyWhisperKitRequested: true,
             whisperKitModelInstalled: false
         )
-        XCTAssertEqual(result, .remote)
+        XCTAssertEqual(decision.backend, .remote)
+        XCTAssertEqual(decision.warningSound, .networkUnavailable)
     }
 
-    /// Apple Speech availability still beats an explicit legacy request when offline —
+    /// Apple Speech availability still beats the legacy WhisperKit selection when offline —
     /// #123 requires the auto-fallback to prefer Apple Speech over WhisperKit wherever possible.
-    func testOfflineAutoFallbackPrefersAppleSpeechOverExplicitWhisperKitRequest() {
-        let result = TranscriptionBackendResolver.resolve(
+    func testOfflineAutoFallbackPrefersAppleSpeechOverWhisperKitSelection() {
+        let decision = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: false,
+            selectedLocalBackend: .whisperKit,
             appleSpeechAvailable: true,
             isOnline: false,
             autoFallbackToLocalOnOffline: true,
-            legacyWhisperKitRequested: true,
             whisperKitModelInstalled: true
         )
-        XCTAssertEqual(result, .appleSpeech)
+        XCTAssertEqual(decision.backend, .appleSpeech)
+        XCTAssertEqual(decision.warningSound, .localFallbackActive)
     }
 
-    // MARK: Nothing usable → remote (surfaces as the existing "no API key" error path)
+    // MARK: Nothing usable → remote with a warning sound (surfaces as the existing "no API key" error path)
 
-    func testOfflineWithNothingAvailableFallsBackToRemote() {
-        let result = TranscriptionBackendResolver.resolve(
+    func testOfflineWithNothingAvailableFallsBackToRemoteAndWarns() {
+        let decision = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: false,
             appleSpeechAvailable: false,
             isOnline: false,
             autoFallbackToLocalOnOffline: false,
-            legacyWhisperKitRequested: false,
             whisperKitModelInstalled: false
         )
-        XCTAssertEqual(result, .remote)
+        XCTAssertEqual(decision.backend, .remote)
+        XCTAssertEqual(decision.warningSound, .networkUnavailable)
     }
 }

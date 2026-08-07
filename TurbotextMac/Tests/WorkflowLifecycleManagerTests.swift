@@ -50,7 +50,7 @@ final class WorkflowLifecycleManagerTests: XCTestCase {
     ) -> (WorkflowLifecycleManager, workflows: WorkflowBox) {
         let box = WorkflowBox()
         let orchestrator = WorkflowOrchestrator(
-            workflowFactory: { type, _ in
+            workflowFactory: { type in
                 guard available else { return nil }
                 let workflow = FakeLifecycleWorkflow(type: type)
                 box.workflows.append(workflow)

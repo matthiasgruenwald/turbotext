@@ -86,7 +86,6 @@ final class WorkflowLifecycleManager {
     func start(
         _ type: WorkflowType,
         source: WorkflowLaunchSource,
-        backendOverride: TranscriptionBackend? = nil,
         pasteTarget: PasteTarget?
     ) -> WorkflowStartOutcome {
         if let rejection = startGate(type) {
@@ -97,7 +96,6 @@ final class WorkflowLifecycleManager {
         let outcome = orchestrator.start(
             type,
             source: source,
-            backendOverride: backendOverride,
             pasteTarget: pasteTarget
         )
 

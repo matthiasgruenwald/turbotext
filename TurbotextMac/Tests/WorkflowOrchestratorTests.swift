@@ -66,7 +66,7 @@ private func makeOrchestrator(
     trusted: Bool = true
 ) -> WorkflowOrchestrator {
     WorkflowOrchestrator(
-        workflowFactory: { type, _ in
+        workflowFactory: { type in
             let workflow = FakeWorkflow(type: type)
             box.workflows.append(workflow)
             return .workflow(workflow)
@@ -111,7 +111,7 @@ final class WorkflowOrchestratorTests: XCTestCase {
     }
 
     func testFactoryReturningNilLeavesNoActiveWorkflow() {
-        let orchestrator = WorkflowOrchestrator(workflowFactory: { _, _ in nil })
+        let orchestrator = WorkflowOrchestrator(workflowFactory: { _ in nil })
 
         orchestrator.start(.transcription, source: .manual, pasteTarget: nil)
 
@@ -128,7 +128,7 @@ final class WorkflowOrchestratorTests: XCTestCase {
             message: "Sprachassets werden installiert – bitte gleich erneut versuchen.",
             canRetryImmediately: true
         )
-        let orchestrator = WorkflowOrchestrator(workflowFactory: { _, _ in .rejected(rejection) })
+        let orchestrator = WorkflowOrchestrator(workflowFactory: { _ in .rejected(rejection) })
 
         let outcome = orchestrator.start(.transcription, source: .manual, pasteTarget: nil)
 
@@ -292,7 +292,7 @@ final class WorkflowOrchestratorTests: XCTestCase {
         var pasteCount = 0
         var activationCount = 0
         let orchestrator = WorkflowOrchestrator(
-            workflowFactory: { type, _ in .workflow(FakeWorkflow(type: type)) },
+            workflowFactory: { type in .workflow(FakeWorkflow(type: type)) },
             pasteAction: { pasteCount += 1 },
             trustCheck: { _ in true },
             frontmostPidProvider: { 99 },
@@ -313,7 +313,7 @@ final class WorkflowOrchestratorTests: XCTestCase {
         var activationCount = 0
 
         let orchestrator = WorkflowOrchestrator(
-            workflowFactory: { type, _ in .workflow(FakeWorkflow(type: type)) },
+            workflowFactory: { type in .workflow(FakeWorkflow(type: type)) },
             pasteAction: { pasteCount += 1 },
             trustCheck: { _ in true },
             frontmostPidProvider: { currentFrontmostPid },
@@ -340,7 +340,7 @@ final class WorkflowOrchestratorTests: XCTestCase {
     func testPasteDoesNothingWhenNoTargetProvided() {
         var pasteCount = 0
         let orchestrator = WorkflowOrchestrator(
-            workflowFactory: { type, _ in .workflow(FakeWorkflow(type: type)) },
+            workflowFactory: { type in .workflow(FakeWorkflow(type: type)) },
             pasteAction: { pasteCount += 1 },
             trustCheck: { _ in true },
             frontmostPidProvider: { nil },
@@ -385,7 +385,7 @@ final class WorkflowOrchestratorTests: XCTestCase {
         var currentFrontmostPid: pid_t? = 1
         var pasteCount = 0
         let orchestrator = WorkflowOrchestrator(
-            workflowFactory: { type, _ in .workflow(FakeWorkflow(type: type)) },
+            workflowFactory: { type in .workflow(FakeWorkflow(type: type)) },
             pasteAction: { pasteCount += 1 },
             trustCheck: { _ in true },
             frontmostPidProvider: { currentFrontmostPid },
@@ -408,7 +408,7 @@ final class WorkflowOrchestratorTests: XCTestCase {
         var pasteCount = 0
         var pasteboardWrites: [String] = []
         let orchestrator = WorkflowOrchestrator(
-            workflowFactory: { type, _ in .workflow(FakeWorkflow(type: type)) },
+            workflowFactory: { type in .workflow(FakeWorkflow(type: type)) },
             pasteAction: { pasteCount += 1 },
             trustCheck: { _ in true },
             frontmostPidProvider: { 1 },
@@ -430,7 +430,7 @@ final class WorkflowOrchestratorTests: XCTestCase {
         let box = WorkflowBox()
         var pasteCount = 0
         let orchestrator = WorkflowOrchestrator(
-            workflowFactory: { type, _ in
+            workflowFactory: { type in
                 let workflow = FakeWorkflow(type: type)
                 box.workflows.append(workflow)
                 return .workflow(workflow)
@@ -463,7 +463,7 @@ final class WorkflowOrchestratorTests: XCTestCase {
         let target = makeFakePasteTarget(pid: 99)
         let box = WorkflowBox()
         let orchestrator = WorkflowOrchestrator(
-            workflowFactory: { type, _ in
+            workflowFactory: { type in
                 let workflow = FakeWorkflow(type: type)
                 box.workflows.append(workflow)
                 return .workflow(workflow)
@@ -489,7 +489,7 @@ final class WorkflowOrchestratorTests: XCTestCase {
     func testStartClearsPendingPasteFailureMessage() {
         let target = makeFakePasteTarget(pid: 99)
         let orchestrator = WorkflowOrchestrator(
-            workflowFactory: { type, _ in .workflow(FakeWorkflow(type: type)) },
+            workflowFactory: { type in .workflow(FakeWorkflow(type: type)) },
             pasteAction: {},
             trustCheck: { _ in true },
             frontmostPidProvider: { 1 },
@@ -512,7 +512,7 @@ final class WorkflowOrchestratorTests: XCTestCase {
         let box = WorkflowBox()
 
         let orchestrator = WorkflowOrchestrator(
-            workflowFactory: { type, _ in
+            workflowFactory: { type in
                 let workflow = FakeWorkflow(type: type)
                 box.workflows.append(workflow)
                 return .workflow(workflow)

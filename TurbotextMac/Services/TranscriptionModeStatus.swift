@@ -25,9 +25,8 @@ struct TranscriptionModeStatus: Equatable {
             appleSpeechAvailable: appleSpeechAvailable,
             isOnline: isOnline,
             autoFallbackToLocalOnOffline: autoFallbackToLocalOnOffline,
-            legacyWhisperKitRequested: false,
             whisperKitModelInstalled: selectedLocalModelInstalled
-        )
+        ).backend
     }
 
     private var usesOfflineFallback: Bool {

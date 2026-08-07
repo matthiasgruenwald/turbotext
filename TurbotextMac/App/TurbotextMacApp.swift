@@ -137,29 +137,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         }
     }
 
+    /// The backend decision — and the warning sound that belongs to it, if any — now
+    /// happens exactly once, inside `AppState.resolvedTranscriber` (#193). This handler no
+    /// longer pre-decides a backend or plays a sound itself; it just starts the workflow.
     private func handleHotkeyDown(_ type: WorkflowType) {
         guard appState.isConfigured else { return }
-
-        let fallback = TranscriptionFallbackResolver.resolve(
-            for: appState.networkPingService.status,
-            workflowType: type,
-            autoFallbackToLocalOnOffline: appState.appSettings.autoFallbackToLocalOnOffline,
-            isLocalModelInstalled: appState.selectedLocalModelIsInstalled,
-            appleSpeechAvailable: appState.isAppleSpeechAvailable
-        )
-
-        if let soundKind = fallback.soundKind {
-            OfflineWarningSoundPlayer.play(soundKind)
-        }
-
-        let backendOverride: TranscriptionBackend? = type == .transcription ? fallback.backend : nil
 
         let mode = appState.appSettings.hotkeyMode
 
         switch mode {
         case .hold:
             // Hold mode: start recording on key down
-            appState.startWorkflow(type, source: .hotkeyBackground, backendOverride: backendOverride)
+            appState.startWorkflow(type, source: .hotkeyBackground)
 
         case .toggle:
             // Toggle mode: if already recording same workflow, stop it
@@ -169,7 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                 active.stop()
             } else {
                 appState.prepareForPopoverPresentation()
-                appState.startWorkflow(type, source: .manual, backendOverride: backendOverride)
+                appState.startWorkflow(type, source: .manual)
                 showPopover()
             }
         }

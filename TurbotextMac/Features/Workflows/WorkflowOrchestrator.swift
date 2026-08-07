@@ -25,7 +25,7 @@ final class WorkflowOrchestrator {
     /// Creates the workflow instance for a given type, or reports why it can't be built
     /// right now (#192) — `nil` only when the factory itself hasn't been wired up yet.
     /// Injected so tests can substitute lightweight fakes for the 5 real workflow types.
-    typealias WorkflowFactory = (WorkflowType, TranscriptionBackend?) -> WorkflowBuildResult?
+    typealias WorkflowFactory = (WorkflowType) -> WorkflowBuildResult?
 
     /// Performs the actual Cmd+V keystroke. Injected so tests can verify retry behavior
     /// without posting real CGEvents.
@@ -128,10 +128,9 @@ final class WorkflowOrchestrator {
     func start(
         _ type: WorkflowType,
         source: WorkflowLaunchSource,
-        backendOverride: TranscriptionBackend? = nil,
         pasteTarget: PasteTarget?
     ) -> WorkflowStartOutcome {
-        guard let buildResult = workflowFactory?(type, backendOverride) else { return .started }
+        guard let buildResult = workflowFactory?(type) else { return .started }
 
         let workflow: any Workflow
         switch buildResult {

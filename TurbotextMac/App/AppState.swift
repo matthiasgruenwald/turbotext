@@ -172,8 +172,8 @@ final class AppState {
 
         let orchestrator = lifecycle.orchestrator
         self.workflowFactory = WorkflowFactory(
-            resolveTranscriber: { [weak self] backendOverride in
-                self?.resolvedTranscriber(backendOverride: backendOverride)
+            resolveTranscriber: { [weak self] in
+                self?.resolvedTranscriber()
                     ?? WorkflowFactory.ResolvedTranscriber(
                         transcriber: nil,
                         backend: .local,
@@ -199,9 +199,9 @@ final class AppState {
             rewriteProcessingLabel: { [weak self] in self?.rewriteProcessingLabel() }
         )
 
-        lifecycle.workflowFactory = { [weak self] type, backendOverride -> WorkflowBuildResult? in
+        lifecycle.workflowFactory = { [weak self] type -> WorkflowBuildResult? in
             guard let self else { return nil }
-            return self.workflowFactory.build(type, backendOverride: backendOverride, settings: WorkflowFactory.Settings(
+            return self.workflowFactory.build(type, settings: WorkflowFactory.Settings(
                 appSettings: self.appSettings,
                 transcriptionSettings: self.transcriptionSettings,
                 textImprovementSettings: self.textImprovementSettings,
@@ -347,13 +347,11 @@ final class AppState {
 
     func startWorkflow(
         _ type: WorkflowType,
-        source: WorkflowLaunchSource = .manual,
-        backendOverride: TranscriptionBackend? = nil
+        source: WorkflowLaunchSource = .manual
     ) {
         workflowLifecycle.start(
             type,
             source: source,
-            backendOverride: backendOverride,
             pasteTarget: capturePasteTarget(for: source)
         )
     }
@@ -402,24 +400,25 @@ final class AppState {
     }
 
     /// Resolves the transcriber for the four cloud-capable spoken workflows via
-    /// `TranscriptionBackendResolver` (#123), replacing the direct
-    /// `alwaysLocalTranscription ? .local : .remote` checks that used to live here.
-    /// `backendOverride`, when `.local`, is treated as an explicit legacy-WhisperKit
-    /// request (rule 4) — the offline auto-fallback (rule 3) is decided independently
-    /// from live network state, so it no longer needs to flow through this parameter.
-    /// Handed to `WorkflowFactory` (#191) as its "Transcriber-Auflösung" dependency.
-    private func resolvedTranscriber(
-        backendOverride: TranscriptionBackend?
-    ) -> WorkflowFactory.ResolvedTranscriber {
-        let resolution = TranscriptionBackendResolver.resolve(
+    /// `TranscriptionBackendResolver` (#123, #193), replacing the direct
+    /// `alwaysLocalTranscription ? .local : .remote` checks that used to live here. The
+    /// legacy-WhisperKit request (rule 4) is derived from `selectedLocalTranscriptionBackend`
+    /// inside the resolver itself now, not from a caller-supplied override (#193) — so this
+    /// is the one and only place a hotkey press decides both its backend and its warning
+    /// sound. Handed to `WorkflowFactory` (#191) as its "Transcriber-Auflösung" dependency.
+    private func resolvedTranscriber() -> WorkflowFactory.ResolvedTranscriber {
+        let decision = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: appSettings.alwaysLocalTranscription,
             selectedLocalBackend: selectedLocalTranscriptionBackend,
             appleSpeechAvailable: appleSpeechAvailability.readiness.isReady,
             isOnline: networkPingService.status != .red,
             autoFallbackToLocalOnOffline: appSettings.autoFallbackToLocalOnOffline,
-            legacyWhisperKitRequested: backendOverride == .local,
             whisperKitModelInstalled: selectedLocalModelIsInstalled
         )
+        if let warningSound = decision.warningSound {
+            OfflineWarningSoundPlayer.play(warningSound)
+        }
+        let resolution = decision.backend
         switch resolution {
         case .appleSpeech:
             var appleTranscriber: SpokenWorkflowPipeline.Transcriber?

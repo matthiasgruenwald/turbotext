@@ -16,22 +16,22 @@ private final class FakeRewriteConsentCoordinator: RewriteConsentCoordinating {
 /// (Transkription, Turbotext+, Dampf ablassen, Emoji-Text) now share one branch, so these
 /// tests exercise that branch's data-driven differences instead of four near-duplicate
 /// code paths. `WorkflowFactory` needs no `AppState` to construct (#191), so everything
-/// here is a plain fake.
+/// here is a plain fake. #193 removed the `backendOverride` parameter entirely — the
+/// resolver decides the backend from settings alone now, so `resolveTranscriber` takes no
+/// argument.
 @MainActor
 final class WorkflowFactoryBuildTests: XCTestCase {
 
     private let spokenTypes: [WorkflowType] = [.transcription, .textImprover, .dampfAblassen, .emojiText]
 
     private func makeFactory(
-        resolution: @escaping (TranscriptionBackend?) -> WorkflowFactory.ResolvedTranscriber,
-        resolveCallCount: Box<Int> = Box(0),
-        capturedBackendOverrides: Box<[TranscriptionBackend?]> = Box([])
-    ) -> (factory: WorkflowFactory, resolveCallCount: Box<Int>, capturedBackendOverrides: Box<[TranscriptionBackend?]>) {
+        resolution: @escaping () -> WorkflowFactory.ResolvedTranscriber,
+        resolveCallCount: Box<Int> = Box(0)
+    ) -> (factory: WorkflowFactory, resolveCallCount: Box<Int>) {
         let factory = WorkflowFactory(
-            resolveTranscriber: { backendOverride in
+            resolveTranscriber: {
                 resolveCallCount.value += 1
-                capturedBackendOverrides.value.append(backendOverride)
-                return resolution(backendOverride)
+                return resolution()
             },
             localTranscriber: { { _, _, _, _ in "local" } },
             rewriteConsentCoordinator: FakeRewriteConsentCoordinator(),
@@ -40,7 +40,7 @@ final class WorkflowFactoryBuildTests: XCTestCase {
             onBergung: { _ in },
             rewriteProcessingLabel: { nil }
         )
-        return (factory, resolveCallCount, capturedBackendOverrides)
+        return (factory, resolveCallCount)
     }
 
     private func settings(liveSmoothingBackend: LiveSmoothingBackend = .off) -> WorkflowFactory.Settings {
@@ -55,7 +55,7 @@ final class WorkflowFactoryBuildTests: XCTestCase {
         )
     }
 
-    private func remoteResolution(_ backendOverride: TranscriptionBackend?) -> WorkflowFactory.ResolvedTranscriber {
+    private func remoteResolution() -> WorkflowFactory.ResolvedTranscriber {
         WorkflowFactory.ResolvedTranscriber(
             transcriber: { _, _, _, _ in "remote" },
             backend: .remote,
@@ -64,7 +64,7 @@ final class WorkflowFactoryBuildTests: XCTestCase {
         )
     }
 
-    private func appleSpeechResolution(_ backendOverride: TranscriptionBackend?) -> WorkflowFactory.ResolvedTranscriber {
+    private func appleSpeechResolution() -> WorkflowFactory.ResolvedTranscriber {
         WorkflowFactory.ResolvedTranscriber(
             transcriber: { _, _, _, _ in "apple" },
             backend: .local,
@@ -73,8 +73,8 @@ final class WorkflowFactoryBuildTests: XCTestCase {
         )
     }
 
-    private func unavailableResolution(rejection: WorkflowStartRejection) -> (TranscriptionBackend?) -> WorkflowFactory.ResolvedTranscriber {
-        { _ in
+    private func unavailableResolution(rejection: WorkflowStartRejection) -> () -> WorkflowFactory.ResolvedTranscriber {
+        {
             WorkflowFactory.ResolvedTranscriber(
                 transcriber: nil,
                 backend: .local,
@@ -93,9 +93,9 @@ final class WorkflowFactoryBuildTests: XCTestCase {
             canRetryImmediately: true
         )
         for type in spokenTypes {
-            let (factory, _, _) = makeFactory(resolution: unavailableResolution(rejection: rejection))
+            let (factory, _) = makeFactory(resolution: unavailableResolution(rejection: rejection))
 
-            let result = factory.build(type, backendOverride: nil, settings: settings())
+            let result = factory.build(type, settings: settings())
 
             guard case .rejected(let actual) = result else {
                 XCTFail("expected .rejected for \(type), got \(result)")
@@ -109,42 +109,29 @@ final class WorkflowFactoryBuildTests: XCTestCase {
 
     func testResolveTranscriberIsCalledExactlyOnceForEachSpokenType() {
         for type in spokenTypes {
-            let (factory, callCount, _) = makeFactory(resolution: remoteResolution)
+            let (factory, callCount) = makeFactory(resolution: remoteResolution)
 
-            _ = factory.build(type, backendOverride: nil, settings: settings())
+            _ = factory.build(type, settings: settings())
 
             XCTAssertEqual(callCount.value, 1, "resolveTranscriber must run exactly once for \(type)")
         }
     }
 
     func testLocalTranscriptionNeverCallsResolveTranscriber() {
-        let (factory, callCount, _) = makeFactory(resolution: remoteResolution)
+        let (factory, callCount) = makeFactory(resolution: remoteResolution)
 
-        _ = factory.build(.localTranscription, backendOverride: nil, settings: settings())
+        _ = factory.build(.localTranscription, settings: settings())
 
         XCTAssertEqual(callCount.value, 0)
-    }
-
-    // MARK: - Backend override only forwarded for plain transcription (pre-existing rule, preserved by #192)
-
-    func testBackendOverrideIsOnlyForwardedForPlainTranscription() {
-        for type in spokenTypes {
-            let (factory, _, capturedOverrides) = makeFactory(resolution: remoteResolution)
-
-            _ = factory.build(type, backendOverride: .local, settings: settings())
-
-            let expected: TranscriptionBackend? = type == .transcription ? .local : nil
-            XCTAssertEqual(capturedOverrides.value, [expected], "backendOverride forwarding for \(type)")
-        }
     }
 
     // MARK: - File-based vs. live routing (#192: every type follows the same live rule)
 
     func testRemoteResolutionBuildsFileBasedWorkflowForAllFourSpokenTypes() {
         for type in spokenTypes {
-            let (factory, _, _) = makeFactory(resolution: remoteResolution)
+            let (factory, _) = makeFactory(resolution: remoteResolution)
 
-            let result = factory.build(type, backendOverride: nil, settings: settings())
+            let result = factory.build(type, settings: settings())
 
             guard case .workflow(let workflow) = result else {
                 XCTFail("expected .workflow for \(type)")
@@ -164,9 +151,9 @@ final class WorkflowFactoryBuildTests: XCTestCase {
         guard #available(macOS 26, *) else { return }
 
         for type in spokenTypes {
-            let (factory, _, _) = makeFactory(resolution: appleSpeechResolution)
+            let (factory, _) = makeFactory(resolution: appleSpeechResolution)
 
-            let result = factory.build(type, backendOverride: nil, settings: settings())
+            let result = factory.build(type, settings: settings())
 
             guard case .workflow(let workflow) = result else {
                 XCTFail("expected .workflow for \(type)")
@@ -180,9 +167,9 @@ final class WorkflowFactoryBuildTests: XCTestCase {
     // MARK: - Local transcription always builds, never rejects via resolveTranscriber
 
     func testLocalTranscriptionAlwaysBuildsAWorkflow() {
-        let (factory, _, _) = makeFactory(resolution: remoteResolution)
+        let (factory, _) = makeFactory(resolution: remoteResolution)
 
-        let result = factory.build(.localTranscription, backendOverride: nil, settings: settings())
+        let result = factory.build(.localTranscription, settings: settings())
 
         guard case .workflow(let workflow) = result else {
             return XCTFail("expected .workflow for .localTranscription")

@@ -33,7 +33,7 @@ private final class FakeOverlayWorkflow: Workflow {
 private func makeOrchestratorWithWorkflow(pasteTarget: PasteTarget? = nil) -> (WorkflowOrchestrator, FakeOverlayWorkflow) {
     var createdWorkflow: FakeOverlayWorkflow!
     let orchestrator = WorkflowOrchestrator(
-        workflowFactory: { type, _ in
+        workflowFactory: { type in
             let workflow = FakeOverlayWorkflow(type: type)
             createdWorkflow = workflow
             return .workflow(workflow)
@@ -54,7 +54,7 @@ private func makeFakePasteTarget(pid: pid_t) -> PasteTarget {
 @MainActor
 private func makeOrchestratorWithFailingStart(message: String) -> WorkflowOrchestrator {
     WorkflowOrchestrator(
-        workflowFactory: { type, _ in
+        workflowFactory: { type in
             let workflow = FakeOverlayWorkflow(type: type)
             workflow.startErrorMessage = message
             return .workflow(workflow)
@@ -632,7 +632,7 @@ final class RecordingOverlayControllerTests: XCTestCase {
     private func makePasteFailingOrchestrator(pasteTarget: PasteTarget) -> (WorkflowOrchestrator, FakeOverlayWorkflow) {
         var createdWorkflow: FakeOverlayWorkflow!
         let orchestrator = WorkflowOrchestrator(
-            workflowFactory: { type, _ in
+            workflowFactory: { type in
                 let workflow = FakeOverlayWorkflow(type: type)
                 createdWorkflow = workflow
                 return .workflow(workflow)

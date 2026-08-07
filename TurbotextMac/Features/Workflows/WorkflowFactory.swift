@@ -49,8 +49,10 @@ struct WorkflowFactory {
 
     /// Full backend resolution (Apple Speech / remote / WhisperKit / unavailable) for the
     /// four cloud-capable spoken workflows — owned by the caller since it needs
-    /// `TranscriptionBackendResolver` plus live network/quota/model state.
-    let resolveTranscriber: (TranscriptionBackend?) -> ResolvedTranscriber
+    /// `TranscriptionBackendResolver` plus live network/quota/model state. No longer takes
+    /// a backend override (#193): the legacy-WhisperKit rule is derived from settings inside
+    /// the resolver itself, so every call decides the same thing regardless of caller.
+    let resolveTranscriber: () -> ResolvedTranscriber
     /// The always-local transcriber for `.localTranscription`, which never goes through
     /// backend resolution.
     let localTranscriber: () -> SpokenWorkflowPipeline.Transcriber
@@ -67,12 +69,11 @@ struct WorkflowFactory {
 
     func build(
         _ type: WorkflowType,
-        backendOverride: TranscriptionBackend?,
         settings: Settings
     ) -> WorkflowBuildResult {
         switch type {
         case .transcription, .textImprover, .dampfAblassen, .emojiText:
-            return buildSpokenWorkflow(type, backendOverride: backendOverride, settings: settings)
+            return buildSpokenWorkflow(type, settings: settings)
         case .localTranscription:
             return .workflow(TranscriptionWorkflow(
                 type: .localTranscription,
@@ -96,8 +97,6 @@ struct WorkflowFactory {
     /// What differs between the four spoken-workflow types — data read by
     /// `buildSpokenWorkflow`, which is otherwise identical for all four (#192).
     private struct SpokenWorkflowSpec {
-        /// Only `.transcription` accepts a caller-supplied legacy-WhisperKit override.
-        let usesBackendOverride: Bool
         /// Live-path smoothing only ever applies to plain transcription — the three
         /// rewrite workflows wire a `RewriteStage` instead.
         let smoothingEnabled: Bool
@@ -111,7 +110,6 @@ struct WorkflowFactory {
         switch type {
         case .transcription:
             return SpokenWorkflowSpec(
-                usesBackendOverride: true,
                 smoothingEnabled: true,
                 rewritingMessage: "Wird verarbeitet ...",
                 noSpeechSentinel: nil,
@@ -119,7 +117,6 @@ struct WorkflowFactory {
             )
         case .textImprover:
             return SpokenWorkflowSpec(
-                usesBackendOverride: false,
                 smoothingEnabled: false,
                 rewritingMessage: "Text wird verbessert ...",
                 noSpeechSentinel: nil,
@@ -138,7 +135,6 @@ struct WorkflowFactory {
             )
         case .dampfAblassen:
             return SpokenWorkflowSpec(
-                usesBackendOverride: false,
                 smoothingEnabled: false,
                 rewritingMessage: "Wird umformuliert ...",
                 noSpeechSentinel: RewriteStage.noSpeechSentinel,
@@ -157,7 +153,6 @@ struct WorkflowFactory {
             )
         case .emojiText:
             return SpokenWorkflowSpec(
-                usesBackendOverride: false,
                 smoothingEnabled: false,
                 rewritingMessage: "Emojis werden eingefügt ...",
                 noSpeechSentinel: RewriteStage.noSpeechSentinel,
@@ -189,11 +184,10 @@ struct WorkflowFactory {
 
     private func buildSpokenWorkflow(
         _ type: WorkflowType,
-        backendOverride: TranscriptionBackend?,
         settings: Settings
     ) -> WorkflowBuildResult {
         let spec = spec(for: type)
-        let resolved = resolveTranscriber(spec.usesBackendOverride ? backendOverride : nil)
+        let resolved = resolveTranscriber()
 
         guard resolved.resolution != .unavailable, let transcriber = resolved.transcriber else {
             return .rejected(resolved.unavailableRejection ?? Self.genericUnavailableRejection)
