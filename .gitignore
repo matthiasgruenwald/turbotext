@@ -34,3 +34,6 @@ node_modules/
 
 # Agent worktrees
 .claude/worktrees/
+
+# Lokale Automatisierung, nicht Teil des Projekts
+ralph-loop.sh
