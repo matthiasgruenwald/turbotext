@@ -19,6 +19,7 @@ final class AppState {
     private let localModelState: LocalModelState
     private let appleSpeechAvailability: AppleSpeechAvailability
     private let rewriteConsentCoordinator: RewriteConsentCoordinating
+    private var workflowFactory: WorkflowFactory!
 
     var activeWorkflow: (any Workflow)? { workflowLifecycle.activeWorkflow }
     var currentPhase: WorkflowPhase { workflowLifecycle.currentPhase }
@@ -169,8 +170,35 @@ final class AppState {
         self.workflowLifecycle = lifecycle
         lifecycle.isPopoverShown = { [weak self] in self?.isPopoverShown ?? false }
 
+        let orchestrator = lifecycle.orchestrator
+        self.workflowFactory = WorkflowFactory(
+            resolveTranscriber: { [weak self] backendOverride in
+                self?.resolvedTranscriber(backendOverride: backendOverride)
+                    ?? WorkflowFactory.ResolvedTranscriber(transcriber: Self.deallocatedSelfTranscriber, backend: .local, resolution: .unavailable)
+            },
+            localTranscriber: { [weak self] in
+                self?.transcriber(for: .local) ?? Self.deallocatedSelfTranscriber
+            },
+            rewriteConsentCoordinator: self.rewriteConsentCoordinator,
+            secureAppleSpeechAssetsOnDemand: { [weak self] in self?.secureAppleSpeechAssetsOnDemand() },
+            onLiveTranscriptUpdate: { [weak orchestrator] display in
+                orchestrator?.updateLiveTranscriptDisplay(display)
+            },
+            onBergung: { [weak orchestrator] message in
+                orchestrator?.reportBergung(message: message)
+            },
+            rewriteProcessingLabel: { [weak self] in self?.rewriteProcessingLabel() }
+        )
+
         lifecycle.workflowFactory = { [weak self] type, backendOverride in
-            self?.makeWorkflow(type, backendOverride: backendOverride)
+            guard let self else { return nil }
+            return self.workflowFactory.build(type, backendOverride: backendOverride, settings: WorkflowFactory.Settings(
+                appSettings: self.appSettings,
+                transcriptionSettings: self.transcriptionSettings,
+                textImprovementSettings: self.textImprovementSettings,
+                dampfAblassenSettings: self.dampfAblassenSettings,
+                emojiTextSettings: self.emojiTextSettings
+            ))
         }
         lifecycle.startGate = { [weak self] type in
             self?.startRejection(for: type)
@@ -371,213 +399,14 @@ final class AppState {
         return false
     }
 
-    private func makeWorkflow(
-        _ type: WorkflowType,
-        backendOverride: TranscriptionBackend?
-    ) -> (any Workflow)? {
-        switch type {
-        case .transcription:
-            let resolved = resolvedTranscriber(backendOverride: backendOverride)
-            if Self.routesToLiveDictation(resolved.resolution), #available(macOS 26, *) {
-                let smoothing = liveDictationSmoothing()
-                return makeLiveDictationWorkflow(
-                    type: .transcription,
-                    smoothingPass: smoothing.pass,
-                    smoothingMessage: smoothing.message
-                )
-            }
-            return TranscriptionWorkflow(
-                customTerms: textImprovementSettings.customTerms,
-                language: transcriptionSettings.language,
-                backend: resolved.backend,
-                transcriber: resolved.transcriber
-            )
-        case .localTranscription:
-            return TranscriptionWorkflow(
-                type: .localTranscription,
-                customTerms: textImprovementSettings.customTerms,
-                language: transcriptionSettings.language,
-                backend: .local,
-                transcriber: transcriber(for: .local)
-            )
-        case .textImprover:
-            return makeTextImproverWorkflow()
-        case .dampfAblassen:
-            return makeDampfAblassenWorkflow()
-        case .emojiText:
-            return makeEmojiTextWorkflow()
-        }
-    }
-
-    /// Live rule (F1, #182): the live-dictation path is taken only when the backend
-    /// resolution is Apple Speech and macOS 26 is available. Single source of truth —
-    /// #186/#187 route the three rewrite workflows through the same predicate.
-    static func routesToLiveDictation(_ resolution: ResolvedTranscriptionBackend) -> Bool {
-        guard resolution == .appleSpeech else { return false }
-        if #available(macOS 26, *) { return true }
-        return false
-    }
-
-    private func makeTextImproverWorkflow() -> any Workflow {
-        let improver: SpokenRewriteWorkflow.Improver = { [rewriteConsentCoordinator] text, settings, providerMode in
-            try await LLMService.improveLocalFirst(
-                text: text,
-                settings: settings,
-                providerMode: providerMode,
-                consent: rewriteConsentCoordinator
-            )
-        }
-        let resolved = resolvedTranscriber(backendOverride: nil)
-        if Self.routesToLiveDictation(resolved.resolution), #available(macOS 26, *) {
-            let settings = textImprovementSettings
-            let providerMode = appSettings.rewritingProviderMode
-            return makeLiveDictationWorkflow(
-                type: .textImprover,
-                rewritingMessage: "Text wird verbessert ...",
-                rewriteStage: RewriteStage { text in
-                    try await improver(text, settings, providerMode)
-                },
-                processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() }
-            )
-        }
-        return SpokenRewriteWorkflow.textImprovement(
-            settings: textImprovementSettings,
-            language: transcriptionSettings.language,
-            providerMode: appSettings.rewritingProviderMode,
-            transcriber: resolved.transcriber,
-            processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
-            improver: improver
-        )
-    }
-
-    private func makeDampfAblassenWorkflow() -> any Workflow {
-        let rewriter: SpokenRewriteWorkflow.DampfAblassenRewriter = { [rewriteConsentCoordinator] text, settings, providerMode in
-            try await LLMService.dampfAblassenLocalFirst(
-                text: text,
-                systemPrompt: settings.systemPrompt,
-                providerMode: providerMode,
-                consent: rewriteConsentCoordinator
-            )
-        }
-        let resolved = resolvedTranscriber(backendOverride: nil)
-        if Self.routesToLiveDictation(resolved.resolution), #available(macOS 26, *) {
-            let settings = dampfAblassenSettings
-            let providerMode = appSettings.rewritingProviderMode
-            return makeLiveDictationWorkflow(
-                type: .dampfAblassen,
-                rewritingMessage: "Wird umformuliert ...",
-                rewriteStage: RewriteStage(noSpeechSentinel: RewriteStage.noSpeechSentinel) { text in
-                    try await rewriter(text, settings, providerMode)
-                },
-                processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() }
-            )
-        }
-        return SpokenRewriteWorkflow.dampfAblassen(
-            settings: dampfAblassenSettings,
-            customTerms: textImprovementSettings.customTerms,
-            language: transcriptionSettings.language,
-            providerMode: appSettings.rewritingProviderMode,
-            transcriber: resolved.transcriber,
-            processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
-            rewriter: rewriter
-        )
-    }
-
-    private func makeEmojiTextWorkflow() -> any Workflow {
-        let rewriter: SpokenRewriteWorkflow.EmojiTextRewriter = { [rewriteConsentCoordinator] text, settings, providerMode in
-            try await LLMService.addEmojisLocalFirst(
-                text: text,
-                settings: settings,
-                providerMode: providerMode,
-                consent: rewriteConsentCoordinator
-            )
-        }
-        let resolved = resolvedTranscriber(backendOverride: nil)
-        if Self.routesToLiveDictation(resolved.resolution), #available(macOS 26, *) {
-            let settings = emojiTextSettings
-            let providerMode = appSettings.rewritingProviderMode
-            return makeLiveDictationWorkflow(
-                type: .emojiText,
-                rewritingMessage: "Emojis werden eingefügt ...",
-                rewriteStage: RewriteStage(noSpeechSentinel: RewriteStage.noSpeechSentinel) { text in
-                    try await rewriter(text, settings, providerMode)
-                },
-                processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() }
-            )
-        }
-        return SpokenRewriteWorkflow.emojiText(
-            settings: emojiTextSettings,
-            customTerms: textImprovementSettings.customTerms,
-            language: transcriptionSettings.language,
-            providerMode: appSettings.rewritingProviderMode,
-            transcriber: resolved.transcriber,
-            processingLabelResolver: { [weak self] in self?.rewriteProcessingLabel() },
-            rewriter: rewriter
-        )
-    }
-
     /// Predicted processing-label routing for the signal pill (#128): known synchronously
-    /// from Apple provider availability and the configured online provider.
+    /// from Apple provider availability and the configured online provider. Handed to
+    /// `WorkflowFactory` as a closure so it's evaluated fresh at call time.
     private func rewriteProcessingLabel() -> String {
         RewriteRouter.processingLabel(
             appleProviderAvailable: RewriteRouter.resolveAppleProvider() != nil,
             providerMode: appSettings.rewritingProviderMode,
             hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil
-        )
-    }
-
-    @available(macOS 26, *)
-    private func liveDictationSmoothing() -> (pass: (@Sendable (String) async -> String?)?, message: String) {
-        var pass: (@Sendable (String) async -> String?)?
-        var message = "Glättet ..."
-        switch transcriptionSettings.liveSmoothingBackend {
-        case .off:
-            break
-        case .onDevice:
-            if FoundationModelsSmoothing.isAvailable {
-                let smoothing = FoundationModelsSmoothing()
-                pass = { text in await smoothing.smooth(text: text) }
-                message = "Glättet lokal auf diesem Mac ..."
-            }
-        case .online:
-            let smoothing = OnlineSmoothing(
-                providerMode: appSettings.rewritingProviderMode,
-                hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil
-            )
-            pass = { text in await smoothing.smooth(text: text) }
-            message = "Glättet online mit \(smoothing.predictedProvider.displayName) ..."
-        }
-        return (pass, message)
-    }
-
-    @available(macOS 26, *)
-    private func makeLiveDictationWorkflow(
-        type: WorkflowType,
-        smoothingPass: (@Sendable (String) async -> String?)? = nil,
-        smoothingMessage: String = "Glättet ...",
-        rewritingMessage: String = "Wird verarbeitet ...",
-        rewriteStage: RewriteStage? = nil,
-        processingLabelResolver: @escaping () -> String? = { nil }
-    ) -> any Workflow {
-        let session = LiveTranscriptionSession(startAssetInstallation: { [weak self] in
-            Task { @MainActor in self?.secureAppleSpeechAssetsOnDemand() }
-        })
-        let orchestrator = workflowLifecycle.orchestrator
-        return LiveDictationWorkflow(
-            type: type,
-            session: session,
-            smoothingPass: smoothingPass,
-            smoothingMessage: smoothingMessage,
-            maxLines: transcriptionSettings.livePillMaxLines,
-            rewritingMessage: rewritingMessage,
-            rewriteStage: rewriteStage,
-            processingLabelResolver: processingLabelResolver,
-            onLiveTranscriptUpdate: { [weak orchestrator] display in
-                orchestrator?.updateLiveTranscriptDisplay(display)
-            },
-            onBergung: { [weak orchestrator] message in
-                orchestrator?.reportBergung(message: message)
-            }
         )
     }
 
@@ -587,9 +416,10 @@ final class AppState {
     /// `backendOverride`, when `.local`, is treated as an explicit legacy-WhisperKit
     /// request (rule 4) — the offline auto-fallback (rule 3) is decided independently
     /// from live network state, so it no longer needs to flow through this parameter.
+    /// Handed to `WorkflowFactory` (#191) as its "Transcriber-Auflösung" dependency.
     private func resolvedTranscriber(
         backendOverride: TranscriptionBackend?
-    ) -> (transcriber: SpokenWorkflowPipeline.Transcriber, backend: TranscriptionBackend, resolution: ResolvedTranscriptionBackend) {
+    ) -> WorkflowFactory.ResolvedTranscriber {
         let resolution = TranscriptionBackendResolver.resolve(
             alwaysLocalTranscription: appSettings.alwaysLocalTranscription,
             selectedLocalBackend: selectedLocalTranscriptionBackend,
@@ -609,20 +439,23 @@ final class AppState {
                     }
                 )
             }
-            return (appleTranscriber ?? unavailableTranscriber, .local, resolution)
+            return WorkflowFactory.ResolvedTranscriber(transcriber: appleTranscriber ?? unavailableTranscriber, backend: .local, resolution: resolution)
         case .remote:
-            return (transcriber(for: .remote), .remote, resolution)
+            return WorkflowFactory.ResolvedTranscriber(transcriber: transcriber(for: .remote), backend: .remote, resolution: resolution)
         case .whisperKit:
-            return (transcriber(for: .local), .local, resolution)
+            return WorkflowFactory.ResolvedTranscriber(transcriber: transcriber(for: .local), backend: .local, resolution: resolution)
         case .unavailable:
-            return (unavailableTranscriber, .local, resolution)
+            return WorkflowFactory.ResolvedTranscriber(transcriber: unavailableTranscriber, backend: .local, resolution: resolution)
         }
     }
 
-    private var unavailableTranscriber: SpokenWorkflowPipeline.Transcriber {
-        { _, _, _, _ in
-            throw LocalTranscriptionUnavailableError.selectedBackendUnavailable
-        }
+    private var unavailableTranscriber: SpokenWorkflowPipeline.Transcriber { Self.deallocatedSelfTranscriber }
+
+    /// Shared fallback for the rare case a `WorkflowFactory` dependency closure fires
+    /// after `self` has already deallocated — same failure the resolved backend reports
+    /// when it's genuinely unavailable, just reused instead of duplicated per call site.
+    private static let deallocatedSelfTranscriber: SpokenWorkflowPipeline.Transcriber = { _, _, _, _ in
+        throw LocalTranscriptionUnavailableError.selectedBackendUnavailable
     }
 
     private func transcriber(for backend: TranscriptionBackend) -> SpokenWorkflowPipeline.Transcriber {
