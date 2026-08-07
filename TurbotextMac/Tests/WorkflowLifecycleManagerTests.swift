@@ -54,7 +54,7 @@ final class WorkflowLifecycleManagerTests: XCTestCase {
                 guard available else { return nil }
                 let workflow = FakeLifecycleWorkflow(type: type)
                 box.workflows.append(workflow)
-                return workflow
+                return .workflow(workflow)
             },
             pasteAction: {},
             trustCheck: { _ in true },

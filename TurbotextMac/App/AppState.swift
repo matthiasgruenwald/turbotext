@@ -174,10 +174,19 @@ final class AppState {
         self.workflowFactory = WorkflowFactory(
             resolveTranscriber: { [weak self] backendOverride in
                 self?.resolvedTranscriber(backendOverride: backendOverride)
-                    ?? WorkflowFactory.ResolvedTranscriber(transcriber: Self.deallocatedSelfTranscriber, backend: .local, resolution: .unavailable)
+                    ?? WorkflowFactory.ResolvedTranscriber(
+                        transcriber: nil,
+                        backend: .local,
+                        resolution: .unavailable,
+                        unavailableRejection: WorkflowStartRejection(
+                            reason: "appStateDeallocated",
+                            message: "Turbotext ist nicht mehr verfügbar.",
+                            canRetryImmediately: false
+                        )
+                    )
             },
             localTranscriber: { [weak self] in
-                self?.transcriber(for: .local) ?? Self.deallocatedSelfTranscriber
+                self?.transcriber(for: .local) ?? Self.deallocatedSelfLocalTranscriber
             },
             rewriteConsentCoordinator: self.rewriteConsentCoordinator,
             secureAppleSpeechAssetsOnDemand: { [weak self] in self?.secureAppleSpeechAssetsOnDemand() },
@@ -190,7 +199,7 @@ final class AppState {
             rewriteProcessingLabel: { [weak self] in self?.rewriteProcessingLabel() }
         )
 
-        lifecycle.workflowFactory = { [weak self] type, backendOverride in
+        lifecycle.workflowFactory = { [weak self] type, backendOverride -> WorkflowBuildResult? in
             guard let self else { return nil }
             return self.workflowFactory.build(type, backendOverride: backendOverride, settings: WorkflowFactory.Settings(
                 appSettings: self.appSettings,
@@ -349,33 +358,28 @@ final class AppState {
         )
     }
 
-    /// Derives whether `type` can start right now from Sprachasset-Bereitschaft and the
-    /// access configuration (#190) — wired in as `workflowLifecycle`'s `startGate`. `nil`
-    /// means "start it". Fixes F1 from #188: the hotkey path used to veto silently here.
+    /// Derives whether `type` can start right now from the access configuration (#190) —
+    /// wired in as `workflowLifecycle`'s `startGate`. `nil` means "start it". Fixes F1 from
+    /// #188: the hotkey path used to veto silently here.
+    ///
+    /// Local-backend unavailability (Apple Speech assets not ready, legacy WhisperKit
+    /// without an installed model) is deliberately *not* checked here for the four
+    /// cloud-capable types (#192, fixes F2 from #188 fully): that's what
+    /// `resolveTranscriber`'s resolution already decides, once, inside `WorkflowFactory`.
+    /// Duplicating it here would mean the Sprachasset check ran twice and could disagree
+    /// with itself between live and file-based routing — exactly the bug F2 described.
     private func startRejection(for type: WorkflowType) -> WorkflowStartRejection? {
         guard type != .localTranscription else {
             guard !isWorkflowAvailable(type) else { return nil }
             return WorkflowStartRejection(
                 reason: "localModelNotInstalled",
-                message: "Lokales Modell nicht installiert – in den Einstellungen herunterladen.",
+                message: LocalBackendUnavailableRejection.whisperKitModelNotInstalledMessage,
                 canRetryImmediately: false
             )
         }
-
-        if wantsAppleSpeechLive {
-            if case .notReady(let status, let canInstall) = appleSpeechAvailability.readiness {
-                if canInstall {
-                    secureAppleSpeechAssetsOnDemand()
-                }
-                return WorkflowStartRejection(
-                    reason: "appleSpeech.\(String(describing: status))",
-                    message: AppleSpeechUnavailableHint.refusalText(for: status),
-                    canRetryImmediately: canInstall
-                )
-            }
+        guard !appSettings.alwaysLocalTranscription else {
             return nil
         }
-
         guard KeychainService.isConfigured else {
             return WorkflowStartRejection(
                 reason: "accessNotConfigured",
@@ -384,19 +388,6 @@ final class AppState {
             )
         }
         return nil
-    }
-
-    /// Whether the configured backend wants Apple Speech live dictation regardless of
-    /// current asset readiness (#190) — what a start rejection checks readiness against.
-    /// Mirrors the `alwaysLocalTranscription`+`.appleSpeech` branch of
-    /// `TranscriptionBackendResolver`, which only sees readiness as an input and so can't
-    /// distinguish "doesn't want Apple Speech" from "wants it but assets aren't ready".
-    private var wantsAppleSpeechLive: Bool {
-        guard appSettings.alwaysLocalTranscription, selectedLocalTranscriptionBackend == .appleSpeech else {
-            return false
-        }
-        if #available(macOS 26, *) { return true }
-        return false
     }
 
     /// Predicted processing-label routing for the signal pill (#128): known synchronously
@@ -439,22 +430,47 @@ final class AppState {
                     }
                 )
             }
-            return WorkflowFactory.ResolvedTranscriber(transcriber: appleTranscriber ?? unavailableTranscriber, backend: .local, resolution: resolution)
+            return WorkflowFactory.ResolvedTranscriber(
+                transcriber: appleTranscriber, backend: .local, resolution: resolution, unavailableRejection: nil
+            )
         case .remote:
-            return WorkflowFactory.ResolvedTranscriber(transcriber: transcriber(for: .remote), backend: .remote, resolution: resolution)
+            return WorkflowFactory.ResolvedTranscriber(
+                transcriber: transcriber(for: .remote), backend: .remote, resolution: resolution, unavailableRejection: nil
+            )
         case .whisperKit:
-            return WorkflowFactory.ResolvedTranscriber(transcriber: transcriber(for: .local), backend: .local, resolution: resolution)
+            return WorkflowFactory.ResolvedTranscriber(
+                transcriber: transcriber(for: .local), backend: .local, resolution: resolution, unavailableRejection: nil
+            )
         case .unavailable:
-            return WorkflowFactory.ResolvedTranscriber(transcriber: unavailableTranscriber, backend: .local, resolution: resolution)
+            return unavailableResolvedTranscriber()
         }
     }
 
-    private var unavailableTranscriber: SpokenWorkflowPipeline.Transcriber { Self.deallocatedSelfTranscriber }
+    /// Builds the rejection for a resolution of "unavailable" (#192, fixes F2 from #188
+    /// fully) via the pure, independently-tested `LocalBackendUnavailableRejection`, then
+    /// kicks off Sprachasset install here when it's installable — the one place this side
+    /// effect happens, regardless of whether the caller would have routed live or
+    /// file-based, unlike the pre-#192 check that only ran on the live path.
+    private func unavailableResolvedTranscriber() -> WorkflowFactory.ResolvedTranscriber {
+        let (rejection, shouldInstallAssets) = LocalBackendUnavailableRejection.resolve(
+            selectedBackend: selectedLocalTranscriptionBackend,
+            appleSpeechReadiness: appleSpeechAvailability.readiness
+        )
+        if shouldInstallAssets {
+            secureAppleSpeechAssetsOnDemand()
+        }
+        return WorkflowFactory.ResolvedTranscriber(
+            transcriber: nil, backend: .local, resolution: .unavailable, unavailableRejection: rejection
+        )
+    }
 
-    /// Shared fallback for the rare case a `WorkflowFactory` dependency closure fires
-    /// after `self` has already deallocated — same failure the resolved backend reports
-    /// when it's genuinely unavailable, just reused instead of duplicated per call site.
-    private static let deallocatedSelfTranscriber: SpokenWorkflowPipeline.Transcriber = { _, _, _, _ in
+    /// Purely defensive fallback for `localTranscriber()`'s `[weak self]` closure firing
+    /// after `AppState` has already deallocated — practically unreachable, since
+    /// `AppState` owns the `WorkflowFactory` that calls it. Distinct from the "backend
+    /// resolution unavailable" case (#192), which no longer has a throwing transcriber at
+    /// all and instead rejects the start before any workflow — `.localTranscription`
+    /// signature requires a concrete transcriber here, so there's nothing to reject into.
+    private static let deallocatedSelfLocalTranscriber: SpokenWorkflowPipeline.Transcriber = { _, _, _, _ in
         throw LocalTranscriptionUnavailableError.selectedBackendUnavailable
     }
 

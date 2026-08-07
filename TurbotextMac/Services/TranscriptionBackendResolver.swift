@@ -46,3 +46,50 @@ enum TranscriptionBackendResolver {
         return .remote
     }
 }
+
+/// What resolving to `.unavailable` actually rejects with (#192, fixes F2 from #188
+/// fully) — a pure function of which local backend was selected and Apple Speech's
+/// current readiness, so both the rejection message and the "should Turbotext start
+/// installing Sprachassets now" decision are unit-testable without constructing
+/// `AppState`. Applied by `AppState.unavailableResolvedTranscriber` regardless of
+/// whether the caller would have routed live or file-based — unlike the pre-#192 check,
+/// which only ran on the live path.
+enum LocalBackendUnavailableRejection {
+    static let whisperKitModelNotInstalledMessage = "Lokales Modell nicht installiert – in den Einstellungen herunterladen."
+
+    static func resolve(
+        selectedBackend: LocalTranscriptionBackend,
+        appleSpeechReadiness: AppleSpeechReadiness
+    ) -> (rejection: WorkflowStartRejection, shouldInstallAssets: Bool) {
+        switch selectedBackend {
+        case .appleSpeech:
+            guard case .notReady(let status, let canInstall) = appleSpeechReadiness else {
+                return (
+                    WorkflowStartRejection(
+                        reason: "appleSpeech.unknown",
+                        message: "Apple-Gerätetranskription derzeit nicht verfügbar.",
+                        canRetryImmediately: false
+                    ),
+                    false
+                )
+            }
+            return (
+                WorkflowStartRejection(
+                    reason: "appleSpeech.\(String(describing: status))",
+                    message: AppleSpeechUnavailableHint.refusalText(for: status),
+                    canRetryImmediately: canInstall
+                ),
+                canInstall
+            )
+        case .whisperKit:
+            return (
+                WorkflowStartRejection(
+                    reason: "localModelNotInstalled",
+                    message: whisperKitModelNotInstalledMessage,
+                    canRetryImmediately: false
+                ),
+                false
+            )
+        }
+    }
+}

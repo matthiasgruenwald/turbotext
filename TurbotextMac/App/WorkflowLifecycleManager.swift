@@ -73,10 +73,13 @@ final class WorkflowLifecycleManager {
         set { orchestrator.workflowFactory = newValue }
     }
 
-    /// Derives whether `type` can start right now from Sprachasset-Bereitschaft and the
-    /// access configuration (#190), instead of `start()` taking a precomputed bool — this
-    /// module now owns the start decision. `nil` means "go ahead". Defaults to always-allow
-    /// so callers/tests that don't care about rejection keep working unmodified.
+    /// Cheap pre-flight checks (#190) run before even asking `WorkflowFactory` to build
+    /// anything: `.localTranscription`'s installed-model check and the remote-access
+    /// configuration check. Sprachasset-Bereitschaft for the four cloud-capable types is
+    /// *not* checked here since #192 — that's `resolveTranscriber`'s job, applied once
+    /// inside `WorkflowFactory.build` regardless of live/file routing. `nil` means "go
+    /// ahead". Defaults to always-allow so callers/tests that don't care about rejection
+    /// keep working unmodified.
     var startGate: (WorkflowType) -> WorkflowStartRejection? = { _ in nil }
 
     @discardableResult
@@ -87,25 +90,42 @@ final class WorkflowLifecycleManager {
         pasteTarget: PasteTarget?
     ) -> WorkflowStartOutcome {
         if let rejection = startGate(type) {
-            lifecycleLogger.info(
-                "Workflow start rejected: type=\(type.rawValue, privacy: .public) reason=\(rejection.reason, privacy: .public) source=\(String(describing: source), privacy: .public)"
-            )
             orchestrator.reportStartRejection(type, message: rejection.message)
-            if source == .manual {
-                onPageChangeNeeded?(.settings)
-            }
-            return .rejected(rejection)
+            return handleRejection(rejection, type: type, source: source)
         }
 
-        orchestrator.start(
+        let outcome = orchestrator.start(
             type,
             source: source,
             backendOverride: backendOverride,
             pasteTarget: pasteTarget
         )
 
-        onPageChangeNeeded?(source.presentsWorkflowPage ? .workflow : .main)
-        return .started
+        switch outcome {
+        case .started:
+            onPageChangeNeeded?(source.presentsWorkflowPage ? .workflow : .main)
+            return .started
+        case .rejected(let rejection):
+            return handleRejection(rejection, type: type, source: source)
+        }
+    }
+
+    /// Shared tail for both rejection sources (the pre-flight `startGate` and, since
+    /// #192, `WorkflowFactory`'s own transcriber-unavailable rejection surfaced through
+    /// `orchestrator.start`): log it once, route manual launches to Settings, leave
+    /// hotkey-background launches wherever they were.
+    private func handleRejection(
+        _ rejection: WorkflowStartRejection,
+        type: WorkflowType,
+        source: WorkflowLaunchSource
+    ) -> WorkflowStartOutcome {
+        lifecycleLogger.info(
+            "Workflow start rejected: type=\(type.rawValue, privacy: .public) reason=\(rejection.reason, privacy: .public) source=\(String(describing: source), privacy: .public)"
+        )
+        if source == .manual {
+            onPageChangeNeeded?(.settings)
+        }
+        return .rejected(rejection)
     }
 
     func stop() {

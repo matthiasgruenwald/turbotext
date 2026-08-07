@@ -22,9 +22,10 @@ final class WorkflowOrchestrator {
     static let pasteRetryExhaustedMessage = "Einfügen fehlgeschlagen – Text ist in der Zwischenablage"
     private static let concealedPasteboardType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
 
-    /// Creates the workflow instance for a given type, or `nil` if unavailable.
+    /// Creates the workflow instance for a given type, or reports why it can't be built
+    /// right now (#192) — `nil` only when the factory itself hasn't been wired up yet.
     /// Injected so tests can substitute lightweight fakes for the 5 real workflow types.
-    typealias WorkflowFactory = (WorkflowType, TranscriptionBackend?) -> (any Workflow)?
+    typealias WorkflowFactory = (WorkflowType, TranscriptionBackend?) -> WorkflowBuildResult?
 
     /// Performs the actual Cmd+V keystroke. Injected so tests can verify retry behavior
     /// without posting real CGEvents.
@@ -123,13 +124,23 @@ final class WorkflowOrchestrator {
 
     // MARK: - Workflow Lifecycle
 
+    @discardableResult
     func start(
         _ type: WorkflowType,
         source: WorkflowLaunchSource,
         backendOverride: TranscriptionBackend? = nil,
         pasteTarget: PasteTarget?
-    ) {
-        guard let workflow = workflowFactory?(type, backendOverride) else { return }
+    ) -> WorkflowStartOutcome {
+        guard let buildResult = workflowFactory?(type, backendOverride) else { return .started }
+
+        let workflow: any Workflow
+        switch buildResult {
+        case .workflow(let built):
+            workflow = built
+        case .rejected(let rejection):
+            reportStartRejection(type, message: rejection.message)
+            return .rejected(rejection)
+        }
 
         activeWorkflow?.stop()
         menuBarStatusResetTask?.cancel()
@@ -152,6 +163,7 @@ final class WorkflowOrchestrator {
 
         activeWorkflow = workflow
         workflow.start()
+        return .started
     }
 
     func stop() {

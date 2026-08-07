@@ -36,7 +36,7 @@ private func makeOrchestratorWithWorkflow(pasteTarget: PasteTarget? = nil) -> (W
         workflowFactory: { type, _ in
             let workflow = FakeOverlayWorkflow(type: type)
             createdWorkflow = workflow
-            return workflow
+            return .workflow(workflow)
         },
         pasteAction: {},
         trustCheck: { _ in true },
@@ -57,7 +57,7 @@ private func makeOrchestratorWithFailingStart(message: String) -> WorkflowOrches
         workflowFactory: { type, _ in
             let workflow = FakeOverlayWorkflow(type: type)
             workflow.startErrorMessage = message
-            return workflow
+            return .workflow(workflow)
         },
         pasteAction: {},
         trustCheck: { _ in true },
@@ -635,7 +635,7 @@ final class RecordingOverlayControllerTests: XCTestCase {
             workflowFactory: { type, _ in
                 let workflow = FakeOverlayWorkflow(type: type)
                 createdWorkflow = workflow
-                return workflow
+                return .workflow(workflow)
             },
             pasteAction: {},
             trustCheck: { _ in true },
