@@ -275,8 +275,8 @@ final class AppleSpeechAvailabilityTests: XCTestCase {
             checkStatusDeadline: .seconds(20)
         )
 
-        await waitUntil { checkCallCount >= 1 }
-        XCTAssertEqual(state.status, .available)
+        await waitUntil { state.status == .available }
+        XCTAssertEqual(checkCallCount, 1)
 
         fireWake()
         await waitUntil { checkCallCount >= 2 }
@@ -300,8 +300,8 @@ final class AppleSpeechAvailabilityTests: XCTestCase {
             checkStatusDeadline: .milliseconds(50)
         )
 
-        await waitUntil { checkCallCount >= 1 }
-        XCTAssertEqual(state.status, .available)
+        await waitUntil { state.status == .available }
+        XCTAssertEqual(checkCallCount, 1)
 
         fireWake()
         await waitUntil { checkCallCount >= 2 }
