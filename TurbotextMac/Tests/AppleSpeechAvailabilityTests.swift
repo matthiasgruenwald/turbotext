@@ -218,6 +218,188 @@ final class AppleSpeechAvailabilityTests: XCTestCase {
         XCTAssertFalse(state.isInstallingAssets)
     }
 
+    // MARK: - A hung install request must not permanently wedge retries (#191 follow-up)
+
+    /// Reproduces the standby report: if `downloadAndInstall()` never returns (e.g. the
+    /// system suspended the request during sleep), `installTask` never clears, so every
+    /// later retry — user-pressed or wake-triggered — just re-awaits the same dead task
+    /// forever instead of starting a fresh install attempt.
+    func testHungInstallRequestEventuallyClearsAndAllowsAFreshRetry() async {
+        var installCallCount = 0
+        let (signal, fireWake) = makeSignal()
+        let state = AppleSpeechAvailability(
+            checkStatus: { .assetsNotInstalled },
+            requestAssetInstallation: {
+                installCallCount += 1
+                try? await Task.sleep(for: .seconds(3_600))
+                return .available
+            },
+            reserveAssets: {},
+            lifecycleSignal: signal,
+            installDeadline: .milliseconds(50)
+        )
+
+        await waitUntil { installCallCount >= 1 }
+        XCTAssertTrue(state.isInstallingAssets)
+
+        // The deadline should fire on its own, well before any real standby-length hang,
+        // clearing the wedge without needing an app restart.
+        await waitUntil { !state.isInstallingAssets }
+        XCTAssertNotNil(state.assetInstallationErrorText)
+
+        // A later retry — user-pressed or wake-triggered — must start a genuinely new
+        // install attempt rather than being permanently blocked by the dead one.
+        fireWake()
+        await waitUntil { installCallCount >= 2 }
+        XCTAssertEqual(installCallCount, 2)
+    }
+
+    /// The status check is not the only Speech-framework call that can wedge across
+    /// standby — `reserve` can too, since it goes through the same XPC-backed asset
+    /// daemon. Without its own deadline, a hung `reserveAssets()` blocks `checkStatus`
+    /// and `performInstall` from ever running, and every later trigger just re-hangs
+    /// on a fresh un-bounded reserve call again.
+    func testHungReserveCallDoesNotBlockTheRestOfTheSecuringFlowForever() async {
+        var checkCallCount = 0
+        let (signal, fireWake) = makeSignal()
+        let state = AppleSpeechAvailability(
+            checkStatus: {
+                checkCallCount += 1
+                return .available
+            },
+            reserveAssets: {
+                try? await Task.sleep(for: .seconds(3_600))
+            },
+            lifecycleSignal: signal,
+            reserveDeadline: .milliseconds(50),
+            checkStatusDeadline: .seconds(20)
+        )
+
+        await waitUntil { checkCallCount >= 1 }
+        XCTAssertEqual(state.status, .available)
+
+        fireWake()
+        await waitUntil { checkCallCount >= 2 }
+        XCTAssertEqual(checkCallCount, 2, "checkStatus must still run once the hung reserve call times out")
+    }
+
+    /// Same story for the status check itself: if it wedges, the module must not adopt
+    /// a bogus status and must let the next trigger try again instead of getting stuck.
+    func testHungCheckStatusCallLeavesLastKnownStatusAndAllowsARetry() async {
+        var checkCallCount = 0
+        let (signal, fireWake) = makeSignal()
+        let state = AppleSpeechAvailability(
+            checkStatus: {
+                checkCallCount += 1
+                if checkCallCount == 1 { return .available }
+                try? await Task.sleep(for: .seconds(3_600))
+                return .available
+            },
+            reserveAssets: {},
+            lifecycleSignal: signal,
+            checkStatusDeadline: .milliseconds(50)
+        )
+
+        await waitUntil { checkCallCount >= 1 }
+        XCTAssertEqual(state.status, .available)
+
+        fireWake()
+        await waitUntil { checkCallCount >= 2 }
+        try? await Task.sleep(for: .milliseconds(200))
+
+        // The hung second check must not clobber the last known status.
+        XCTAssertEqual(state.status, .available)
+
+        fireWake()
+        await waitUntil { checkCallCount >= 3 }
+        XCTAssertEqual(checkCallCount, 3, "a later trigger must attempt checkStatus again, not stay wedged behind the hung one")
+    }
+
+    // MARK: - Persistent no-progress triggers a self-relaunch (poisoned XPC connection)
+
+    /// Reproduces the observed field bug: a poisoned Apple Speech XPC connection fails
+    /// every call fast (not a hang) with `.assetsNotInstalled`, forever, in this process —
+    /// while a fresh process would succeed immediately. No amount of retrying from inside
+    /// the same process ever recovers, so after enough no-progress rounds the module must
+    /// give up and trigger a relaunch instead of leaving the user stuck indefinitely.
+    func testPersistentNoProgressTriggersRelaunchAfterThreshold() async {
+        var relaunchCount = 0
+        let (signal, fireWake) = makeSignal()
+        let state = AppleSpeechAvailability(
+            checkStatus: { .assetsNotInstalled },
+            requestAssetInstallation: { .assetsNotInstalled },
+            reserveAssets: {},
+            lifecycleSignal: signal,
+            persistentFailureThreshold: 3,
+            onPersistentFailure: { relaunchCount += 1 }
+        )
+
+        await waitUntil { !state.isInstallingAssets } // launch pass (round 1)
+        fireWake() // round 2
+        await waitUntil { !state.isInstallingAssets && relaunchCount == 0 }
+        try? await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(relaunchCount, 0, "must not relaunch before the threshold is reached")
+
+        fireWake() // round 3 — reaches the threshold
+        await waitUntil { relaunchCount >= 1 }
+        XCTAssertEqual(relaunchCount, 1)
+    }
+
+    /// A single successful round must reset the counter — brief blips shouldn't accumulate
+    /// toward a relaunch across unrelated later failures.
+    func testProgressResetsTheFailureCounter() async {
+        var relaunchCount = 0
+        var checkCallCount = 0
+        let (signal, fireWake) = makeSignal()
+        let state = AppleSpeechAvailability(
+            checkStatus: {
+                checkCallCount += 1
+                // Rounds 1, 2 fail; round 3 succeeds; rounds 4, 5 fail again.
+                return checkCallCount == 3 ? .available : .assetsNotInstalled
+            },
+            requestAssetInstallation: { .assetsNotInstalled },
+            reserveAssets: {},
+            lifecycleSignal: signal,
+            persistentFailureThreshold: 3,
+            onPersistentFailure: { relaunchCount += 1 }
+        )
+
+        await waitUntil { checkCallCount >= 1 } // round 1
+        fireWake()
+        await waitUntil { checkCallCount >= 2 } // round 2
+        fireWake()
+        await waitUntil { checkCallCount >= 3 } // round 3 — succeeds, resets counter
+        fireWake()
+        await waitUntil { checkCallCount >= 4 } // round 4
+        fireWake()
+        await waitUntil { checkCallCount >= 5 } // round 5 — only 2 failures since the reset
+        try? await Task.sleep(for: .milliseconds(20))
+
+        XCTAssertEqual(relaunchCount, 0, "the successful round must have reset the streak")
+    }
+
+    /// A permanently unsupported machine/OS must never relaunch — restarting cannot fix it,
+    /// so counting toward the threshold there would just loop the app forever for nothing.
+    func testUnsupportedStatusNeverTriggersRelaunch() async {
+        var relaunchCount = 0
+        let (signal, fireWake) = makeSignal()
+        let state = AppleSpeechAvailability(
+            checkStatus: { .germanAssetsUnsupported },
+            reserveAssets: {},
+            lifecycleSignal: signal,
+            persistentFailureThreshold: 2,
+            onPersistentFailure: { relaunchCount += 1 }
+        )
+
+        await waitUntil { state.status == .germanAssetsUnsupported }
+        fireWake()
+        fireWake()
+        fireWake()
+        try? await Task.sleep(for: .milliseconds(50))
+
+        XCTAssertEqual(relaunchCount, 0)
+    }
+
     // MARK: - Synchronous readiness query
 
     func testReadinessReflectsAvailableStatus() async {
