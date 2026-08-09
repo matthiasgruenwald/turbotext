@@ -124,19 +124,34 @@ struct CredentialsSettingsView: View {
     }
 
     // MARK: Rewriting Provider Mode
+    private var rewriteBackendChoiceBinding: Binding<RewriteBackendChoice> {
+        Binding(
+            get: {
+                RewriteBackendChoice(
+                    backend: appState.appSettings.rewriteBackend,
+                    providerMode: appState.appSettings.rewritingProviderMode
+                )
+            },
+            set: { choice in
+                appState.appSettings.rewriteBackend = choice.backend
+                if let providerMode = choice.providerMode {
+                    appState.appSettings.rewritingProviderMode = providerMode
+                }
+            }
+        )
+    }
+
     private var rewritingProviderModeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle(
-                "Immer OpenAI für Umformulierungen verwenden",
-                isOn: Binding(
-                    get: { appState.appSettings.rewritingProviderMode == .openAI },
-                    set: { appState.appSettings.rewritingProviderMode = $0 ? .openAI : .groq }
-                )
-            )
-            .toggleStyle(.switch)
+            Picker("Umformulierungs-Backend", selection: rewriteBackendChoiceBinding) {
+                ForEach(RewriteBackendChoice.allCases) { choice in
+                    Text(choice.displayName).tag(choice)
+                }
+            }
+            .pickerStyle(.segmented)
             .font(.system(size: 11.5))
 
-            Text("Gilt für Textverbesserung, Dampf ablassen und Emoji-Text. Aus: Groq wird bevorzugt, solange das Kontingent reicht. An: immer OpenAI, auch mit Groq-Key.")
+            Text("Gilt für Textverbesserung, Dampf ablassen und Emoji-Text. Aus: kein Umformulieren, Rohtext wird eingefügt. Lokal: auf diesem Mac, ohne Internet. Groq: online, bevorzugt Groq solange das Kontingent reicht, sonst OpenAI. OpenAI: immer online mit OpenAI.")
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -156,6 +171,11 @@ struct CredentialsSettingsView: View {
             }
 
             Text(availability.detailText)
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("„Lokal“ eignet sich vor allem für kürzere Texte. Bei längeren Diktaten kann die Umformulierung abgeschnitten werden.")
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

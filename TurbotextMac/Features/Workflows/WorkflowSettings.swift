@@ -127,6 +127,56 @@ enum RewriteBackend: String, Codable, CaseIterable, Identifiable, Equatable {
     }
 }
 
+/// Vierweg-Auswahl fuer den Rewrite-Backend-Picker in den Einstellungen: kombiniert
+/// `rewriteBackend` (Aus/Lokal/Online) und `rewritingProviderMode` (Groq/OpenAI) zu den
+/// vier Optionen, die der Nutzer tatsaechlich sieht (#199).
+enum RewriteBackendChoice: String, CaseIterable, Identifiable, Equatable {
+    case aus
+    case lokal
+    case groq
+    case openAI
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .aus: return "Aus"
+        case .lokal: return "Lokal"
+        case .groq: return "Groq"
+        case .openAI: return "OpenAI"
+        }
+    }
+
+    init(backend: RewriteBackend, providerMode: RewriteProviderMode) {
+        switch backend {
+        case .aus:
+            self = .aus
+        case .lokal:
+            self = .lokal
+        case .online:
+            self = providerMode == .groq ? .groq : .openAI
+        }
+    }
+
+    var backend: RewriteBackend {
+        switch self {
+        case .aus: return .aus
+        case .lokal: return .lokal
+        case .groq, .openAI: return .online
+        }
+    }
+
+    /// Only meaningful for `.groq`/`.openAI`; leaves `providerMode` untouched for `.aus`/`.lokal`
+    /// so switching away from Online and back restores the previously chosen provider.
+    var providerMode: RewriteProviderMode? {
+        switch self {
+        case .groq: return .groq
+        case .openAI: return .openAI
+        case .aus, .lokal: return nil
+        }
+    }
+}
+
 enum LocalTranscriptionBackend: String, Codable, CaseIterable, Identifiable {
     case appleSpeech
     case whisperKit
