@@ -14,14 +14,10 @@ struct AppSettings: Codable, Equatable {
     var autoFallbackToLocalOnOffline: Bool = false
     var rewritingProviderMode: RewriteProviderMode = .groq
     /// Dreiwege-Backend-Wahl fuer Rewrite (Aus/Lokal/Online), analog zu
-    /// `LiveSmoothingBackend` bei der Glaettung (ADR 0013). Steuert in diesem Ticket
-    /// noch kein Laufzeitverhalten -- `RewriteRouter` bleibt unveraendert lokal-first.
+    /// `LiveSmoothingBackend` bei der Glaettung (ADR 0013). `RewriteRouter` verzweigt
+    /// explizit darueber -- kein Laufzeit-Consent-Dialog mehr (#197).
     var rewriteBackend: RewriteBackend = .lokal
     var recordingOverlayMode: RecordingOverlayMode = .screenBottomCenter
-    /// Per-workflow consent to route rewrites to a named online provider once on-device
-    /// rewriting fails (#124). Cleared for a workflow whenever its configured online
-    /// provider changes, so a fresh consent is required.
-    var rewriteConsents: [WorkflowType: OnlineProvider] = [:]
     /// Permanently hides the ~3s post-insert rewrite completion label in the signal pill
     /// (#128), e.g. after the user dismisses it once from the pill itself.
     var hideRewriteCompletionLabel: Bool = false
@@ -39,7 +35,6 @@ struct AppSettings: Codable, Equatable {
         case rewritingProviderMode
         case rewriteBackend
         case recordingOverlayMode
-        case rewriteConsents
         case hideRewriteCompletionLabel
     }
 }
@@ -107,10 +102,6 @@ extension AppSettings {
             RecordingOverlayMode.self,
             forKey: .recordingOverlayMode
         ) ?? .screenBottomCenter
-        rewriteConsents = try container.decodeIfPresent(
-            [WorkflowType: OnlineProvider].self,
-            forKey: .rewriteConsents
-        ) ?? [:]
         hideRewriteCompletionLabel = try container.decodeIfPresent(
             Bool.self,
             forKey: .hideRewriteCompletionLabel

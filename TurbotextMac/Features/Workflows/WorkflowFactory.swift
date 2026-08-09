@@ -56,7 +56,6 @@ struct WorkflowFactory {
     /// The always-local transcriber for `.localTranscription`, which never goes through
     /// backend resolution.
     let localTranscriber: () -> SpokenWorkflowPipeline.Transcriber
-    let rewriteConsentCoordinator: RewriteConsentCoordinating
     /// Kicks off Sprachasset-Bereitschaft securing on demand (#189/#190) — wired by
     /// `resolveTranscriber`'s caller when assets aren't ready yet, regardless of whether
     /// the resulting workflow will run live or file-based (#192, fixes F2 from #188).
@@ -120,15 +119,16 @@ struct WorkflowFactory {
                 smoothingEnabled: false,
                 rewritingMessage: "Text wird verbessert ...",
                 noSpeechSentinel: nil,
-                rewrite: { [rewriteConsentCoordinator] settings in
+                rewrite: { settings in
                     let textSettings = settings.textImprovementSettings
                     let providerMode = settings.appSettings.rewritingProviderMode
+                    let backend = settings.appSettings.rewriteBackend
                     return { text in
                         try await LLMService.improveLocalFirst(
                             text: text,
                             settings: textSettings,
                             providerMode: providerMode,
-                            consent: rewriteConsentCoordinator
+                            backend: backend
                         )
                     }
                 }
@@ -138,15 +138,16 @@ struct WorkflowFactory {
                 smoothingEnabled: false,
                 rewritingMessage: "Wird umformuliert ...",
                 noSpeechSentinel: RewriteStage.noSpeechSentinel,
-                rewrite: { [rewriteConsentCoordinator] settings in
+                rewrite: { settings in
                     let dampfSettings = settings.dampfAblassenSettings
                     let providerMode = settings.appSettings.rewritingProviderMode
+                    let backend = settings.appSettings.rewriteBackend
                     return { text in
                         try await LLMService.dampfAblassenLocalFirst(
                             text: text,
                             systemPrompt: dampfSettings.systemPrompt,
                             providerMode: providerMode,
-                            consent: rewriteConsentCoordinator
+                            backend: backend
                         )
                     }
                 }
@@ -156,15 +157,16 @@ struct WorkflowFactory {
                 smoothingEnabled: false,
                 rewritingMessage: "Emojis werden eingefügt ...",
                 noSpeechSentinel: RewriteStage.noSpeechSentinel,
-                rewrite: { [rewriteConsentCoordinator] settings in
+                rewrite: { settings in
                     let emojiSettings = settings.emojiTextSettings
                     let providerMode = settings.appSettings.rewritingProviderMode
+                    let backend = settings.appSettings.rewriteBackend
                     return { text in
                         try await LLMService.addEmojisLocalFirst(
                             text: text,
                             settings: emojiSettings,
                             providerMode: providerMode,
-                            consent: rewriteConsentCoordinator
+                            backend: backend
                         )
                     }
                 }

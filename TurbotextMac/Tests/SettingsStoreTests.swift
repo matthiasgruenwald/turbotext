@@ -123,31 +123,6 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(loaded.app.rewriteBackend, .online)
     }
 
-    func testSaveThenLoadRoundTripsRewriteConsents() {
-        let store = SettingsStore(fileURL: fileURL)
-
-        var app = AppSettings()
-        app.rewriteConsents = [.textImprover: .groq, .dampfAblassen: .openAI]
-
-        store.save(
-            app: app,
-            transcription: TranscriptionSettings(),
-            textImprovement: TextImprovementSettings(),
-            dampfAblassen: DampfAblassenSettings(),
-            emojiText: EmojiTextSettings()
-        )
-
-        let loaded = store.load()
-
-        XCTAssertEqual(loaded.app.rewriteConsents, [.textImprover: .groq, .dampfAblassen: .openAI])
-    }
-
-    func testAppSettingsWithoutRewriteConsentsDefaultsToEmpty() throws {
-        let json = "{}".data(using: .utf8)!
-        let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
-        XCTAssertEqual(decoded.rewriteConsents, [:])
-    }
-
     func testLoadWithCorruptedFileReturnsDefaults() throws {
         try "not valid json".write(to: fileURL, atomically: true, encoding: .utf8)
 

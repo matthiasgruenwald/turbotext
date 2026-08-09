@@ -18,7 +18,6 @@ final class AppState {
     let microphoneState: MicrophoneState
     private let localModelState: LocalModelState
     private let appleSpeechAvailability: AppleSpeechAvailability
-    private let rewriteConsentCoordinator: RewriteConsentCoordinating
     private var workflowFactory: WorkflowFactory!
 
     var activeWorkflow: (any Workflow)? { workflowLifecycle.activeWorkflow }
@@ -108,18 +107,6 @@ final class AppState {
         GroqOnboardingState.resolve(hasGroqKey: KeychainService.load(key: .groqAPIKey) != nil)
     }
 
-    /// Whether a rewrite consent is currently stored for `workflow` (#127), so
-    /// `WorkflowsSettingsView` can offer to reset it.
-    func hasRewriteConsent(for workflow: WorkflowType) -> Bool {
-        rewriteConsentCoordinator.readConsent(workflow) != nil
-    }
-
-    /// Clears the stored rewrite consent for `workflow`, requiring a fresh confirmation
-    /// the next time an on-device rewrite needs to fall back online (#127).
-    func resetRewriteConsent(for workflow: WorkflowType) {
-        rewriteConsentCoordinator.writeConsent(workflow, nil)
-    }
-
     func openMicrophoneSettings() {
         requestedSettingsSection = .transcription
         page = .settings
@@ -139,8 +126,7 @@ final class AppState {
     }
 
     init(
-        groqTranscriptionProvider: GroqTranscriptionProvider? = nil,
-        rewriteConsentCoordinator: RewriteConsentCoordinating? = nil
+        groqTranscriptionProvider: GroqTranscriptionProvider? = nil
     ) {
         let groqTranscriptionProvider = groqTranscriptionProvider ?? GroqTranscriptionProvider()
         self.groqTranscriptionProvider = groqTranscriptionProvider
@@ -161,10 +147,6 @@ final class AppState {
             setHasAutoSelectedFastLocalModel: { settings.appSettings.hasAutoSelectedFastLocalModel = $0 }
         )
         self.appleSpeechAvailability = AppleSpeechAvailability()
-        self.rewriteConsentCoordinator = rewriteConsentCoordinator ?? RewriteConsentCoordinator(
-            getConsents: { settings.appSettings.rewriteConsents },
-            setConsents: { settings.appSettings.rewriteConsents = $0 }
-        )
 
         let lifecycle = WorkflowLifecycleManager()
         self.workflowLifecycle = lifecycle
@@ -188,7 +170,6 @@ final class AppState {
             localTranscriber: { [weak self] in
                 self?.transcriber(for: .local) ?? Self.deallocatedSelfLocalTranscriber
             },
-            rewriteConsentCoordinator: self.rewriteConsentCoordinator,
             secureAppleSpeechAssetsOnDemand: { [weak self] in self?.secureAppleSpeechAssetsOnDemand() },
             onLiveTranscriptUpdate: { [weak orchestrator] display in
                 orchestrator?.updateLiveTranscriptDisplay(display)

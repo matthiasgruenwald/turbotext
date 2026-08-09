@@ -210,17 +210,16 @@ enum LLMService {
         model: RewriteModel = .fastEdit,
         providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
-        consent: RewriteConsentCoordinating
+        backend: RewriteBackend
     ) async throws -> RewriteStepResult {
         try await completeLocalFirst(
             text: text,
             systemPrompt: buildSystemPrompt(settings: settings),
-            workflow: .textImprover,
             model: model,
             temperature: 0.3,
             providerMode: providerMode,
             hasGroqKey: hasGroqKey,
-            consent: consent
+            backend: backend
         )
     }
 
@@ -230,17 +229,16 @@ enum LLMService {
         model: RewriteModel = .rageMode,
         providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
-        consent: RewriteConsentCoordinating
+        backend: RewriteBackend
     ) async throws -> RewriteStepResult {
         try await completeLocalFirst(
             text: text,
             systemPrompt: systemPrompt,
-            workflow: .dampfAblassen,
             model: model,
             temperature: 0.4,
             providerMode: providerMode,
             hasGroqKey: hasGroqKey,
-            consent: consent
+            backend: backend
         )
     }
 
@@ -250,44 +248,36 @@ enum LLMService {
         model: RewriteModel = .fastEdit,
         providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
-        consent: RewriteConsentCoordinating
+        backend: RewriteBackend
     ) async throws -> RewriteStepResult {
         try await completeLocalFirst(
             text: text,
             systemPrompt: buildEmojiSystemPrompt(density: settings.emojiDensity),
-            workflow: .emojiText,
             model: model,
             temperature: 0.3,
             providerMode: providerMode,
             hasGroqKey: hasGroqKey,
-            consent: consent
+            backend: backend
         )
     }
 
     private static func completeLocalFirst(
         text: String,
         systemPrompt: String,
-        workflow: WorkflowType,
         model: RewriteModel,
         temperature: Double,
         providerMode: RewriteProviderMode,
         hasGroqKey: Bool,
-        consent: RewriteConsentCoordinating
+        backend: RewriteBackend
     ) async throws -> RewriteStepResult {
-        let router = RewriteRouter(providerMode: providerMode, hasGroqKey: hasGroqKey)
+        let router = RewriteRouter(backend: backend, providerMode: providerMode, hasGroqKey: hasGroqKey)
         let result = try await router.completeWithOutcome(
             text: text,
             systemPrompt: systemPrompt,
             temperature: temperature,
-            workflow: workflow,
             appleProvider: RewriteRouter.resolveAppleProvider(),
             openAIProvider: OpenAIProvider(model: model),
-            groqProvider: GroqProvider(),
-            presentConsent: { reason, provider in
-                await consent.presentConsent(reason: reason, provider: provider)
-            },
-            readConsent: consent.readConsent,
-            writeConsent: consent.writeConsent
+            groqProvider: GroqProvider()
         )
         return RewriteStepResult(text: result.text, completionLabel: result.outcome.completionLabel)
     }

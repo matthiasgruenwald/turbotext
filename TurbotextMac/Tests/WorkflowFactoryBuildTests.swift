@@ -1,17 +1,6 @@
 import XCTest
 @testable import Turbotext
 
-/// Fake consent coordinator — `SpokenRewriteWorkflow`'s rewrite closures capture it, but
-/// these tests never actually run a rewrite, so every method is unreachable.
-@MainActor
-private final class FakeRewriteConsentCoordinator: RewriteConsentCoordinating {
-    func presentConsent(reason: RewriteConsentReason, provider: OnlineProvider) async -> RewriteRouter.ConsentDecision {
-        .insertRawText
-    }
-    func readConsent(_ workflow: WorkflowType) -> OnlineProvider? { nil }
-    func writeConsent(_ workflow: WorkflowType, _ provider: OnlineProvider?) {}
-}
-
 /// Covers `WorkflowFactory.build` directly (#192): the four spoken-workflow types
 /// (Transkription, Turbotext+, Dampf ablassen, Emoji-Text) now share one branch, so these
 /// tests exercise that branch's data-driven differences instead of four near-duplicate
@@ -34,7 +23,6 @@ final class WorkflowFactoryBuildTests: XCTestCase {
                 return resolution()
             },
             localTranscriber: { { _, _, _, _ in "local" } },
-            rewriteConsentCoordinator: FakeRewriteConsentCoordinator(),
             secureAppleSpeechAssetsOnDemand: {},
             onLiveTranscriptUpdate: { _ in },
             onBergung: { _ in },
