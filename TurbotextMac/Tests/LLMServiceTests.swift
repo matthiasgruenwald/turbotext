@@ -27,7 +27,7 @@ final class LLMServiceTests: XCTestCase {
         var groqCalled = false
         var openAICalled = false
 
-        let router = ProviderRouter(providerMode: .auto, hasGroqKey: true)
+        let router = ProviderRouter(providerMode: .groq, hasGroqKey: true)
         let result = try await router.complete(
             text: "hallo welt",
             systemPrompt: "system",
@@ -44,7 +44,7 @@ final class LLMServiceTests: XCTestCase {
     func testAutoModeFallsBackToOpenAIWhenGroqFails() async throws {
         var openAICalled = false
 
-        let router = ProviderRouter(providerMode: .auto, hasGroqKey: true)
+        let router = ProviderRouter(providerMode: .groq, hasGroqKey: true)
         let result = try await router.complete(
             text: "hallo welt",
             systemPrompt: "system",
@@ -60,7 +60,7 @@ final class LLMServiceTests: XCTestCase {
     func testNoGroqKeyGoesDirectlyToOpenAI() async throws {
         var groqCalled = false
 
-        let router = ProviderRouter(providerMode: .auto, hasGroqKey: false)
+        let router = ProviderRouter(providerMode: .groq, hasGroqKey: false)
         let result = try await router.complete(
             text: "hallo welt",
             systemPrompt: "system",
@@ -76,7 +76,7 @@ final class LLMServiceTests: XCTestCase {
     func testImmerOpenAIModeIgnoresGroqEvenWithKey() async throws {
         var groqCalled = false
 
-        let router = ProviderRouter(providerMode: .immerOpenAI, hasGroqKey: true)
+        let router = ProviderRouter(providerMode: .openAI, hasGroqKey: true)
         let result = try await router.complete(
             text: "hallo welt",
             systemPrompt: "system",
@@ -97,7 +97,7 @@ final class LLMServiceTests: XCTestCase {
         let settings = TextImprovementSettings()
 
         do {
-            _ = try await LLMService.improve(text: "hallo welt", settings: settings, providerMode: .immerOpenAI)
+            _ = try await LLMService.improve(text: "hallo welt", settings: settings, providerMode: .openAI)
             XCTFail("Expected LLMError.notConfigured")
         } catch LLMError.notConfigured {
             // expected
@@ -115,7 +115,7 @@ final class LLMServiceTests: XCTestCase {
             _ = try await LLMService.improve(
                 text: "hallo welt",
                 settings: settings,
-                providerMode: .auto,
+                providerMode: .groq,
                 hasGroqKey: false
             )
             XCTFail("Expected LLMError.notConfigured")

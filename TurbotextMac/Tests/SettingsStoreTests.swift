@@ -68,7 +68,7 @@ final class SettingsStoreTests: XCTestCase {
         let store = SettingsStore(fileURL: fileURL)
 
         var app = AppSettings()
-        app.rewritingProviderMode = .immerOpenAI
+        app.rewritingProviderMode = .openAI
 
         store.save(
             app: app,
@@ -80,7 +80,47 @@ final class SettingsStoreTests: XCTestCase {
 
         let loaded = store.load()
 
-        XCTAssertEqual(loaded.app.rewritingProviderMode, .immerOpenAI)
+        XCTAssertEqual(loaded.app.rewritingProviderMode, .openAI)
+    }
+
+    func testAppSettingsDecodeMigratesLegacyAutoProviderModeToGroqAndLokalBackend() throws {
+        let json = "{ \"rewritingProviderMode\": \"auto\" }".data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
+        XCTAssertEqual(decoded.rewritingProviderMode, .groq)
+        XCTAssertEqual(decoded.rewriteBackend, .lokal)
+    }
+
+    func testAppSettingsDecodeMigratesLegacyImmerOpenAIProviderModeToOpenAIAndOnlineBackend() throws {
+        let json = "{ \"rewritingProviderMode\": \"immerOpenAI\" }".data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
+        XCTAssertEqual(decoded.rewritingProviderMode, .openAI)
+        XCTAssertEqual(decoded.rewriteBackend, .online)
+    }
+
+    func testAppSettingsWithoutRewriteBackendDefaultsToLokalOnFreshInstall() throws {
+        let json = "{}".data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
+        XCTAssertEqual(decoded.rewriteBackend, .lokal)
+        XCTAssertEqual(decoded.rewritingProviderMode, .groq)
+    }
+
+    func testSaveThenLoadRoundTripsRewriteBackend() {
+        let store = SettingsStore(fileURL: fileURL)
+
+        var app = AppSettings()
+        app.rewriteBackend = .online
+
+        store.save(
+            app: app,
+            transcription: TranscriptionSettings(),
+            textImprovement: TextImprovementSettings(),
+            dampfAblassen: DampfAblassenSettings(),
+            emojiText: EmojiTextSettings()
+        )
+
+        let loaded = store.load()
+
+        XCTAssertEqual(loaded.app.rewriteBackend, .online)
     }
 
     func testSaveThenLoadRoundTripsRewriteConsents() {

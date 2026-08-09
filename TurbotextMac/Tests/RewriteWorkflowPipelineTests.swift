@@ -18,7 +18,7 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
             settings: DampfAblassenSettings(systemPrompt: "Bitte sachlich."),
             customTerms: ["Turbotext"],
             language: "de",
-            providerMode: .immerOpenAI,
+            providerMode: .openAI,
             pipeline: SpokenWorkflowPipeline(recorder: recorder),
             transcriber: { url, duration, terms, language in
                 XCTAssertEqual(url, audioURL)
@@ -62,7 +62,7 @@ final class RewriteWorkflowPipelineTests: XCTestCase {
             settings: EmojiTextSettings(),
             customTerms: ["Turbotext"],
             language: "de",
-            providerMode: .immerOpenAI,
+            providerMode: .openAI,
             pipeline: SpokenWorkflowPipeline(recorder: recorder),
             transcriber: { url, duration, terms, language in
                 XCTAssertEqual(url, audioURL)

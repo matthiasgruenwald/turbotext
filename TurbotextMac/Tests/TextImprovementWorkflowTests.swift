@@ -19,7 +19,7 @@ final class TextImprovementWorkflowTests: XCTestCase {
         let workflow = SpokenRewriteWorkflow.textImprovement(
             settings: settings,
             language: "de",
-            providerMode: .immerOpenAI,
+            providerMode: .openAI,
             pipeline: SpokenWorkflowPipeline(recorder: recorder),
             transcriber: { url, duration, terms, language in
                 XCTAssertEqual(url, audioURL)

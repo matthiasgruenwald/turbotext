@@ -89,9 +89,9 @@ struct RewriteRouter {
     }
 
     /// The online provider named in the consent dialog and used once consent is granted.
-    /// Auto mode with a Groq key prefers Groq; everything else uses OpenAI.
+    /// `.groq` mode with a Groq key prefers Groq; everything else uses OpenAI.
     static func configuredOnlineProvider(providerMode: RewriteProviderMode, hasGroqKey: Bool) -> OnlineProvider {
-        providerMode == .auto && hasGroqKey ? .groq : .openAI
+        providerMode == .groq && hasGroqKey ? .groq : .openAI
     }
 
     /// Predicted routing path, shown in the signal pill while a rewrite is processing

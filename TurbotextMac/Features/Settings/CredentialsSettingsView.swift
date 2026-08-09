@@ -129,8 +129,8 @@ struct CredentialsSettingsView: View {
             Toggle(
                 "Immer OpenAI für Umformulierungen verwenden",
                 isOn: Binding(
-                    get: { appState.appSettings.rewritingProviderMode == .immerOpenAI },
-                    set: { appState.appSettings.rewritingProviderMode = $0 ? .immerOpenAI : .auto }
+                    get: { appState.appSettings.rewritingProviderMode == .openAI },
+                    set: { appState.appSettings.rewritingProviderMode = $0 ? .openAI : .groq }
                 )
             )
             .toggleStyle(.switch)

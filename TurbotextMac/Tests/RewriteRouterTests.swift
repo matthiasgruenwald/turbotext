@@ -32,7 +32,7 @@ final class RewriteRouterTests: XCTestCase {
         func write(_ workflow: WorkflowType, _ provider: OnlineProvider?) { consents[workflow] = provider }
     }
 
-    private func makeRouter(providerMode: RewriteProviderMode = .auto, hasGroqKey: Bool = true) -> RewriteRouter {
+    private func makeRouter(providerMode: RewriteProviderMode = .groq, hasGroqKey: Bool = true) -> RewriteRouter {
         RewriteRouter(providerMode: providerMode, hasGroqKey: hasGroqKey)
     }
 
@@ -91,7 +91,7 @@ final class RewriteRouterTests: XCTestCase {
         let consentSpy = ConsentSpy()
         let store = ConsentStore()
 
-        let result = try await makeRouter(providerMode: .immerOpenAI).complete(
+        let result = try await makeRouter(providerMode: .openAI).complete(
             text: "hallo welt",
             systemPrompt: "system",
             temperature: 0.3,
@@ -116,7 +116,7 @@ final class RewriteRouterTests: XCTestCase {
         consentSpy.decision = .insertRawText
         let store = ConsentStore()
 
-        _ = try await makeRouter(providerMode: .auto, hasGroqKey: true).complete(
+        _ = try await makeRouter(providerMode: .groq, hasGroqKey: true).complete(
             text: "roher text",
             systemPrompt: "system",
             temperature: 0.3,
@@ -139,7 +139,7 @@ final class RewriteRouterTests: XCTestCase {
         consentSpy.decision = .insertRawText
         let store = ConsentStore()
 
-        _ = try await makeRouter(providerMode: .auto, hasGroqKey: false).complete(
+        _ = try await makeRouter(providerMode: .groq, hasGroqKey: false).complete(
             text: "roher text",
             systemPrompt: "system",
             temperature: 0.3,
@@ -191,7 +191,7 @@ final class RewriteRouterTests: XCTestCase {
         consentSpy.decision = .continueOnline(remember: true)
         let store = ConsentStore()
 
-        let first = try await makeRouter(providerMode: .immerOpenAI).complete(
+        let first = try await makeRouter(providerMode: .openAI).complete(
             text: "roher text",
             systemPrompt: "system",
             temperature: 0.3,
@@ -207,7 +207,7 @@ final class RewriteRouterTests: XCTestCase {
         XCTAssertEqual(store.consents[.textImprover], .openAI)
         XCTAssertEqual(consentSpy.calls.count, 1)
 
-        let second = try await makeRouter(providerMode: .immerOpenAI).complete(
+        let second = try await makeRouter(providerMode: .openAI).complete(
             text: "roher text 2",
             systemPrompt: "system",
             temperature: 0.3,
@@ -234,7 +234,7 @@ final class RewriteRouterTests: XCTestCase {
         store.consents[.textImprover] = .openAI // stale: was consented to OpenAI
 
         // Now configured for Auto+Groq, so the stored OpenAI consent no longer matches.
-        _ = try await makeRouter(providerMode: .auto, hasGroqKey: true).complete(
+        _ = try await makeRouter(providerMode: .groq, hasGroqKey: true).complete(
             text: "roher text",
             systemPrompt: "system",
             temperature: 0.3,
@@ -259,7 +259,7 @@ final class RewriteRouterTests: XCTestCase {
         consentSpy.decision = .continueOnline(remember: false)
         let store = ConsentStore()
 
-        let result = try await makeRouter(providerMode: .auto, hasGroqKey: true).complete(
+        let result = try await makeRouter(providerMode: .groq, hasGroqKey: true).complete(
             text: "roher text",
             systemPrompt: "system",
             temperature: 0.3,
@@ -328,7 +328,7 @@ final class RewriteRouterTests: XCTestCase {
         let consentSpy = ConsentSpy()
         let store = ConsentStore()
 
-        let result = try await makeRouter(providerMode: .auto, hasGroqKey: true).completeWithOutcome(
+        let result = try await makeRouter(providerMode: .groq, hasGroqKey: true).completeWithOutcome(
             text: "hallo welt",
             systemPrompt: "system",
             temperature: 0.3,
@@ -485,17 +485,17 @@ final class RewriteRouterTests: XCTestCase {
     // MARK: - Processing label (#128)
 
     func testProcessingLabelReportsLocalWhenAppleAvailable() {
-        let label = RewriteRouter.processingLabel(appleProviderAvailable: true, providerMode: .auto, hasGroqKey: true)
+        let label = RewriteRouter.processingLabel(appleProviderAvailable: true, providerMode: .groq, hasGroqKey: true)
         XCTAssertEqual(label, "Nachbearbeitung läuft – lokal auf diesem Mac")
     }
 
     func testProcessingLabelReportsOnlineProviderWhenAppleUnavailable() {
-        let label = RewriteRouter.processingLabel(appleProviderAvailable: false, providerMode: .auto, hasGroqKey: true)
+        let label = RewriteRouter.processingLabel(appleProviderAvailable: false, providerMode: .groq, hasGroqKey: true)
         XCTAssertEqual(label, "Nachbearbeitung läuft online mit Groq")
     }
 
     func testProcessingLabelReportsOpenAIWhenNoGroqKey() {
-        let label = RewriteRouter.processingLabel(appleProviderAvailable: false, providerMode: .auto, hasGroqKey: false)
+        let label = RewriteRouter.processingLabel(appleProviderAvailable: false, providerMode: .groq, hasGroqKey: false)
         XCTAssertEqual(label, "Nachbearbeitung läuft online mit OpenAI")
     }
 }

@@ -12,7 +12,11 @@ struct AppSettings: Codable, Equatable {
     var hasDismissedInputMonitoringHint: Bool = false
     var dockModeEnabled: Bool = true
     var autoFallbackToLocalOnOffline: Bool = false
-    var rewritingProviderMode: RewriteProviderMode = .auto
+    var rewritingProviderMode: RewriteProviderMode = .groq
+    /// Dreiwege-Backend-Wahl fuer Rewrite (Aus/Lokal/Online), analog zu
+    /// `LiveSmoothingBackend` bei der Glaettung (ADR 0013). Steuert in diesem Ticket
+    /// noch kein Laufzeitverhalten -- `RewriteRouter` bleibt unveraendert lokal-first.
+    var rewriteBackend: RewriteBackend = .lokal
     var recordingOverlayMode: RecordingOverlayMode = .screenBottomCenter
     /// Per-workflow consent to route rewrites to a named online provider once on-device
     /// rewriting fails (#124). Cleared for a workflow whenever its configured online
@@ -33,6 +37,7 @@ struct AppSettings: Codable, Equatable {
         case dockModeEnabled
         case autoFallbackToLocalOnOffline
         case rewritingProviderMode
+        case rewriteBackend
         case recordingOverlayMode
         case rewriteConsents
         case hideRewriteCompletionLabel
@@ -77,10 +82,27 @@ extension AppSettings {
             Bool.self,
             forKey: .autoFallbackToLocalOnOffline
         ) ?? false
-        rewritingProviderMode = try container.decodeIfPresent(
-            RewriteProviderMode.self,
-            forKey: .rewritingProviderMode
-        ) ?? .auto
+        // `RewriteProviderMode`'s raw values changed from `auto`/`immerOpenAI` to
+        // `groq`/`openAI` (#196); decode the legacy raw string ourselves rather than
+        // through `RewriteProviderMode` directly, since an old raw value would otherwise
+        // fail decoding instead of falling through to a default.
+        let legacyProviderModeRaw = try container.decodeIfPresent(String.self, forKey: .rewritingProviderMode)
+        switch legacyProviderModeRaw {
+        case "immerOpenAI", "openAI":
+            rewritingProviderMode = .openAI
+        default:
+            rewritingProviderMode = .groq
+        }
+        if let backend = try container.decodeIfPresent(RewriteBackend.self, forKey: .rewriteBackend) {
+            rewriteBackend = backend
+        } else {
+            switch legacyProviderModeRaw {
+            case "immerOpenAI":
+                rewriteBackend = .online
+            default:
+                rewriteBackend = .lokal
+            }
+        }
         recordingOverlayMode = try container.decodeIfPresent(
             RecordingOverlayMode.self,
             forKey: .recordingOverlayMode
@@ -93,6 +115,24 @@ extension AppSettings {
             Bool.self,
             forKey: .hideRewriteCompletionLabel
         ) ?? false
+    }
+}
+
+/// Dreiwege-Backend-Wahl fuer die drei Rewrite-Workflows (Turbotext+, DampfAblassen,
+/// EmojiText), analog zu `LiveSmoothingBackend` bei der Glaettung (ADR 0013).
+enum RewriteBackend: String, Codable, CaseIterable, Identifiable, Equatable {
+    case aus
+    case lokal
+    case online
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .aus: return "Aus"
+        case .lokal: return "Lokal"
+        case .online: return "Online"
+        }
     }
 }
 

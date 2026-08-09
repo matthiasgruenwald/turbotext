@@ -15,7 +15,7 @@ final class OnlineSmoothingTests: XCTestCase {
     }
 
     private func smooth(
-        providerMode: RewriteProviderMode = .auto,
+        providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = true,
         openAI: FakeProvider,
         groq: FakeProvider,
@@ -77,7 +77,7 @@ final class OnlineSmoothingTests: XCTestCase {
         var groqCalled = false
 
         let result = await smooth(
-            providerMode: .immerOpenAI,
+            providerMode: .openAI,
             hasGroqKey: true,
             openAI: FakeProvider(result: .success("OpenAI-Ergebnis")),
             groq: FakeProvider(result: .success("Groq-Ergebnis")) { _, _, _ in groqCalled = true }
@@ -118,15 +118,15 @@ final class OnlineSmoothingTests: XCTestCase {
 
     func testPredictedProviderFollowsRewriteProviderSetting() {
         XCTAssertEqual(
-            OnlineSmoothing(providerMode: .auto, hasGroqKey: true).predictedProvider, .groq,
+            OnlineSmoothing(providerMode: .groq, hasGroqKey: true).predictedProvider, .groq,
             "Auto mit Groq-Key nennt Groq"
         )
         XCTAssertEqual(
-            OnlineSmoothing(providerMode: .auto, hasGroqKey: false).predictedProvider, .openAI,
+            OnlineSmoothing(providerMode: .groq, hasGroqKey: false).predictedProvider, .openAI,
             "Auto ohne Groq-Key nennt OpenAI"
         )
         XCTAssertEqual(
-            OnlineSmoothing(providerMode: .immerOpenAI, hasGroqKey: true).predictedProvider, .openAI,
+            OnlineSmoothing(providerMode: .openAI, hasGroqKey: true).predictedProvider, .openAI,
             "'Immer OpenAI' gilt mit"
         )
     }

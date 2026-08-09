@@ -26,8 +26,8 @@ enum RewriteModel: String {
 }
 
 enum RewriteProviderMode: String, Codable, Equatable {
-    case auto
-    case immerOpenAI
+    case groq
+    case openAI
 }
 
 /// A backend capable of completing a chat-style rewrite request.
@@ -81,7 +81,7 @@ struct GroqProvider: LLMProvider {
     }
 }
 
-/// Implements the Auto-fallback routing: prefer Groq when mode is `.auto` and a Groq key
+/// Implements the Auto-fallback routing: prefer Groq when mode is `.groq` and a Groq key
 /// exists, fall back to OpenAI if Groq fails, otherwise always use OpenAI.
 struct ProviderRouter {
     /// Which provider actually completed the request, for the #128 completion label.
@@ -117,7 +117,7 @@ struct ProviderRouter {
         openAIProvider: LLMProvider,
         groqProvider: LLMProvider
     ) async throws -> Outcome {
-        guard providerMode == .auto, hasGroqKey else {
+        guard providerMode == .groq, hasGroqKey else {
             let result = try await openAIProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
             return Outcome(text: result, provider: .openAI, model: openAIProvider.modelName)
         }
@@ -137,7 +137,7 @@ enum LLMService {
         text: String,
         settings: TextImprovementSettings,
         model: RewriteModel = .fastEdit,
-        providerMode: RewriteProviderMode = .auto,
+        providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil
     ) async throws -> String {
         try await complete(
@@ -154,7 +154,7 @@ enum LLMService {
         text: String,
         systemPrompt: String,
         model: RewriteModel = .rageMode,
-        providerMode: RewriteProviderMode = .auto,
+        providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil
     ) async throws -> String {
         try await complete(
@@ -171,7 +171,7 @@ enum LLMService {
         text: String,
         settings: EmojiTextSettings,
         model: RewriteModel = .fastEdit,
-        providerMode: RewriteProviderMode = .auto,
+        providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil
     ) async throws -> String {
         try await complete(
@@ -208,7 +208,7 @@ enum LLMService {
         text: String,
         settings: TextImprovementSettings,
         model: RewriteModel = .fastEdit,
-        providerMode: RewriteProviderMode = .auto,
+        providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
         consent: RewriteConsentCoordinating
     ) async throws -> RewriteStepResult {
@@ -228,7 +228,7 @@ enum LLMService {
         text: String,
         systemPrompt: String,
         model: RewriteModel = .rageMode,
-        providerMode: RewriteProviderMode = .auto,
+        providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
         consent: RewriteConsentCoordinating
     ) async throws -> RewriteStepResult {
@@ -248,7 +248,7 @@ enum LLMService {
         text: String,
         settings: EmojiTextSettings,
         model: RewriteModel = .fastEdit,
-        providerMode: RewriteProviderMode = .auto,
+        providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
         consent: RewriteConsentCoordinating
     ) async throws -> RewriteStepResult {
