@@ -177,7 +177,8 @@ final class AppState {
             onBergung: { [weak orchestrator] message in
                 orchestrator?.reportBergung(message: message)
             },
-            rewriteProcessingLabel: { [weak self] in self?.rewriteProcessingLabel() }
+            rewriteProcessingLabel: { [weak self] in self?.rewriteProcessingLabel() },
+            networkStatus: { [weak self] in self?.networkPingService.status ?? .red }
         )
 
         lifecycle.workflowFactory = { [weak self] type -> WorkflowBuildResult? in

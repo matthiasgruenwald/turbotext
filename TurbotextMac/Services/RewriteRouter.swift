@@ -29,6 +29,10 @@ enum RewriteOutcome: Equatable {
     /// window, guardrail violation, unavailability, or unusable output per #180) and
     /// silently fell back to the raw dictation text — never towards Online (ADR 0013).
     case localRewriteFailed
+    /// `RewriteBackend.online`: the network was up but both configured online providers
+    /// failed (Groq→OpenAI for `.groq` mode, or the lone OpenAI attempt for `.openAI`
+    /// mode) and silently fell back to the raw dictation text (#198, ADR 0013).
+    case onlineRewriteFailed
 
     var completionLabel: String? {
         switch self {
@@ -38,7 +42,7 @@ enum RewriteOutcome: Equatable {
             return "Text online verbessert · \(provider.displayName) · \(model)"
         case .backendOff:
             return RewriteStage.rawInsertionCompletionLabel
-        case .localRewriteFailed:
+        case .localRewriteFailed, .onlineRewriteFailed:
             return "Nachbearbeitung fehlgeschlagen – Rohtext eingefügt"
         }
     }
@@ -52,6 +56,11 @@ struct RewriteRouter {
     let backend: RewriteBackend
     let providerMode: RewriteProviderMode
     let hasGroqKey: Bool
+    /// Reader for the current network quality (#198) — production call sites inject
+    /// `NetworkPingService.status`; tests inject a fixed value. Only consulted for
+    /// `RewriteBackend.online`, where `.red` means a real network outage and routes to
+    /// Lokal (Apple, else raw text) instead of the offline online provider call.
+    var networkStatus: () -> NetworkQualityStatus = { .green }
 
     /// Resolves the on-device provider for production call sites, or `nil` on devices
     /// below macOS 26 or without Apple Intelligence available. Tests inject their own
@@ -99,13 +108,9 @@ struct RewriteRouter {
                 text: text, systemPrompt: systemPrompt, temperature: temperature, appleProvider: appleProvider
             )
         case .online:
-            // TODO(#198): real Online routing (Groq-first with silent OpenAI fallback on
-            // provider failure, offline network falls back to Lokal then Rohtext — see
-            // ADR 0013). Minimal passthrough for now so the backend switch stays
-            // exhaustive: reuses the existing Groq/OpenAI auto-routing unchanged.
-            return try await fallbackToExistingRouter(
+            return try await completeOnline(
                 text: text, systemPrompt: systemPrompt, temperature: temperature,
-                openAIProvider: openAIProvider, groqProvider: groqProvider
+                appleProvider: appleProvider, openAIProvider: openAIProvider, groqProvider: groqProvider
             )
         }
     }
@@ -149,20 +154,70 @@ struct RewriteRouter {
         rewriteLogger.info("Local rewrite: input \(inputLength) chars, output \(outputLength) chars, check \(check, privacy: .public)")
     }
 
-    private func fallbackToExistingRouter(
+    /// `RewriteBackend.online`: pre-chosen provider path, no runtime consent (ADR 0013,
+    /// #198). A real network outage (`.red`) routes to the same Lokal behavior as
+    /// `RewriteBackend.lokal` — Apple on-device if available, else raw text — so the
+    /// completion label correctly says "lokal", never "online", for that fallback.
+    private func completeOnline(
+        text: String,
+        systemPrompt: String,
+        temperature: Double,
+        appleProvider: LLMProvider?,
+        openAIProvider: LLMProvider,
+        groqProvider: LLMProvider
+    ) async throws -> (text: String, outcome: RewriteOutcome) {
+        guard networkStatus() != .red else {
+            return try await completeLocal(
+                text: text, systemPrompt: systemPrompt, temperature: temperature, appleProvider: appleProvider
+            )
+        }
+
+        let onlineProvider = Self.configuredOnlineProvider(providerMode: providerMode, hasGroqKey: hasGroqKey)
+        switch onlineProvider {
+        case .groq:
+            return try await completeGroqWithSilentOpenAIFallback(
+                text: text, systemPrompt: systemPrompt, temperature: temperature,
+                openAIProvider: openAIProvider, groqProvider: groqProvider
+            )
+        case .openAI:
+            return try await completeOpenAIOnly(text: text, systemPrompt: systemPrompt, temperature: temperature, openAIProvider: openAIProvider)
+        }
+    }
+
+    /// Online/Groq (ADR 0013): Groq first; any provider failure (key, rate-limit) switches
+    /// silently to OpenAI — no dialog. Raw text only if both fail.
+    private func completeGroqWithSilentOpenAIFallback(
         text: String,
         systemPrompt: String,
         temperature: Double,
         openAIProvider: LLMProvider,
         groqProvider: LLMProvider
     ) async throws -> (text: String, outcome: RewriteOutcome) {
-        let outcome = try await ProviderRouter(providerMode: providerMode, hasGroqKey: hasGroqKey).completeWithOutcome(
-            text: text,
-            systemPrompt: systemPrompt,
-            temperature: temperature,
-            openAIProvider: openAIProvider,
-            groqProvider: groqProvider
-        )
-        return (outcome.text, .online(provider: outcome.provider, model: outcome.model))
+        do {
+            let result = try await groqProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+            return (result, .online(provider: .groq, model: groqProvider.modelName))
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return try await completeOpenAIOnly(text: text, systemPrompt: systemPrompt, temperature: temperature, openAIProvider: openAIProvider)
+        }
+    }
+
+    /// Online/OpenAI (ADR 0013): only OpenAI is tried — a provider failure goes directly
+    /// to raw text, no Groq fallback (that path wasn't chosen).
+    private func completeOpenAIOnly(
+        text: String,
+        systemPrompt: String,
+        temperature: Double,
+        openAIProvider: LLMProvider
+    ) async throws -> (text: String, outcome: RewriteOutcome) {
+        do {
+            let result = try await openAIProvider.complete(text: text, systemPrompt: systemPrompt, temperature: temperature)
+            return (result, .online(provider: .openAI, model: openAIProvider.modelName))
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return (text, .onlineRewriteFailed)
+        }
     }
 }

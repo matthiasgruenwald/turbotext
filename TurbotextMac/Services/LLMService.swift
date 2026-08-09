@@ -210,7 +210,8 @@ enum LLMService {
         model: RewriteModel = .fastEdit,
         providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
-        backend: RewriteBackend
+        backend: RewriteBackend,
+        networkStatus: @escaping () -> NetworkQualityStatus = { .green }
     ) async throws -> RewriteStepResult {
         try await completeLocalFirst(
             text: text,
@@ -219,7 +220,8 @@ enum LLMService {
             temperature: 0.3,
             providerMode: providerMode,
             hasGroqKey: hasGroqKey,
-            backend: backend
+            backend: backend,
+            networkStatus: networkStatus
         )
     }
 
@@ -229,7 +231,8 @@ enum LLMService {
         model: RewriteModel = .rageMode,
         providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
-        backend: RewriteBackend
+        backend: RewriteBackend,
+        networkStatus: @escaping () -> NetworkQualityStatus = { .green }
     ) async throws -> RewriteStepResult {
         try await completeLocalFirst(
             text: text,
@@ -238,7 +241,8 @@ enum LLMService {
             temperature: 0.4,
             providerMode: providerMode,
             hasGroqKey: hasGroqKey,
-            backend: backend
+            backend: backend,
+            networkStatus: networkStatus
         )
     }
 
@@ -248,7 +252,8 @@ enum LLMService {
         model: RewriteModel = .fastEdit,
         providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
-        backend: RewriteBackend
+        backend: RewriteBackend,
+        networkStatus: @escaping () -> NetworkQualityStatus = { .green }
     ) async throws -> RewriteStepResult {
         try await completeLocalFirst(
             text: text,
@@ -257,7 +262,8 @@ enum LLMService {
             temperature: 0.3,
             providerMode: providerMode,
             hasGroqKey: hasGroqKey,
-            backend: backend
+            backend: backend,
+            networkStatus: networkStatus
         )
     }
 
@@ -268,9 +274,10 @@ enum LLMService {
         temperature: Double,
         providerMode: RewriteProviderMode,
         hasGroqKey: Bool,
-        backend: RewriteBackend
+        backend: RewriteBackend,
+        networkStatus: @escaping () -> NetworkQualityStatus
     ) async throws -> RewriteStepResult {
-        let router = RewriteRouter(backend: backend, providerMode: providerMode, hasGroqKey: hasGroqKey)
+        let router = RewriteRouter(backend: backend, providerMode: providerMode, hasGroqKey: hasGroqKey, networkStatus: networkStatus)
         let result = try await router.completeWithOutcome(
             text: text,
             systemPrompt: systemPrompt,

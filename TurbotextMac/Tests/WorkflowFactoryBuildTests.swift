@@ -26,7 +26,8 @@ final class WorkflowFactoryBuildTests: XCTestCase {
             secureAppleSpeechAssetsOnDemand: {},
             onLiveTranscriptUpdate: { _ in },
             onBergung: { _ in },
-            rewriteProcessingLabel: { nil }
+            rewriteProcessingLabel: { nil },
+            networkStatus: { .green }
         )
         return (factory, resolveCallCount)
     }

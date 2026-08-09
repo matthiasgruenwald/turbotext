@@ -15,12 +15,15 @@ final class RewriteRouterTests: XCTestCase {
         }
     }
 
+    private struct FakeProviderError: Error {}
+
     private func makeRouter(
         backend: RewriteBackend,
         providerMode: RewriteProviderMode = .groq,
-        hasGroqKey: Bool = true
+        hasGroqKey: Bool = true,
+        networkStatus: @escaping () -> NetworkQualityStatus = { .green }
     ) -> RewriteRouter {
-        RewriteRouter(backend: backend, providerMode: providerMode, hasGroqKey: hasGroqKey)
+        RewriteRouter(backend: backend, providerMode: providerMode, hasGroqKey: hasGroqKey, networkStatus: networkStatus)
     }
 
     private func complete(
@@ -192,19 +195,127 @@ final class RewriteRouterTests: XCTestCase {
         XCTAssertEqual(result.outcome, .local(model: "Apple Foundation Models"))
     }
 
-    // MARK: - Online (out of scope, #198): minimal passthrough keeps the switch exhaustive
+    // MARK: - Online/Groq (#198, ADR 0013): Groq first, silent OpenAI fallback, .red -> Lokal
 
-    func testOnlinePassesThroughToExistingGroqOpenAIRouting() async throws {
+    func testOnlineGroqSuccessReturnsGroqOutcomeWithoutTouchingOpenAI() async throws {
+        var openAICalled = false
+
         let result = try await complete(
             makeRouter(backend: .online, providerMode: .groq, hasGroqKey: true),
             text: "hallo welt",
             appleProvider: nil,
-            openAIProvider: FakeProvider(result: .success("OpenAI-Ergebnis"), modelName: "gpt-4o"),
+            openAIProvider: FakeProvider(result: .success("OpenAI-Ergebnis"), onCalled: { openAICalled = true }, modelName: "gpt-4o"),
             groqProvider: FakeProvider(result: .success("Groq-Ergebnis"), modelName: "openai/gpt-oss-120b")
         )
 
         XCTAssertEqual(result.text, "Groq-Ergebnis")
         XCTAssertEqual(result.outcome, .online(provider: .groq, model: "openai/gpt-oss-120b"))
+        XCTAssertFalse(openAICalled)
+    }
+
+    func testOnlineGroqProviderErrorSwitchesSilentlyToOpenAI() async throws {
+        let result = try await complete(
+            makeRouter(backend: .online, providerMode: .groq, hasGroqKey: true),
+            text: "hallo welt",
+            appleProvider: nil,
+            openAIProvider: FakeProvider(result: .success("OpenAI-Ergebnis"), modelName: "gpt-4o"),
+            groqProvider: FakeProvider(result: .failure(FakeProviderError()))
+        )
+
+        XCTAssertEqual(result.text, "OpenAI-Ergebnis")
+        XCTAssertEqual(result.outcome, .online(provider: .openAI, model: "gpt-4o"))
+    }
+
+    func testOnlineGroqRedNetworkFallsBackToAppleAndLabelsItLocal() async throws {
+        let result = try await complete(
+            makeRouter(backend: .online, providerMode: .groq, hasGroqKey: true, networkStatus: { .red }),
+            text: "das meeting morgen absagen",
+            appleProvider: FakeProvider(result: .success("Das Meeting morgen wurde abgesagt."), modelName: "Apple Foundation Models"),
+            openAIProvider: FakeProvider(result: .success("sollte nie aufgerufen werden")),
+            groqProvider: FakeProvider(result: .success("sollte nie aufgerufen werden"))
+        )
+
+        XCTAssertEqual(result.text, "Das Meeting morgen wurde abgesagt.")
+        XCTAssertEqual(result.outcome, .local(model: "Apple Foundation Models"))
+        XCTAssertEqual(result.outcome.completionLabel, "Text lokal verbessert · Apple Foundation Models")
+    }
+
+    func testOnlineGroqRedNetworkWithoutAppleFallsBackToRawText() async throws {
+        let result = try await complete(
+            makeRouter(backend: .online, providerMode: .groq, hasGroqKey: true, networkStatus: { .red }),
+            text: "hallo welt",
+            appleProvider: nil,
+            openAIProvider: FakeProvider(result: .success("sollte nie aufgerufen werden")),
+            groqProvider: FakeProvider(result: .success("sollte nie aufgerufen werden"))
+        )
+
+        XCTAssertEqual(result.text, "hallo welt")
+        XCTAssertEqual(result.outcome, .localRewriteFailed)
+        let label = try XCTUnwrap(result.outcome.completionLabel)
+        XCTAssertFalse(label.contains("online"))
+    }
+
+    // MARK: - Online/OpenAI (#198, ADR 0013): only OpenAI, direct raw-text fallback, .red -> Lokal
+
+    func testOnlineOpenAISuccessReturnsOpenAIOutcomeWithoutTouchingGroq() async throws {
+        var groqCalled = false
+
+        let result = try await complete(
+            makeRouter(backend: .online, providerMode: .openAI, hasGroqKey: true),
+            text: "hallo welt",
+            appleProvider: nil,
+            openAIProvider: FakeProvider(result: .success("OpenAI-Ergebnis"), modelName: "gpt-4o"),
+            groqProvider: FakeProvider(result: .success("sollte nie aufgerufen werden")) { groqCalled = true }
+        )
+
+        XCTAssertEqual(result.text, "OpenAI-Ergebnis")
+        XCTAssertEqual(result.outcome, .online(provider: .openAI, model: "gpt-4o"))
+        XCTAssertFalse(groqCalled)
+    }
+
+    func testOnlineOpenAIProviderErrorGoesDirectlyToRawTextWithoutGroq() async throws {
+        var groqCalled = false
+
+        let result = try await complete(
+            makeRouter(backend: .online, providerMode: .openAI, hasGroqKey: true),
+            text: "hallo welt",
+            appleProvider: nil,
+            openAIProvider: FakeProvider(result: .failure(FakeProviderError())),
+            groqProvider: FakeProvider(result: .success("sollte nie aufgerufen werden")) { groqCalled = true }
+        )
+
+        XCTAssertEqual(result.text, "hallo welt")
+        XCTAssertEqual(result.outcome, .onlineRewriteFailed)
+        XCTAssertFalse(groqCalled)
+    }
+
+    func testOnlineOpenAIRedNetworkFallsBackToAppleAndLabelsItLocal() async throws {
+        let result = try await complete(
+            makeRouter(backend: .online, providerMode: .openAI, hasGroqKey: false, networkStatus: { .red }),
+            text: "das meeting morgen absagen",
+            appleProvider: FakeProvider(result: .success("Das Meeting morgen wurde abgesagt."), modelName: "Apple Foundation Models"),
+            openAIProvider: FakeProvider(result: .success("sollte nie aufgerufen werden")),
+            groqProvider: FakeProvider(result: .success("sollte nie aufgerufen werden"))
+        )
+
+        XCTAssertEqual(result.text, "Das Meeting morgen wurde abgesagt.")
+        XCTAssertEqual(result.outcome, .local(model: "Apple Foundation Models"))
+        XCTAssertEqual(result.outcome.completionLabel, "Text lokal verbessert · Apple Foundation Models")
+    }
+
+    func testOnlineOpenAIRedNetworkWithoutAppleFallsBackToRawText() async throws {
+        let result = try await complete(
+            makeRouter(backend: .online, providerMode: .openAI, hasGroqKey: false, networkStatus: { .red }),
+            text: "hallo welt",
+            appleProvider: nil,
+            openAIProvider: FakeProvider(result: .success("sollte nie aufgerufen werden")),
+            groqProvider: FakeProvider(result: .success("sollte nie aufgerufen werden"))
+        )
+
+        XCTAssertEqual(result.text, "hallo welt")
+        XCTAssertEqual(result.outcome, .localRewriteFailed)
+        let label = try XCTUnwrap(result.outcome.completionLabel)
+        XCTAssertFalse(label.contains("online"))
     }
 
     // MARK: - Processing label (#128)

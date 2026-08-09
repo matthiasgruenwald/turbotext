@@ -65,6 +65,10 @@ struct WorkflowFactory {
     /// Predicted processing-label routing for the signal pill (#128) — a closure so it's
     /// evaluated fresh at call time, not frozen into `Settings` at build time.
     let rewriteProcessingLabel: () -> String?
+    /// Current network quality (#198), read fresh at call time — production wires this to
+    /// `NetworkPingService.status`. Consulted by `RewriteRouter` only for
+    /// `RewriteBackend.online`, where `.red` means a real outage.
+    let networkStatus: () -> NetworkQualityStatus
 
     func build(
         _ type: WorkflowType,
@@ -128,7 +132,8 @@ struct WorkflowFactory {
                             text: text,
                             settings: textSettings,
                             providerMode: providerMode,
-                            backend: backend
+                            backend: backend,
+                            networkStatus: networkStatus
                         )
                     }
                 }
@@ -147,7 +152,8 @@ struct WorkflowFactory {
                             text: text,
                             systemPrompt: dampfSettings.systemPrompt,
                             providerMode: providerMode,
-                            backend: backend
+                            backend: backend,
+                            networkStatus: networkStatus
                         )
                     }
                 }
@@ -166,7 +172,8 @@ struct WorkflowFactory {
                             text: text,
                             settings: emojiSettings,
                             providerMode: providerMode,
-                            backend: backend
+                            backend: backend,
+                            networkStatus: networkStatus
                         )
                     }
                 }
