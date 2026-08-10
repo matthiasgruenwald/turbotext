@@ -6,6 +6,42 @@ Ab v0.9.0 wird der Changelog strukturiert geführt — mit Git-Tags, Conventiona
 
 ---
 
+## [0.10.0] — 2026-08-10
+
+### 🚀 Lokale Transkription
+
+- **Apple Speech als Standard-Backend** — On-Device-Transkription (macOS 26+) ersetzt WhisperKit als Standard, WhisperKit bleibt als Legacy-Option wählbar.
+- **Automatische Backend-Wahl pro Hotkey-Druck** — feste Prioritätsreihenfolge (Apple Speech bei „immer lokal", sonst Online via Groq/Whisper, automatischer Offline-Fallback auf Apple Speech, WhisperKit nur wenn explizit als Legacy gewählt); tatsächlich aktives Backend wird in den Einstellungen angezeigt.
+- **Sprachasset-Verwaltung** — Installation, Reservierung und Re-Sicherung der Apple-Speech-Sprachassets bei Wake/App-Aktivierung; einmaliger Migrationshinweis beim Umstieg von WhisperKit.
+- **Live-Diktat** — laufende Zwischenanzeige während des Sprechens statt Warten aufs Endergebnis: noch nicht endgültiger Text erscheint gräulich, wird hell sobald er final geglättet ist (on-device oder online via Groq/OpenAI). Für Turbotext+, DampfAblassen und EmojiText nutzbar.
+
+### 🚀 Rewrite-Backend-Wahl
+
+- **4-Wege-Picker** — Rewrite-Backend jetzt explizit wählbar zwischen Aus / Lokal / Online-Groq / Online-OpenAI statt Toggle.
+- **Kurztext-Handling** — sehr kurze Transkripte (wenige Wörter) werden gar nicht erst ans Rewrite-LLM geschickt, sondern direkt roh eingefügt — vermeidet Fehlinterpretation/Halluzination und unnötige Latenz bei trivialem Input.
+- **Ausgabe-Validierung** — Rewrite-Ergebnis wird auf Echo (Prompt kommt unverändert zurück) und Fabrikation geprüft, bei unbrauchbarer Ausgabe Rohtext-Fallback.
+
+### ⚠️ Bekannte Einschränkungen
+
+- **Lokales Rewriting (Apple Foundation Models)** ist vorerst nur für sehr kurze Diktate praxistauglich — Qualität bei längeren Texten noch nicht auf Online-Niveau. Weiterhin experimentell.
+- **Live-Diktat-Anzeige** kann bei der Finalisierung kurz hängen: neu hinzukommender (grauer) Text wird dann für einen Moment nicht aktuell nachgeführt.
+
+### 🚀 Onboarding
+
+- **Interaktives Drag & Drop** — Einrichtung der Bedienungshilfen- und Eingabe-Berechtigungen per Drag & Drop statt reiner Anleitung.
+
+### 🐛 Bug Fixes
+
+- Nachlauf (Drain) vor Verarbeitung zuverlässig abgewartet statt Abschneiden der letzten ~100–250 ms Sprache.
+- Paste-Retry nach Fensterwechsel: Fehler beim Einfügen wird jetzt sichtbar statt still zu scheitern.
+- Apple-Speech-Transkription über XPC mit Deadline abgesichert, App hängt nicht mehr bei stallender Engine; Selbst-Neustart bei dauerhaftem Asset-Fehler.
+- Mikrofon-Favoriten werden bei Geräteänderung korrekt neu aufgelöst, echtes Signal nach Gerätewechsel bestätigt.
+- Stille Aufnahmen werden abgelehnt statt als leere Transkription durchzulaufen.
+- 10-Hz-Layout-Rekursion behoben, die den Main-Thread blockieren konnte.
+- Diverse Keychain-/Test-Isolation-Fixes (Tests nutzen In-Memory-Keychain statt echtem Store).
+
+---
+
 ## [0.9.0] — 2026-07-10
 
 Erster öffentlicher Preview-Release. Turbotext ist ein Fork von [turbotext-app](https://github.com/cmagnussen/turbotext-app) von cmagnussen — die folgenden Punkte sind seit dem Fork hinzugekommen.
