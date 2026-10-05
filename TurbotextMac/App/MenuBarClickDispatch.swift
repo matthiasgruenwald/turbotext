@@ -1,6 +1,6 @@
 /// Decides what a menu bar icon click should do, given current presentation state.
 /// Pure decision logic, kept separate from `AppDelegate` so "Menüleisten-Klick-Vorrang"
-/// (see CONTEXT.md → App-Präsenz) is unit-testable without AppKit.
+/// (see GLOSSARY.md → App-Präsenz) is unit-testable without AppKit.
 enum MenuBarClickAction: Equatable {
     case bringMainWindowToFront
     case openPopover

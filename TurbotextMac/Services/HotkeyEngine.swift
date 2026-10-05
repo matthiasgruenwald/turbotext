@@ -45,7 +45,7 @@ final class RunLoopTimerScheduler: HotkeyEngineTimerScheduling {
 /// Consumes synthetic modifier-flag and keyCode sequences and produces `HotkeyEvent`s.
 /// Owns the hold-state machine and the 80ms fallback timer (workaround for fn/Globe
 /// key release events that macOS doesn't reliably fire on some non-Apple keyboards —
-/// see "F-Key-Shortcut" in CONTEXT.md).
+/// see "F-Key-Shortcut" in GLOSSARY.md).
 @MainActor
 final class HotkeyEngine {
     private static let fallbackTimerInterval: TimeInterval = 0.08

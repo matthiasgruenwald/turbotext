@@ -31,7 +31,7 @@ struct AppLifecycleSignal: Sendable {
     }
 }
 
-/// Owns Sprachasset-Bereitschaft (#189, siehe CONTEXT.md): reserves the assets against
+/// Owns Sprachasset-Bereitschaft (#189, siehe GLOSSARY.md): reserves the assets against
 /// macOS, checks their status, and installs them when missing but installable — run at
 /// app start and re-run, unprompted, whenever the app wakes from standby or becomes
 /// active, since either can have let macOS deactivate or remove the reservation.
