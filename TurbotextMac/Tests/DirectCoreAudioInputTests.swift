@@ -69,4 +69,16 @@ final class DirectCoreAudioInputTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(buffer).frameLength, 4)
         XCTAssertEqual(buffer?.floatChannelData![0][1], -0.5)
     }
+
+    func testWideInputGetsFormatWithChannelLayout() {
+        var description = AudioStreamBasicDescription(
+            mSampleRate: 48000, mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+            mBytesPerPacket: 12, mFramesPerPacket: 1, mBytesPerFrame: 12,
+            mChannelsPerFrame: 3, mBitsPerChannel: 32, mReserved: 0
+        )
+        XCTAssertEqual(DirectCoreAudioInput.makeFormat(from: description)?.channelCount, 3)
+        description.mChannelsPerFrame = 1
+        XCTAssertEqual(DirectCoreAudioInput.makeFormat(from: description)?.channelCount, 1)
+    }
 }

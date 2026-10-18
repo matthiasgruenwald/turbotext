@@ -64,12 +64,8 @@ final class DirectCoreAudioInput {
               description.mFormatFlags & kAudioFormatFlagIsFloat != 0,
               description.mBitsPerChannel == 32,
               description.mSampleRate > 0, description.mChannelsPerFrame > 0 else { return nil }
-        return AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: description.mSampleRate,
-            channels: description.mChannelsPerFrame,
-            interleaved: false
-        )
+        guard let layout = AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | description.mChannelsPerFrame) else { return nil }
+        return AVAudioFormat(standardFormatWithSampleRate: description.mSampleRate, channelLayout: layout)
     }
 
     static func makeBuffer(

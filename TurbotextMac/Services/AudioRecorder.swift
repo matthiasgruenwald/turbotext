@@ -118,8 +118,9 @@ final class AudioRecorder: NSObject {
 
     /// Opens the output file and per-recording state shared by both capture backends.
     private func beginSession(format: AVAudioFormat, targetDeviceID: AudioDeviceID?) -> Bool {
-        inputFormat = format
-        adapter = BufferFormatAdapter(targetFormat: format)
+        let recordingFormat = AudioDownmix.recordingFormat(for: format)
+        inputFormat = recordingFormat
+        adapter = BufferFormatAdapter(targetFormat: recordingFormat)
         diagnostics = RecordingDiagnostics(
             requestedDeviceUID: preferredInputDeviceUID(),
             targetDeviceID: targetDeviceID,
@@ -127,8 +128,8 @@ final class AudioRecorder: NSObject {
         )
         let fileSettings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: format.sampleRate,
-            AVNumberOfChannelsKey: format.channelCount,
+            AVSampleRateKey: recordingFormat.sampleRate,
+            AVNumberOfChannelsKey: recordingFormat.channelCount,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         ]
         let fileURL = makeRecordingURL()
@@ -192,7 +193,8 @@ final class AudioRecorder: NSObject {
     }
 
     private func handleBuffer(_ incoming: AVAudioPCMBuffer) {
-        guard let adapted = adapter?.adapt(incoming) else {
+        guard let recorded = AudioDownmix.forRecording(incoming),
+              let adapted = adapter?.adapt(recorded) else {
             withDiagnostics { $0.recordConversionFailure() }
             return
         }
