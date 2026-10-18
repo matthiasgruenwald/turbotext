@@ -52,6 +52,18 @@ enum MicrophoneService {
         AudioObjectSetPropertyData(systemObject, &address, 0, nil, UInt32(MemoryLayout<AudioDeviceID>.size), &id)
     }
 
+    static func transportType(of deviceID: AudioDeviceID) -> UInt32? {
+        var transport: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &transport) == noErr else { return nil }
+        return transport
+    }
+
     private static func hasInputChannels(_ deviceID: AudioDeviceID) -> Bool {
         var size: UInt32 = 0
         var address = AudioObjectPropertyAddress(

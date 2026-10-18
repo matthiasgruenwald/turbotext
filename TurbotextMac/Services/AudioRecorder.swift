@@ -29,6 +29,8 @@ final class AudioRecorder: NSObject {
     private var diagnostics: RecordingDiagnostics?
     private var adapter: BufferFormatAdapter?
     private var configObserver: NSObjectProtocol?
+    private var directInput: DirectCoreAudioInput?
+    private var engineActive = false
     private let diagnosticsLock = NSLock()
 
     init(defaults: PersistenceProvider = UserDefaultsPersistence.shared) {
@@ -60,6 +62,30 @@ final class AudioRecorder: NSObject {
             availableDevices: MicrophoneService.availableInputDevices(),
             defaultDeviceID: MicrophoneService.defaultInputDeviceID()
         )
+        if let targetDeviceID,
+           AudioCaptureBackend.backend(forTransportType: MicrophoneService.transportType(of: targetDeviceID)) == .directCoreAudio,
+           let direct = DirectCoreAudioInput(deviceID: targetDeviceID) {
+            startDirectRecording(direct, targetDeviceID: targetDeviceID)
+            return
+        }
+        startEngineRecording(targetDeviceID: targetDeviceID)
+    }
+
+    private func startDirectRecording(_ direct: DirectCoreAudioInput, targetDeviceID: AudioDeviceID) {
+        guard beginSession(format: direct.format, targetDeviceID: targetDeviceID) else { return }
+        let status = direct.start { [weak self] buffer in self?.handleBuffer(buffer) }
+        guard status == noErr else {
+            abortSession("Aufnahme konnte nicht gestartet werden (CoreAudio \(status)).")
+            return
+        }
+        directInput = direct
+        recordingStartedAt = Date()
+        isRecording = true
+        startMetering()
+        withDiagnostics { $0.recordActualDevice(targetDeviceID) }
+    }
+
+    private func startEngineRecording(targetDeviceID: AudioDeviceID?) {
         if let targetDeviceID {
             setEngineInputDevice(targetDeviceID)
         }
@@ -70,31 +96,7 @@ final class AudioRecorder: NSObject {
             errorMessage = "Kein Mikrofon verfügbar."
             return
         }
-        self.inputFormat = inputFormat
-        adapter = BufferFormatAdapter(targetFormat: inputFormat)
-        diagnostics = RecordingDiagnostics(
-            requestedDeviceUID: preferredInputDeviceUID(),
-            targetDeviceID: targetDeviceID,
-            startFormat: inputFormat
-        )
-
-        let fileSettings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: inputFormat.sampleRate,
-            AVNumberOfChannelsKey: inputFormat.channelCount,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
-        ]
-
-        let fileURL = makeRecordingURL()
-        do {
-            let file = try AVAudioFile(forWriting: fileURL, settings: fileSettings, commonFormat: .pcmFormatFloat32, interleaved: false)
-            outputFile = file
-            currentFileURL = fileURL
-        } catch {
-            currentFileURL = nil
-            errorMessage = "Aufnahme konnte nicht gestartet werden: \(error.localizedDescription)"
-            return
-        }
+        guard beginSession(format: inputFormat, targetDeviceID: targetDeviceID) else { return }
 
         installTap(on: inputNode, format: inputFormat)
 
@@ -104,23 +106,63 @@ final class AudioRecorder: NSObject {
             recordingStartedAt = Date()
             isRecording = true
             startMetering()
+            engineActive = true
             observeConfigurationChanges(targetDeviceID: targetDeviceID)
             let actualID = actualEngineInputDeviceID()
             withDiagnostics { $0.recordActualDevice(actualID) }
         } catch {
             inputNode.removeTap(onBus: 0)
-            outputFile = nil
+            abortSession("Aufnahme konnte nicht gestartet werden: \(error.localizedDescription)")
+        }
+    }
+
+    /// Opens the output file and per-recording state shared by both capture backends.
+    private func beginSession(format: AVAudioFormat, targetDeviceID: AudioDeviceID?) -> Bool {
+        inputFormat = format
+        adapter = BufferFormatAdapter(targetFormat: format)
+        diagnostics = RecordingDiagnostics(
+            requestedDeviceUID: preferredInputDeviceUID(),
+            targetDeviceID: targetDeviceID,
+            startFormat: format
+        )
+        let fileSettings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: format.sampleRate,
+            AVNumberOfChannelsKey: format.channelCount,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+        ]
+        let fileURL = makeRecordingURL()
+        do {
+            outputFile = try AVAudioFile(forWriting: fileURL, settings: fileSettings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            currentFileURL = fileURL
+            return true
+        } catch {
             currentFileURL = nil
             errorMessage = "Aufnahme konnte nicht gestartet werden: \(error.localizedDescription)"
+            return false
         }
+    }
+
+    private func abortSession(_ message: String) {
+        outputFile = nil
+        currentFileURL = nil
+        adapter = nil
+        diagnostics = nil
+        inputFormat = nil
+        errorMessage = message
     }
 
     func stopRecording() {
         stopMetering()
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
         configObserver = nil
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        directInput?.stop()
+        directInput = nil
+        if engineActive {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+            engineActive = false
+        }
         withDiagnostics { $0.log() }
         diagnostics = nil
         adapter = nil
