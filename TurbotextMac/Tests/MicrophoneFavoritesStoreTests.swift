@@ -83,6 +83,20 @@ final class MicrophoneFavoritesStoreTests: XCTestCase {
         XCTAssertEqual(store2.favoriteUIDs, ["mic-1"])
     }
 
+    func testRemembersFavoriteNameWhileDisconnectedAndAfterRestart() {
+        let persistence = InMemoryPersistence()
+        let store = MicrophoneFavoritesStore(defaults: persistence)
+        store.addFavorite(uid: "usb-mic")
+        store.rememberNames(for: [device("usb-mic", name: "USB Microphone")])
+
+        store.rememberNames(for: [])
+        let reloaded = MicrophoneFavoritesStore(defaults: persistence)
+
+        XCTAssertEqual(reloaded.favoriteUIDs, ["usb-mic"])
+        XCTAssertEqual(reloaded.displayName(forUID: "usb-mic"), "USB Microphone")
+        XCTAssertEqual(reloaded.displayName(forUID: "legacy-uid"), "legacy-uid")
+    }
+
     // MARK: - resolveActiveDevice
 
     private func device(_ uid: String, name: String? = nil) -> AudioInputDevice {

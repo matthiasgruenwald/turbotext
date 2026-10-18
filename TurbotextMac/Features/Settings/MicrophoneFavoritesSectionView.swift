@@ -2,12 +2,12 @@ import SwiftUI
 
 struct MicrophoneFavoritesSectionView: View {
     @Bindable var microphoneState: MicrophoneState
-    let availableDevices: [AudioInputDevice]
+    private var availableDevices: [AudioInputDevice] { microphoneState.availableDevices }
 
     private var favoriteDevices: [AudioInputDevice] {
         microphoneState.favorites.map { uid in
             availableDevices.first(where: { $0.uid == uid })
-                ?? AudioInputDevice(id: 0, name: uid, uid: uid)
+                ?? AudioInputDevice(id: 0, name: microphoneState.favoritesStore.displayName(forUID: uid), uid: uid)
         }
     }
 
@@ -38,6 +38,7 @@ struct MicrophoneFavoritesSectionView: View {
                         ForEach(Array(favoriteDevices.enumerated()), id: \.element.uid) { index, device in
                             MicrophoneFavoriteRow(
                                 device: device,
+                                isConnected: availableDevices.contains { $0.uid == device.uid },
                                 isFirst: index == 0,
                                 isLast: index == favoriteDevices.count - 1,
                                 onMoveUp: { microphoneState.moveUp(uid: device.uid) },
@@ -76,6 +77,7 @@ struct MicrophoneFavoritesSectionView: View {
 
 private struct MicrophoneFavoriteRow: View {
     let device: AudioInputDevice
+    let isConnected: Bool
     let isFirst: Bool
     let isLast: Bool
     let onMoveUp: () -> Void
@@ -87,6 +89,13 @@ private struct MicrophoneFavoriteRow: View {
             Text(device.name)
                 .font(.system(size: 11))
                 .lineLimit(1)
+
+            if !isConnected {
+                Text("Nicht verbunden")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+            }
 
             Spacer()
 

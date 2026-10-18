@@ -5,7 +5,6 @@ import AppKit
 
 struct TranscriptionSettingsView: View {
     @Bindable var appState: AppState
-    @State private var availableDevices: [AudioInputDevice] = []
 
     private var installedLocalModels: [LocalTranscriptionModel] {
         LocalTranscriptionService.installedModels()
@@ -191,8 +190,7 @@ struct TranscriptionSettingsView: View {
 
             // MARK: Mikrofon
             MicrophoneFavoritesSectionView(
-                microphoneState: appState.microphoneState,
-                availableDevices: availableDevices
+                microphoneState: appState.microphoneState
             )
 
             // MARK: Offline-Warnsound
@@ -224,7 +222,7 @@ struct TranscriptionSettingsView: View {
         }
         .padding(16)
         .onAppear {
-            availableDevices = MicrophoneService.availableInputDevices()
+            appState.microphoneState.refreshDevices()
         }
     }
 }
