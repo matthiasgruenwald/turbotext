@@ -1,7 +1,6 @@
 import AVFoundation
 import CoreAudio
 
-/// Captures from one device through a CoreAudio IOProc, reading the device's real stream format.
 final class DirectCoreAudioInput {
     let deviceID: AudioDeviceID
     let format: AVAudioFormat
@@ -19,19 +18,27 @@ final class DirectCoreAudioInput {
 
     func start(handler: @escaping @Sendable (AVAudioPCMBuffer) -> Void) -> OSStatus {
         self.handler = handler
-        let format = format
-        let interleaved = sourceIsInterleaved
         var newProcID: AudioDeviceIOProcID?
-        let created = AudioDeviceCreateIOProcIDWithBlock(&newProcID, deviceID, nil) { [weak self] _, inData, _, _, _ in
-            var list = inData.pointee
-            guard let buffer = Self.makeBuffer(from: &list, format: format, sourceIsInterleaved: interleaved) else { return }
+        let callback = Self.inputCallback(format: format, sourceIsInterleaved: sourceIsInterleaved) { [weak self] buffer in
             self?.handler?(buffer)
         }
+        let created = AudioDeviceCreateIOProcIDWithBlock(&newProcID, deviceID, nil, callback)
         guard created == noErr, let newProcID else { return created }
         procID = newProcID
         let started = AudioDeviceStart(deviceID, newProcID)
         if started != noErr { stop() }
         return started
+    }
+
+    static func inputCallback(
+        format: AVAudioFormat,
+        sourceIsInterleaved: Bool,
+        handler: @escaping @Sendable (AVAudioPCMBuffer) -> Void
+    ) -> AudioDeviceIOBlock {
+        { _, inData, _, _, _ in
+            guard let buffer = makeBuffer(from: inData, format: format, sourceIsInterleaved: sourceIsInterleaved) else { return }
+            handler(buffer)
+        }
     }
 
     func stop() {

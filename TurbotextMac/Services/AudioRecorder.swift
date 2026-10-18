@@ -77,7 +77,6 @@ final class AudioRecorder: NSObject {
         withDiagnostics { $0.recordActualDevice(targetDeviceID) }
     }
 
-    /// Opens the output file and per-recording state for the capture.
     private func beginSession(format: AVAudioFormat, targetDeviceID: AudioDeviceID?) -> Bool {
         let recordingFormat = AudioDownmix.recordingFormat(for: format)
         inputFormat = recordingFormat

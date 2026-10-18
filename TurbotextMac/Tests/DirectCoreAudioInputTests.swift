@@ -59,6 +59,30 @@ final class DirectCoreAudioInputTests: XCTestCase {
         XCTAssertEqual(buffer?.floatChannelData![0][1], -0.5)
     }
 
+    func testInputCallbackCopiesSeparateChannelBuffers() throws {
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 2))
+        let source = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4))
+        source.frameLength = 4
+        source.floatChannelData![0].initialize(repeating: 0.25, count: 4)
+        source.floatChannelData![1].initialize(repeating: 0.75, count: 4)
+        XCTAssertEqual(source.audioBufferList.pointee.mNumberBuffers, 2)
+        let received = expectation(description: "Both channel buffers reach the recording handler")
+        let callback = DirectCoreAudioInput.inputCallback(format: format, sourceIsInterleaved: false) { buffer in
+            XCTAssertEqual(buffer.frameLength, 4)
+            XCTAssertEqual(buffer.floatChannelData![0][0], 0.25)
+            XCTAssertEqual(buffer.floatChannelData![1][3], 0.75)
+            received.fulfill()
+        }
+        var timestamp = AudioTimeStamp()
+        var output = AudioBufferList()
+
+        withUnsafePointer(to: &timestamp) { time in
+            callback(time, source.audioBufferList, time, &output, time)
+        }
+
+        wait(for: [received], timeout: 1)
+    }
+
     func testWideInputGetsFormatWithChannelLayout() {
         var description = AudioStreamBasicDescription(
             mSampleRate: 48000, mFormatID: kAudioFormatLinearPCM,
