@@ -24,6 +24,10 @@ final class AudioRecorder: NSObject {
     private var levelTimer: Timer?
     private var meteredPeakLevel: Float = -160
     private let defaults: PersistenceProvider
+    private var diagnostics: RecordingDiagnostics?
+    private var adapter: BufferFormatAdapter?
+    private var configObserver: NSObjectProtocol?
+    private let diagnosticsLock = NSLock()
 
     init(defaults: PersistenceProvider = UserDefaultsPersistence.shared) {
         self.defaults = defaults
@@ -64,6 +68,12 @@ final class AudioRecorder: NSObject {
             return
         }
         self.inputFormat = inputFormat
+        adapter = BufferFormatAdapter(targetFormat: inputFormat)
+        diagnostics = RecordingDiagnostics(
+            requestedDeviceUID: preferredInputDeviceUID(),
+            targetDeviceID: targetDeviceID,
+            startFormat: inputFormat
+        )
 
         let fileSettings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
@@ -93,6 +103,7 @@ final class AudioRecorder: NSObject {
             recordingStartedAt = Date()
             isRecording = true
             startMetering()
+            observeConfigurationChanges(targetDeviceID: targetDeviceID)
         } catch {
             inputNode.removeTap(onBus: 0)
             outputFile = nil
@@ -103,8 +114,13 @@ final class AudioRecorder: NSObject {
 
     func stopRecording() {
         stopMetering()
+        if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
+        configObserver = nil
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        withDiagnostics { $0.log() }
+        diagnostics = nil
+        adapter = nil
         if let recordingStartedAt {
             lastRecordingDuration = Date().timeIntervalSince(recordingStartedAt)
         }
@@ -130,11 +146,69 @@ final class AudioRecorder: NSObject {
         }
     }
 
-    private func handleBuffer(_ buffer: AVAudioPCMBuffer) {
+    private func handleBuffer(_ incoming: AVAudioPCMBuffer) {
+        guard let adapted = adapter?.adapt(incoming) else {
+            withDiagnostics { $0.recordWriteFailure() }
+            return
+        }
+        let buffer = adapted.buffer
         meteredPeakLevel = Self.peakLevel(of: buffer)
         hasUsableSignal = hasUsableSignal || Self.isUsableSignal(meteredPeakLevel)
-        try? outputFile?.write(from: buffer)
+        let peak = meteredPeakLevel
+        withDiagnostics { $0.recordBuffer(format: incoming.format, peakLevel: peak, converted: adapted.converted) }
+        do {
+            try outputFile?.write(from: buffer)
+        } catch {
+            withDiagnostics { $0.recordWriteFailure() }
+        }
         onBuffer?(buffer)
+    }
+
+    private func withDiagnostics(_ body: (inout RecordingDiagnostics) -> Void) {
+        diagnosticsLock.lock()
+        defer { diagnosticsLock.unlock() }
+        guard var current = diagnostics else { return }
+        body(&current)
+        diagnostics = current
+    }
+
+    /// Bluetooth profile switches and other apps (e.g. a video conference) claiming the
+    /// device stop the engine and change the input format; re-tap with the new format and restart.
+    private func observeConfigurationChanges(targetDeviceID: AudioDeviceID?) {
+        configObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in
+            self?.restartAfterConfigurationChange(targetDeviceID: targetDeviceID)
+        }
+    }
+
+    private func restartAfterConfigurationChange(targetDeviceID: AudioDeviceID?) {
+        guard isRecording else { return }
+        withDiagnostics { $0.recordConfigurationChange() }
+        let inputNode = engine.inputNode
+        inputNode.removeTap(onBus: 0)
+        engine.stop()
+        let refreshedTarget = Self.resolveTargetDeviceID(
+            preferredUID: preferredInputDeviceUID(),
+            availableDevices: MicrophoneService.availableInputDevices(),
+            defaultDeviceID: MicrophoneService.defaultInputDeviceID()
+        ) ?? targetDeviceID
+        if let refreshedTarget { setEngineInputDevice(refreshedTarget) }
+        let newFormat = inputNode.outputFormat(forBus: 0)
+        guard newFormat.sampleRate > 0, newFormat.channelCount > 0 else {
+            errorMessage = "Kein Mikrofon verfügbar."
+            return
+        }
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: newFormat) { [weak self] buffer, _ in
+            self?.handleBuffer(buffer)
+        }
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            errorMessage = "Aufnahme konnte nicht fortgesetzt werden: \(error.localizedDescription)"
+        }
     }
 
     static func isUsableSignal(_ peakLevel: Float) -> Bool {
