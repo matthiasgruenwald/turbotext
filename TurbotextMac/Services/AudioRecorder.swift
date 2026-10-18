@@ -219,8 +219,8 @@ final class AudioRecorder: NSObject {
         withDiagnostics { $0.recordActualDevice(actualID) }
     }
 
+    /// Leaves stopping to the owning pipeline so its recording state stays consistent.
     private func failRecording(_ message: String) {
-        stopRecording()
         errorMessage = message
     }
 
