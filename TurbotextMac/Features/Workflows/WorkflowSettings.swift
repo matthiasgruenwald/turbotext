@@ -17,6 +17,7 @@ struct AppSettings: Codable, Equatable {
     /// `LiveSmoothingBackend` bei der Glaettung (ADR 0013). `RewriteRouter` verzweigt
     /// explizit darueber -- kein Laufzeit-Consent-Dialog mehr (#197).
     var rewriteBackend: RewriteBackend = .lokal
+    var openAIReasoningEffort: ReasoningEffort = .medium
     var recordingOverlayMode: RecordingOverlayMode = .screenBottomCenter
     /// Permanently hides the ~3s post-insert rewrite completion label in the signal pill
     /// (#128), e.g. after the user dismisses it once from the pill itself.
@@ -34,6 +35,7 @@ struct AppSettings: Codable, Equatable {
         case autoFallbackToLocalOnOffline
         case rewritingProviderMode
         case rewriteBackend
+        case openAIReasoningEffort
         case recordingOverlayMode
         case hideRewriteCompletionLabel
     }
@@ -98,6 +100,10 @@ extension AppSettings {
                 rewriteBackend = .lokal
             }
         }
+        openAIReasoningEffort = try container.decodeIfPresent(
+            ReasoningEffort.self,
+            forKey: .openAIReasoningEffort
+        ) ?? .medium
         recordingOverlayMode = try container.decodeIfPresent(
             RecordingOverlayMode.self,
             forKey: .recordingOverlayMode
