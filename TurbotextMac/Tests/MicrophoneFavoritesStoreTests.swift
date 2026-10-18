@@ -152,4 +152,29 @@ final class MicrophoneFavoritesStoreTests: XCTestCase {
 
         XCTAssertEqual(result, ActiveMicrophone(uid: nil, source: .systemDefault))
     }
+
+    func testHiddenDefaultRemainsRecordingFallbackAndPreservesFavoritePriority() {
+        for useSystemDefault in [false, true] {
+            let store = MicrophoneFavoritesStore(defaults: InMemoryPersistence())
+            let hiddenDefault = AudioInputDevice(id: 42, name: "Aggregate", uid: "aggregate")
+            store.addFavorite(uid: hiddenDefault.uid)
+            store.addFavorite(uid: "disconnected-usb")
+            store.rememberNames(for: [hiddenDefault])
+            store.useSystemDefault = useSystemDefault
+            let available = [device("built-in")]
+
+            store.rememberNames(for: available)
+            let active = store.resolveActiveDevice(availableDevices: available, systemDefaultID: hiddenDefault.id)
+            let targetID = AudioRecorder.resolveTargetDeviceID(
+                preferredUID: active.uid,
+                availableDevices: available,
+                defaultDeviceID: hiddenDefault.id
+            )
+
+            XCTAssertEqual(active, ActiveMicrophone(uid: nil, source: .systemDefault))
+            XCTAssertEqual(targetID, hiddenDefault.id)
+            XCTAssertEqual(store.favoriteUIDs, ["aggregate", "disconnected-usb"])
+            XCTAssertEqual(store.displayName(forUID: hiddenDefault.uid), "Aggregate")
+        }
+    }
 }
