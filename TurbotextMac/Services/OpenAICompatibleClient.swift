@@ -21,7 +21,13 @@ struct OpenAICompatibleClient {
     private struct ChatRequest: Encodable {
         let model: String
         let messages: [Message]
-        let temperature: Double
+        let temperature: Double?
+        let reasoningEffort: String?
+
+        enum CodingKeys: String, CodingKey {
+            case model, messages, temperature
+            case reasoningEffort = "reasoning_effort"
+        }
     }
 
     private struct ChatResponse: Decodable {
@@ -59,9 +65,16 @@ struct OpenAICompatibleClient {
         apiKey: String,
         model: String,
         messages: [Message],
-        temperature: Double
+        temperature: Double,
+        reasoningEffort: String? = nil
     ) async throws -> String {
-        let payload = ChatRequest(model: model, messages: messages, temperature: temperature)
+        // Reasoning models reject any temperature other than the default.
+        let payload = ChatRequest(
+            model: model,
+            messages: messages,
+            temperature: reasoningEffort == nil ? temperature : nil,
+            reasoningEffort: reasoningEffort
+        )
 
         var request = URLRequest(url: chatCompletionsURL)
         request.httpMethod = "POST"
