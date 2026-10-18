@@ -6,7 +6,7 @@ import Observation
 
 @Observable
 final class AudioRecorder: NSObject {
-    static let usableSignalThreshold: Float = -47.5
+    static let usableSignalThreshold: Float = -54
 
     var isRecording = false
     var recordingURL: URL?
@@ -219,10 +219,12 @@ final class AudioRecorder: NSObject {
     }
 
     private func startMetering() {
-        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+        var scale = LevelMeterScale.initial
+        let interval: TimeInterval = 0.05
+        levelTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             guard let self else { return }
-            let normalized = max(0, min(1, (self.meteredPeakLevel + 50) / 50))
-            self.audioLevel = normalized
+            scale = scale.updated(forPeak: self.meteredPeakLevel, elapsed: interval)
+            self.audioLevel = scale.normalized(self.meteredPeakLevel)
         }
     }
 
