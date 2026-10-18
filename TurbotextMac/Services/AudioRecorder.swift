@@ -3,9 +3,6 @@ import AVFoundation
 import AudioToolbox
 import CoreAudio
 import Observation
-import OSLog
-
-private let restartLogger = Logger(subsystem: "app.turbotext.mac", category: "Recording")
 
 @Observable
 final class AudioRecorder: NSObject {
@@ -29,7 +26,6 @@ final class AudioRecorder: NSObject {
     private let defaults: PersistenceProvider
     private static let maxConfigurationRestarts = 5
     private var configurationRestarts = 0
-    private var watchdog: Timer?
     private var diagnostics: RecordingDiagnostics?
     private var adapter: BufferFormatAdapter?
     private var configObserver: NSObjectProtocol?
@@ -111,7 +107,6 @@ final class AudioRecorder: NSObject {
             observeConfigurationChanges(targetDeviceID: targetDeviceID)
             let actualID = actualEngineInputDeviceID()
             withDiagnostics { $0.recordActualDevice(actualID) }
-            scheduleSilenceWatchdog()
         } catch {
             inputNode.removeTap(onBus: 0)
             outputFile = nil
@@ -122,8 +117,6 @@ final class AudioRecorder: NSObject {
 
     func stopRecording() {
         stopMetering()
-        watchdog?.invalidate()
-        watchdog = nil
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
         configObserver = nil
         engine.inputNode.removeTap(onBus: 0)
@@ -211,7 +204,6 @@ final class AudioRecorder: NSObject {
         ) ?? targetDeviceID
         if let refreshedTarget { setEngineInputDevice(refreshedTarget) }
         let newFormat = inputNode.outputFormat(forBus: 0)
-        restartLogger.info("Restart #\(self.configurationRestarts): device=\(refreshedTarget.map(String.init) ?? "nil") newFormat=\(Int(newFormat.sampleRate))Hz/\(newFormat.channelCount)ch")
         guard newFormat.sampleRate > 0, newFormat.channelCount > 0 else {
             failRecording("Kein Mikrofon verfügbar.")
             return
@@ -225,23 +217,6 @@ final class AudioRecorder: NSObject {
         }
         let actualID = actualEngineInputDeviceID()
         withDiagnostics { $0.recordActualDevice(actualID) }
-        scheduleSilenceWatchdog()
-    }
-
-    /// Bluetooth devices switching profile can report a format but deliver no buffers;
-    /// treat missing data shortly after (re)start like a configuration change.
-    private func scheduleSilenceWatchdog() {
-        watchdog?.invalidate()
-        var countAtStart = 0
-        withDiagnostics { countAtStart = $0.bufferCount }
-        watchdog = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
-            guard let self, self.isRecording else { return }
-            var count = 0
-            self.withDiagnostics { count = $0.bufferCount }
-            guard count == countAtStart else { return }
-            restartLogger.error("No buffers 1.5s after start; restarting")
-            self.restartAfterConfigurationChange(targetDeviceID: nil)
-        }
     }
 
     private func failRecording(_ message: String) {
