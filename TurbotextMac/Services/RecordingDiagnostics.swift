@@ -23,6 +23,10 @@ struct RecordingDiagnostics {
     private(set) var configurationChanges = 0
     private(set) var convertedBuffers = 0
     private(set) var writeFailures = 0
+    private(set) var conversionFailures = 0
+    private(set) var rmsLevel: Float = -160
+    private(set) var actualDeviceID: AudioDeviceID?
+    private(set) var lastFormat: Format?
     private(set) var formatsSeen: [Format]
 
     init(requestedDeviceUID: String?, targetDeviceID: AudioDeviceID?, startFormat: AVAudioFormat) {
@@ -32,8 +36,10 @@ struct RecordingDiagnostics {
         formatsSeen = [Format(startFormat)]
     }
 
-    mutating func recordBuffer(format: AVAudioFormat, peakLevel: Float, converted: Bool) {
+    mutating func recordBuffer(format: AVAudioFormat, peakLevel: Float, rmsLevel: Float = -160, converted: Bool) {
         bufferCount += 1
+        self.rmsLevel = max(self.rmsLevel, rmsLevel)
+        lastFormat = Format(format)
         self.peakLevel = max(self.peakLevel, peakLevel)
         if converted { convertedBuffers += 1 }
         let seen = Format(format)
@@ -42,22 +48,25 @@ struct RecordingDiagnostics {
 
     mutating func recordConfigurationChange() { configurationChanges += 1 }
     mutating func recordWriteFailure() { writeFailures += 1 }
+    mutating func recordConversionFailure() { conversionFailures += 1 }
+    mutating func recordActualDevice(_ id: AudioDeviceID?) { actualDeviceID = id }
 
     var hasUsableSignal: Bool { AudioRecorder.isUsableSignal(peakLevel) }
 
     var verdict: String {
         if bufferCount == 0 { return "RED: no buffers delivered" }
         if writeFailures > 0 { return "RED: \(writeFailures) write failures" }
+        if conversionFailures > 0 { return "RED: \(conversionFailures) conversion failures" }
         if !hasUsableSignal { return "RED: silent (peak \(Int(peakLevel)) dB)" }
         return "GREEN"
     }
 
     var summary: String {
         let formats = formatsSeen.map { "\(Int($0.sampleRate))Hz/\($0.channelCount)ch" }.joined(separator: ",")
-        return "device=\(requestedDeviceUID ?? "default") id=\(targetDeviceID.map(String.init) ?? "nil") "
+        return "device=\(requestedDeviceUID ?? "default") id=\(targetDeviceID.map(String.init) ?? "nil") actualId=\(actualDeviceID.map(String.init) ?? "nil") "
             + "startFormat=\(Int(startFormat.sampleRate))Hz/\(startFormat.channelCount)ch formatsSeen=[\(formats)] "
             + "buffers=\(bufferCount) converted=\(convertedBuffers) configChanges=\(configurationChanges) "
-            + "peak=\(peakLevel)dB verdict=\(verdict)"
+            + "lastFormat=\(lastFormat.map { "\(Int($0.sampleRate))Hz/\($0.channelCount)ch" } ?? "nil") peak=\(peakLevel)dB rms=\(rmsLevel)dB verdict=\(verdict)"
     }
 
     func log() {

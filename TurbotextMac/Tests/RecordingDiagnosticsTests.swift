@@ -58,3 +58,15 @@ final class RecordingDiagnosticsTests: XCTestCase {
         XCTAssertGreaterThan(result.buffer.frameLength, 3000)
     }
 }
+
+extension RecordingDiagnosticsTests {
+    func testVerdictRedOnConversionFailureAndSummaryHasActualDevice() {
+        let f = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
+        var diagnostics = RecordingDiagnostics(requestedDeviceUID: "x", targetDeviceID: 1, startFormat: f)
+        diagnostics.recordBuffer(format: f, peakLevel: -10, rmsLevel: -20, converted: false)
+        diagnostics.recordActualDevice(42)
+        diagnostics.recordConversionFailure()
+        XCTAssertTrue(diagnostics.verdict.hasPrefix("RED"))
+        XCTAssertTrue(diagnostics.summary.contains("actualId=42"))
+    }
+}

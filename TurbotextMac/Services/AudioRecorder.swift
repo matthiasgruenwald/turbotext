@@ -24,6 +24,8 @@ final class AudioRecorder: NSObject {
     private var levelTimer: Timer?
     private var meteredPeakLevel: Float = -160
     private let defaults: PersistenceProvider
+    private static let maxConfigurationRestarts = 5
+    private var configurationRestarts = 0
     private var diagnostics: RecordingDiagnostics?
     private var adapter: BufferFormatAdapter?
     private var configObserver: NSObjectProtocol?
@@ -44,6 +46,7 @@ final class AudioRecorder: NSObject {
         lastRecordingDuration = 0
         recordingURL = nil
         hasUsableSignal = false
+        configurationRestarts = 0
         if let currentFileURL {
             try? FileManager.default.removeItem(at: currentFileURL)
         }
@@ -93,9 +96,7 @@ final class AudioRecorder: NSObject {
             return
         }
 
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
-            self?.handleBuffer(buffer)
-        }
+        installTap(on: inputNode, format: inputFormat)
 
         do {
             engine.prepare()
@@ -104,6 +105,8 @@ final class AudioRecorder: NSObject {
             isRecording = true
             startMetering()
             observeConfigurationChanges(targetDeviceID: targetDeviceID)
+            let actualID = actualEngineInputDeviceID()
+            withDiagnostics { $0.recordActualDevice(actualID) }
         } catch {
             inputNode.removeTap(onBus: 0)
             outputFile = nil
@@ -148,14 +151,15 @@ final class AudioRecorder: NSObject {
 
     private func handleBuffer(_ incoming: AVAudioPCMBuffer) {
         guard let adapted = adapter?.adapt(incoming) else {
-            withDiagnostics { $0.recordWriteFailure() }
+            withDiagnostics { $0.recordConversionFailure() }
             return
         }
         let buffer = adapted.buffer
         meteredPeakLevel = Self.peakLevel(of: buffer)
         hasUsableSignal = hasUsableSignal || Self.isUsableSignal(meteredPeakLevel)
         let peak = meteredPeakLevel
-        withDiagnostics { $0.recordBuffer(format: incoming.format, peakLevel: peak, converted: adapted.converted) }
+        let rms = Self.rmsLevel(of: buffer)
+        withDiagnostics { $0.recordBuffer(format: incoming.format, peakLevel: peak, rmsLevel: rms, converted: adapted.converted) }
         do {
             try outputFile?.write(from: buffer)
         } catch {
@@ -184,7 +188,12 @@ final class AudioRecorder: NSObject {
 
     private func restartAfterConfigurationChange(targetDeviceID: AudioDeviceID?) {
         guard isRecording else { return }
+        configurationRestarts += 1
         withDiagnostics { $0.recordConfigurationChange() }
+        guard configurationRestarts <= Self.maxConfigurationRestarts else {
+            failRecording("Aufnahme wiederholt unterbrochen (Audiogerät wechselt ständig).")
+            return
+        }
         let inputNode = engine.inputNode
         inputNode.removeTap(onBus: 0)
         engine.stop()
@@ -196,23 +205,50 @@ final class AudioRecorder: NSObject {
         if let refreshedTarget { setEngineInputDevice(refreshedTarget) }
         let newFormat = inputNode.outputFormat(forBus: 0)
         guard newFormat.sampleRate > 0, newFormat.channelCount > 0 else {
-            errorMessage = "Kein Mikrofon verfügbar."
+            failRecording("Kein Mikrofon verfügbar.")
             return
         }
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: newFormat) { [weak self] buffer, _ in
-            self?.handleBuffer(buffer)
-        }
+        installTap(on: inputNode, format: newFormat)
         engine.prepare()
         do {
             try engine.start()
         } catch {
-            inputNode.removeTap(onBus: 0)
-            errorMessage = "Aufnahme konnte nicht fortgesetzt werden: \(error.localizedDescription)"
+            failRecording("Aufnahme konnte nicht fortgesetzt werden: \(error.localizedDescription)")
         }
+        let actualID = actualEngineInputDeviceID()
+        withDiagnostics { $0.recordActualDevice(actualID) }
+    }
+
+    private func failRecording(_ message: String) {
+        stopRecording()
+        errorMessage = message
+    }
+
+    private func installTap(on inputNode: AVAudioInputNode, format: AVAudioFormat) {
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
+            self?.handleBuffer(buffer)
+        }
+    }
+
+    private func actualEngineInputDeviceID() -> AudioDeviceID? {
+        guard let inputUnit = engine.inputNode.audioUnit else { return nil }
+        var deviceID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioUnitGetProperty(inputUnit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &deviceID, &size)
+        return status == noErr ? deviceID : nil
     }
 
     static func isUsableSignal(_ peakLevel: Float) -> Bool {
         peakLevel > usableSignalThreshold
+    }
+
+    private static func rmsLevel(of buffer: AVAudioPCMBuffer) -> Float {
+        guard let channelData = buffer.floatChannelData, buffer.frameLength > 0 else { return -160 }
+        let frames = Int(buffer.frameLength)
+        var sum: Float = 0
+        for sample in 0..<frames { sum += channelData[0][sample] * channelData[0][sample] }
+        let rms = (sum / Float(frames)).squareRoot()
+        return rms > 0 ? 20 * log10(rms) : -160
     }
 
     private static func peakLevel(of buffer: AVAudioPCMBuffer) -> Float {
