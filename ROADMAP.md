@@ -28,6 +28,8 @@ This is an interest list for the Turbotext macOS Preview, not a release promise.
 - Keep Turbotext centered on dictation.
 - Keep the current fixed rewrite workflows, but evaluate user-defined prompt workflows before adding more hardcoded modes.
 - Treat local transcription as a loss-prevention fallback, not as the primary path or a performance promise.
+- Live dictation: stream microphone audio to Apple Speech so partial text is visible while speaking, with model correction available per sentence and over the finished text, each switchable on its own.
+- An iOS companion app with a keyboard extension for inserting dictated text. iOS keyboard extensions cannot access the microphone, so the containing app dictates and the keyboard only inserts.
 
 ### Technical Guardrails
 
@@ -46,4 +48,4 @@ This is an interest list for the Turbotext macOS Preview, not a release promise.
 - Claims that the app is offline or privacy-complete.
 - App Store distribution.
 - Signed and notarized public builds unless the annual Apple Developer Program cost is externally covered.
-- iOS keyboard or mobile companion app work; interesting as a separate dictation direction, but not part of the macOS preview focus.
+- Android and web clients.
