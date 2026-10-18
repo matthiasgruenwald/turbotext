@@ -1,0 +1,54 @@
+{
+  "time": "2026-10-18T11:33:58.830079+02:00",
+  "devices": [
+    {
+      "id": 119,
+      "name": "USB MIC PRO",
+      "uid": "AppleUSBAudioEngine:Generic:USB MIC PRO:20230714100308:1",
+      "modelUID": "USB MIC PRO:8F92:0F9C",
+      "manufacturer": "Generic",
+      "serial": "20230714100308",
+      "transport": "usb "
+    },
+    {
+      "id": 104,
+      "name": "MacBook Air-Mikrofon",
+      "uid": "BuiltInMicrophoneDevice",
+      "modelUID": "Digital Mic",
+      "manufacturer": "Apple Inc.",
+      "serial": null,
+      "transport": "bltn"
+    }
+  ],
+  "preferences": {
+    "turbotext.microphoneFavorites": [
+      "AppleUSBAudioEngine:Unknown Manufacturer:Fifine Microphone:133000:1",
+      "AppleUSBAudioEngine:Unknown Manufacturer:Fifine Microphone:120000:1",
+      "AppleUSBAudioEngine:Generic:USB MIC PRO:20230714100308:1",
+      "AppleUSBAudioEngine:Unknown Manufacturer:Jabra Speak 710:50C2ED594D02:2",
+      "AppleUSBAudioEngine:CMEDIA:USB PnP Audio Device:143000:1",
+      "AppleUSBAudioEngine:CMEDIA:USB PnP Audio Device:1143000:1",
+      "AppleUSBAudioEngine:Unknown Manufacturer:Fifine Microphone:1133000:1",
+      "BuiltInMicrophoneDevice",
+      "AppleUSBAudioEngine:Unknown Manufacturer:Fifine Microphone:1140000:1",
+      "A4-C1-39-1E-34-55:input"
+    ],
+    "turbotext.microphoneUseSystemDefault": false,
+    "selectedMicUID": "AppleUSBAudioEngine:Generic:USB MIC PRO:20230714100308:1"
+  },
+  "usb": [
+    {
+      "path": "/Root/AppleT8103USBXHCI/USB2.0 Hub/USB MIC PRO",
+      "idVendor": 36754,
+      "idProduct": 3996,
+      "USB Serial Number": "20230714100308",
+      "USB Vendor Name": "Generic",
+      "USB Product Name": "USB MIC PRO",
+      "locationID": 18087936,
+      "USB Address": 10,
+      "sessionID": 8831982798926,
+      "IORegistryEntryID": 4295327254,
+      "bcdDevice": 256
+    }
+  ]
+}

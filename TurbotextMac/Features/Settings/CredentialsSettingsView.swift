@@ -155,6 +155,27 @@ struct CredentialsSettingsView: View {
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if appState.appSettings.rewriteBackend == .online {
+                reasoningEffortPicker
+            }
+        }
+    }
+
+    private var reasoningEffortPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("OpenAI-Denktiefe", selection: $appState.appSettings.openAIReasoningEffort) {
+                ForEach(ReasoningEffort.allCases) { effort in
+                    Text(effort.displayName).tag(effort)
+                }
+            }
+            .pickerStyle(.segmented)
+            .font(.system(size: 11.5))
+
+            Text("Für OpenAI (auch als Groq-Ausweichlösung). Schnell: ca. 1 s, Ausgewogen: ca. 2–3 s, Gründlich: ca. 2–4 s pro Absatz.")
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

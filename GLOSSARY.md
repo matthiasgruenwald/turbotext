@@ -82,6 +82,8 @@ Architekturentscheidungen (ADRs) liegen in `docs/adr/`, nicht in dieser Datei.
 
 **Mikrofon-Favoritenliste** — vom Nutzer priorisierte Liste von Mikro-UIDs, persistiert in `UserDefaults`. Ersetzt NICHT den macOS-Systemstandard, sondern ist eine App-interne Auswahl. Beim App-Start und bei Gerätewechsel (`kAudioHardwarePropertyDevices`-Notification) wählt die App das höchstpriorisierte verfügbare Gerät aus der Liste. Ist kein Favorit verfügbar, fällt die App auf den macOS-Systemstandard zurück. Nutzer kann alternativ explizit "macOS-Standard verwenden" wählen (kein Override).
 
+**Nicht verbundenes Mikrofon** — Ein gespeicherter Favorit, der aktuell nicht verfügbar ist. Er behält seine Priorität und seinen zuletzt bekannten Namen und wird mit „Nicht verbunden“ gekennzeichnet. Ist noch kein Name bekannt, dient die Gerätekennung als Ersatzname. Sobald das Mikrofon wieder verfügbar ist, nimmt es erneut an der automatischen Favoritenauswahl teil.
+
 ## App-Präsenz
 
 **Dock-Modus** — Activation Policy `.regular` statt `.accessory`: App zeigt Dock-Icon und ist per Cmd+Tab erreichbar. Standardmäßig aktiv (siehe [ADR 0004](docs/adr/0004-dock-mode-default-on.md)). Per Einstellung abschaltbar (→ zurück zu reinem Menüleisten-Betrieb, kein Dock-Icon).

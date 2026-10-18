@@ -9,7 +9,7 @@ import Observation
 final class MicrophoneState {
     let favoritesStore: MicrophoneFavoritesStore
     private let autoSelectionService: MicrophoneAutoSelectionService
-    private let deviceProvider: () -> [AudioInputDevice]
+    private(set) var availableDevices: [AudioInputDevice] = []
 
     /// The currently resolved active microphone, kept in sync by
     /// `MicrophoneAutoSelectionService` on every hardware change.
@@ -26,7 +26,7 @@ final class MicrophoneState {
 
     var activeDeviceDisplayName: String {
         guard let uid = activeMicrophone.uid,
-              let match = deviceProvider().first(where: { $0.uid == uid }) else {
+              let match = availableDevices.first(where: { $0.uid == uid }) else {
             return "Mikrofon"
         }
         return match.name
@@ -39,7 +39,6 @@ final class MicrophoneState {
         persistence: PersistenceProvider = UserDefaultsPersistence.shared
     ) {
         self.favoritesStore = favoritesStore
-        self.deviceProvider = deviceProvider
         self.activeMicrophone = ActiveMicrophone(uid: nil, source: .systemDefault)
         self.autoSelectionService = MicrophoneAutoSelectionService(
             favoritesStore: favoritesStore,
@@ -47,13 +46,19 @@ final class MicrophoneState {
             defaultDeviceIDProvider: defaultDeviceIDProvider,
             defaults: persistence
         )
-        autoSelectionService.onSelectionApplied = { [weak self] resolved in
+        autoSelectionService.onSelectionApplied = { [weak self] resolved, devices in
+            self?.availableDevices = devices
             self?.activeMicrophone = resolved
+            self?.favoritesStore.rememberNames(for: devices)
         }
     }
 
     func start() {
         autoSelectionService.start()
+    }
+
+    func refreshDevices() {
+        autoSelectionService.applySelection()
     }
 
     func addFavorite(uid: String) {

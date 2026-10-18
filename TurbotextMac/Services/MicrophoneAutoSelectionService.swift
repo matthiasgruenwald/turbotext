@@ -18,7 +18,7 @@ final class MicrophoneAutoSelectionService {
 
     /// Fired every time `applySelection()` runs, with the freshly resolved microphone,
     /// so UI showing the active microphone can be told to re-render.
-    var onSelectionApplied: ((ActiveMicrophone) -> Void)?
+    var onSelectionApplied: ((ActiveMicrophone, [AudioInputDevice]) -> Void)?
 
     init(
         favoritesStore: MicrophoneFavoritesStore,
@@ -53,12 +53,13 @@ final class MicrophoneAutoSelectionService {
     }
 
     func applySelection() {
+        let devices = deviceProvider()
         let resolved = favoritesStore.resolveActiveDevice(
-            availableDevices: deviceProvider(),
+            availableDevices: devices,
             systemDefaultID: defaultDeviceIDProvider()
         )
         persist(resolved)
-        onSelectionApplied?(resolved)
+        onSelectionApplied?(resolved, devices)
     }
 
     private func persist(_ resolved: ActiveMicrophone) {

@@ -127,10 +127,12 @@ struct WorkflowFactory {
                     let textSettings = settings.textImprovementSettings
                     let providerMode = settings.appSettings.rewritingProviderMode
                     let backend = settings.appSettings.rewriteBackend
+                    let model = RewriteModel.reasoning(settings.appSettings.openAIReasoningEffort)
                     return { text in
                         try await LLMService.improveLocalFirst(
                             text: text,
                             settings: textSettings,
+                            model: model,
                             providerMode: providerMode,
                             backend: backend,
                             networkStatus: networkStatus
@@ -147,10 +149,12 @@ struct WorkflowFactory {
                     let dampfSettings = settings.dampfAblassenSettings
                     let providerMode = settings.appSettings.rewritingProviderMode
                     let backend = settings.appSettings.rewriteBackend
+                    let model = RewriteModel.reasoning(settings.appSettings.openAIReasoningEffort)
                     return { text in
                         try await LLMService.dampfAblassenLocalFirst(
                             text: text,
                             systemPrompt: dampfSettings.systemPrompt,
+                            model: model,
                             providerMode: providerMode,
                             backend: backend,
                             networkStatus: networkStatus
@@ -167,10 +171,12 @@ struct WorkflowFactory {
                     let emojiSettings = settings.emojiTextSettings
                     let providerMode = settings.appSettings.rewritingProviderMode
                     let backend = settings.appSettings.rewriteBackend
+                    let model = RewriteModel.reasoning(settings.appSettings.openAIReasoningEffort)
                     return { text in
                         try await LLMService.addEmojisLocalFirst(
                             text: text,
                             settings: emojiSettings,
+                            model: model,
                             providerMode: providerMode,
                             backend: backend,
                             networkStatus: networkStatus

@@ -21,6 +21,8 @@ final class MicrophoneFavoritesStore {
     private let favoritesKey: String
     private let useSystemDefaultKey: String
     private let defaults: PersistenceProvider
+    private var namesKey: String { "\(favoritesKey).names" }
+    private var favoriteNames: [String: String]
 
     private(set) var favoriteUIDs: [String]
     var useSystemDefault: Bool {
@@ -40,6 +42,24 @@ final class MicrophoneFavoritesStore {
         self.defaults = defaults
         self.favoriteUIDs = Self.load(key: favoritesKey, defaults: defaults) ?? []
         self.useSystemDefault = defaults.bool(forKey: useSystemDefaultKey)
+        self.favoriteNames = defaults.data(forKey: "\(favoritesKey).names")
+            .flatMap { try? JSONDecoder().decode([String: String].self, from: $0) } ?? [:]
+    }
+
+    func displayName(forUID uid: String) -> String {
+        favoriteNames[uid] ?? uid
+    }
+
+    func rememberNames(for devices: [AudioInputDevice]) {
+        let names = Dictionary(
+            devices.filter { favoriteUIDs.contains($0.uid) && !$0.name.isEmpty }
+                .map { ($0.uid, $0.name) },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        let updated = favoriteNames.merging(names, uniquingKeysWith: { _, latest in latest })
+        guard updated != favoriteNames else { return }
+        favoriteNames = updated
+        persistNames()
     }
 
     func addFavorite(uid: String) {
@@ -50,6 +70,8 @@ final class MicrophoneFavoritesStore {
 
     func removeFavorite(uid: String) {
         favoriteUIDs = favoriteUIDs.filter { $0 != uid }
+        favoriteNames = favoriteNames.filter { $0.key != uid }
+        persistNames()
         persist()
     }
 
@@ -94,6 +116,10 @@ final class MicrophoneFavoritesStore {
 
     private func persist() {
         defaults.set(favoriteUIDs, forKey: favoritesKey)
+    }
+
+    private func persistNames() {
+        defaults.set(try? JSONEncoder().encode(favoriteNames), forKey: namesKey)
     }
 
     private static func load(key: String, defaults: PersistenceProvider) -> [String]? {

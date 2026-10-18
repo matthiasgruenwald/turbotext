@@ -22,11 +22,29 @@ enum MicrophoneService {
         var deviceIDs = [AudioDeviceID](repeating: 0, count: count)
         guard AudioObjectGetPropertyData(systemObject, &address, 0, nil, &size, &deviceIDs) == noErr else { return [] }
         return deviceIDs.compactMap { deviceID in
-            guard hasInputChannels(deviceID) else { return nil }
+            guard hasInputChannels(deviceID), isSelectableTransport(transportType(deviceID)) else { return nil }
             guard let name = stringCFProperty(deviceID, kAudioDevicePropertyDeviceNameCFString),
                   let uid = stringCFProperty(deviceID, kAudioDevicePropertyDeviceUID) else { return nil }
             return AudioInputDevice(id: deviceID, name: name, uid: uid)
         }
+    }
+
+    static func isSelectableTransport(_ transportType: UInt32) -> Bool {
+        transportType != kAudioDeviceTransportTypeVirtual && transportType != kAudioDeviceTransportTypeAggregate
+    }
+
+    private static func transportType(_ deviceID: AudioDeviceID) -> UInt32 {
+        var transport = kAudioDeviceTransportTypeUnknown
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &transport) == noErr else {
+            return kAudioDeviceTransportTypeUnknown
+        }
+        return transport
     }
 
     static func defaultInputDeviceID() -> AudioDeviceID? {

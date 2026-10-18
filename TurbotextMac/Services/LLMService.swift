@@ -20,9 +20,41 @@ enum LLMError: LocalizedError {
     }
 }
 
-enum RewriteModel: String {
-    case fastEdit = "gpt-4o-mini"
-    case rageMode = "gpt-4o"
+/// OpenAI reasoning effort for `RewriteModel.reasoning`: trades latency against quality
+/// within the same model (#201).
+enum ReasoningEffort: String, Codable, CaseIterable, Identifiable, Equatable {
+    case low
+    case medium
+    case high
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .low: return "Schnell"
+        case .medium: return "Ausgewogen"
+        case .high: return "Gründlich"
+        }
+    }
+}
+
+enum RewriteModel: Equatable {
+    case fastEdit
+    case rageMode
+    case reasoning(ReasoningEffort)
+
+    var apiName: String {
+        switch self {
+        case .fastEdit: return "gpt-4o-mini"
+        case .rageMode: return "gpt-4o"
+        case .reasoning: return "gpt-6-luna"
+        }
+    }
+
+    var reasoningEffort: ReasoningEffort? {
+        if case .reasoning(let effort) = self { return effort }
+        return nil
+    }
 }
 
 enum RewriteProviderMode: String, Codable, Equatable {
@@ -42,7 +74,7 @@ protocol LLMProvider {
 /// since different rewrite operations use different OpenAI models.
 struct OpenAIProvider: LLMProvider {
     let model: RewriteModel
-    var modelName: String { model.rawValue }
+    var modelName: String { model.apiName }
     private static let client = OpenAICompatibleClient(
         chatCompletionsURL: URL(string: "https://api.openai.com/v1/chat/completions")!
     )
@@ -55,12 +87,13 @@ struct OpenAIProvider: LLMProvider {
         do {
             return try await Self.client.complete(
                 apiKey: apiKey,
-                model: model.rawValue,
+                model: model.apiName,
                 messages: [
                     .init(role: "system", content: systemPrompt),
                     .init(role: "user", content: text),
                 ],
-                temperature: temperature
+                temperature: temperature,
+                reasoningEffort: model.reasoningEffort?.rawValue
             )
         } catch OpenAICompatibleError.networkError(let msg) {
             throw LLMError.networkError(msg)
@@ -136,7 +169,7 @@ enum LLMService {
     static func improve(
         text: String,
         settings: TextImprovementSettings,
-        model: RewriteModel = .fastEdit,
+        model: RewriteModel = .reasoning(.medium),
         providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil
     ) async throws -> String {
@@ -153,7 +186,7 @@ enum LLMService {
     static func dampfAblassen(
         text: String,
         systemPrompt: String,
-        model: RewriteModel = .rageMode,
+        model: RewriteModel = .reasoning(.medium),
         providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil
     ) async throws -> String {
@@ -170,7 +203,7 @@ enum LLMService {
     static func addEmojis(
         text: String,
         settings: EmojiTextSettings,
-        model: RewriteModel = .fastEdit,
+        model: RewriteModel = .reasoning(.medium),
         providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil
     ) async throws -> String {
@@ -207,7 +240,7 @@ enum LLMService {
     static func improveLocalFirst(
         text: String,
         settings: TextImprovementSettings,
-        model: RewriteModel = .fastEdit,
+        model: RewriteModel = .reasoning(.medium),
         providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
         backend: RewriteBackend,
@@ -228,7 +261,7 @@ enum LLMService {
     static func dampfAblassenLocalFirst(
         text: String,
         systemPrompt: String,
-        model: RewriteModel = .rageMode,
+        model: RewriteModel = .reasoning(.medium),
         providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
         backend: RewriteBackend,
@@ -249,7 +282,7 @@ enum LLMService {
     static func addEmojisLocalFirst(
         text: String,
         settings: EmojiTextSettings,
-        model: RewriteModel = .fastEdit,
+        model: RewriteModel = .reasoning(.medium),
         providerMode: RewriteProviderMode = .groq,
         hasGroqKey: Bool = KeychainService.load(key: .groqAPIKey) != nil,
         backend: RewriteBackend,

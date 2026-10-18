@@ -83,6 +83,20 @@ final class MicrophoneFavoritesStoreTests: XCTestCase {
         XCTAssertEqual(store2.favoriteUIDs, ["mic-1"])
     }
 
+    func testRemembersFavoriteNameWhileDisconnectedAndAfterRestart() {
+        let persistence = InMemoryPersistence()
+        let store = MicrophoneFavoritesStore(defaults: persistence)
+        store.addFavorite(uid: "usb-mic")
+        store.rememberNames(for: [device("usb-mic", name: "USB Microphone")])
+
+        store.rememberNames(for: [])
+        let reloaded = MicrophoneFavoritesStore(defaults: persistence)
+
+        XCTAssertEqual(reloaded.favoriteUIDs, ["usb-mic"])
+        XCTAssertEqual(reloaded.displayName(forUID: "usb-mic"), "USB Microphone")
+        XCTAssertEqual(reloaded.displayName(forUID: "legacy-uid"), "legacy-uid")
+    }
+
     // MARK: - resolveActiveDevice
 
     private func device(_ uid: String, name: String? = nil) -> AudioInputDevice {
@@ -137,5 +151,30 @@ final class MicrophoneFavoritesStoreTests: XCTestCase {
         let result = store.resolveActiveDevice(availableDevices: [device("built-in")], systemDefaultID: nil)
 
         XCTAssertEqual(result, ActiveMicrophone(uid: nil, source: .systemDefault))
+    }
+
+    func testHiddenDefaultRemainsRecordingFallbackAndPreservesFavoritePriority() {
+        for useSystemDefault in [false, true] {
+            let store = MicrophoneFavoritesStore(defaults: InMemoryPersistence())
+            let hiddenDefault = AudioInputDevice(id: 42, name: "Aggregate", uid: "aggregate")
+            store.addFavorite(uid: hiddenDefault.uid)
+            store.addFavorite(uid: "disconnected-usb")
+            store.rememberNames(for: [hiddenDefault])
+            store.useSystemDefault = useSystemDefault
+            let available = [device("built-in")]
+
+            store.rememberNames(for: available)
+            let active = store.resolveActiveDevice(availableDevices: available, systemDefaultID: hiddenDefault.id)
+            let targetID = AudioRecorder.resolveTargetDeviceID(
+                preferredUID: active.uid,
+                availableDevices: available,
+                defaultDeviceID: hiddenDefault.id
+            )
+
+            XCTAssertEqual(active, ActiveMicrophone(uid: nil, source: .systemDefault))
+            XCTAssertEqual(targetID, hiddenDefault.id)
+            XCTAssertEqual(store.favoriteUIDs, ["aggregate", "disconnected-usb"])
+            XCTAssertEqual(store.displayName(forUID: hiddenDefault.uid), "Aggregate")
+        }
     }
 }
