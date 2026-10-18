@@ -20,7 +20,7 @@ final class AudioRecorder: NSObject {
     var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
     private(set) var inputFormat: AVAudioFormat?
 
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private var outputFile: AVAudioFile?
     private var currentFileURL: URL?
     private var recordingStartedAt: Date?
@@ -59,6 +59,7 @@ final class AudioRecorder: NSObject {
         // input device without touching the macOS-wide default input (see ADR-0003).
         // Falls back to the system default device when the preferred device is gone,
         // so a stale device pinning from a previous recording never lingers on the engine.
+        engine = AVAudioEngine()
         let targetDeviceID = Self.resolveTargetDeviceID(
             preferredUID: preferredInputDeviceUID(),
             availableDevices: MicrophoneService.availableInputDevices(),
@@ -201,9 +202,13 @@ final class AudioRecorder: NSObject {
             failRecording("Aufnahme wiederholt unterbrochen (Audiogerät wechselt ständig).")
             return
         }
-        let inputNode = engine.inputNode
-        inputNode.removeTap(onBus: 0)
+        if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
+        engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        // A reused engine keeps the input format cached from before a Bluetooth profile switch.
+        engine = AVAudioEngine()
+        observeConfigurationChanges(targetDeviceID: targetDeviceID)
+        let inputNode = engine.inputNode
         let refreshedTarget = Self.resolveTargetDeviceID(
             preferredUID: preferredInputDeviceUID(),
             availableDevices: MicrophoneService.availableInputDevices(),
