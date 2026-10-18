@@ -6,6 +6,37 @@ Ab v0.9.0 wird der Changelog strukturiert geführt — mit Git-Tags, Conventiona
 
 ---
 
+## [0.11.0] — 2026-10-18
+
+### 🚀 Textverbesserung
+
+- **OpenAI-Modell mit wählbarer Denktiefe** — Turbotext+, Dampf ablassen und Emoji-Text verwenden auf dem OpenAI-Pfad jetzt `gpt-6-luna`. In den Einstellungen stehen „Schnell“, „Ausgewogen“ und „Gründlich“ zur Wahl; Standard ist „Ausgewogen“. Die Einstellung gilt auch für OpenAI als Groq-Ausweichlösung. Groq-Modell und Diktatglättung bleiben unverändert.
+
+### 🎙️ Mikrofone und Aufnahme
+
+- **Direkte CoreAudio-Aufnahme** — ersetzt AVAudioEngine für alle Mikrofone und behebt ausbleibende Audiopuffer bei Bluetooth-Headsets. Bluetooth, USB und eingebaute Mikrofone wurden auch während eines BigBlueButton-Anrufs geprüft.
+- **Favoriten bleiben aktuell** — Gerätewechsel aktualisieren die Mikrofonliste in den Einstellungen. Nicht verfügbare Favoriten behalten ihre Reihenfolge und ihren zuletzt bekannten Namen und erscheinen als „Nicht verbunden“.
+- **Aufgeräumte Mikrofonliste** — virtuelle und Aggregatgeräte werden anhand ihres CoreAudio-Transporttyps ausgeblendet. Continuity-iPhone-Mikrofone bleiben wählbar. Ein ausgeblendetes Gerät bleibt als macOS-Standardeingang für Aufnahmen nutzbar; Turbotext verändert den Systemstandard nicht.
+- **Leise Mikrofone besser erkennbar** — angepasste Signalerkennung und eine Pegelanzeige, deren Skala dem Hintergrundgeräusch und den jüngsten Sprachspitzen folgt.
+
+### 🐛 Bug Fixes
+
+- Mikrofone mit mehr als zwei Kanälen werden für die Aufnahme auf Mono heruntergemischt.
+- Getrennte Mehrkanalpuffer werden im CoreAudio-Callback vollständig gelesen; ein ungültiger Speicherzugriff durch eine verkürzte Pufferlistenkopie ist behoben.
+
+### 🛠️ Diagnose und Dokumentation
+
+- Aufnahmediagnosen protokollieren Gerät, Audioformat, Pufferzahl, Pegel und ein GREEN/RED-Ergebnis.
+- Messungen zu Apple-Speech-Live-Streaming und Mikrofonidentität sowie Recherche zu den Grenzen von iOS-Tastaturen ergänzt. Dies fügt keine iOS-App hinzu.
+
+### ⚠️ Bekannte Einschränkungen
+
+- Geräte- oder Formatwechsel während einer laufenden Aufnahme werden vom direkten CoreAudio-Pfad noch nicht behandelt.
+- Die Pegelanzeige benötigt anfangs eine Sprechpause, um das Hintergrundgeräusch einzuschätzen; bei lautem Dauergeräusch bleibt ihr Ausschlag begrenzt.
+- Die Einschränkungen aus v0.10.0 bei lokalem Rewriting und der Finalisierung der Live-Diktat-Anzeige bestehen weiter.
+
+---
+
 ## [0.10.0] — 2026-08-10
 
 ### 🚀 Lokale Transkription
