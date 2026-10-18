@@ -1,0 +1,31 @@
+{
+  "time": "2026-10-18T11:31:55.924270+02:00",
+  "devices": [
+    {
+      "id": 103,
+      "name": "MacBook Air-Mikrofon",
+      "uid": "BuiltInMicrophoneDevice",
+      "modelUID": "Digital Mic",
+      "manufacturer": "Apple Inc.",
+      "serial": null,
+      "transport": "bltn"
+    }
+  ],
+  "preferences": {
+    "turbotext.microphoneFavorites": [
+      "AppleUSBAudioEngine:Unknown Manufacturer:Fifine Microphone:133000:1",
+      "AppleUSBAudioEngine:Unknown Manufacturer:Fifine Microphone:120000:1",
+      "AppleUSBAudioEngine:Generic:USB MIC PRO:20230714100308:1",
+      "AppleUSBAudioEngine:Unknown Manufacturer:Jabra Speak 710:50C2ED594D02:2",
+      "AppleUSBAudioEngine:CMEDIA:USB PnP Audio Device:143000:1",
+      "AppleUSBAudioEngine:CMEDIA:USB PnP Audio Device:1143000:1",
+      "AppleUSBAudioEngine:Unknown Manufacturer:Fifine Microphone:1133000:1",
+      "BuiltInMicrophoneDevice",
+      "AppleUSBAudioEngine:Unknown Manufacturer:Fifine Microphone:1140000:1",
+      "A4-C1-39-1E-34-55:input"
+    ],
+    "turbotext.microphoneUseSystemDefault": false,
+    "selectedMicUID": "BuiltInMicrophoneDevice"
+  },
+  "usb": []
+}
