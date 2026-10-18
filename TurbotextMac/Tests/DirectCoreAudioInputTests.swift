@@ -5,17 +5,6 @@ import CoreAudio
 
 final class DirectCoreAudioInputTests: XCTestCase {
 
-    func testBluetoothTransportsUseDirectBackend() {
-        XCTAssertEqual(AudioCaptureBackend.backend(forTransportType: kAudioDeviceTransportTypeBluetooth), .directCoreAudio)
-        XCTAssertEqual(AudioCaptureBackend.backend(forTransportType: kAudioDeviceTransportTypeBluetoothLE), .directCoreAudio)
-    }
-
-    func testOtherTransportsKeepAudioEngine() {
-        XCTAssertEqual(AudioCaptureBackend.backend(forTransportType: kAudioDeviceTransportTypeUSB), .audioEngine)
-        XCTAssertEqual(AudioCaptureBackend.backend(forTransportType: kAudioDeviceTransportTypeBuiltIn), .audioEngine)
-        XCTAssertEqual(AudioCaptureBackend.backend(forTransportType: nil), .audioEngine)
-    }
-
     func testFormatFromFloat32MonoStream() throws {
         let asbd = AudioStreamBasicDescription(
             mSampleRate: 16000, mFormatID: kAudioFormatLinearPCM,

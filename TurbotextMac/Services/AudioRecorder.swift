@@ -17,20 +17,15 @@ final class AudioRecorder: NSObject {
     var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
     private(set) var inputFormat: AVAudioFormat?
 
-    private let engine = AVAudioEngine()
     private var outputFile: AVAudioFile?
     private var currentFileURL: URL?
     private var recordingStartedAt: Date?
     private var levelTimer: Timer?
     private var meteredPeakLevel: Float = -160
     private let defaults: PersistenceProvider
-    private static let maxConfigurationRestarts = 5
-    private var configurationRestarts = 0
     private var diagnostics: RecordingDiagnostics?
     private var adapter: BufferFormatAdapter?
-    private var configObserver: NSObjectProtocol?
     private var directInput: DirectCoreAudioInput?
-    private var engineActive = false
     private let diagnosticsLock = NSLock()
 
     init(defaults: PersistenceProvider = UserDefaultsPersistence.shared) {
@@ -48,7 +43,6 @@ final class AudioRecorder: NSObject {
         lastRecordingDuration = 0
         recordingURL = nil
         hasUsableSignal = false
-        configurationRestarts = 0
         if let currentFileURL {
             try? FileManager.default.removeItem(at: currentFileURL)
         }
@@ -56,19 +50,17 @@ final class AudioRecorder: NSObject {
         // App-internal device selection only: routes this recording to the preferred
         // input device without touching the macOS-wide default input (see ADR-0003).
         // Falls back to the system default device when the preferred device is gone,
-        // so a stale device pinning from a previous recording never lingers on the engine.
+        // so a stale device selection never outlives the device.
         let targetDeviceID = Self.resolveTargetDeviceID(
             preferredUID: preferredInputDeviceUID(),
             availableDevices: MicrophoneService.availableInputDevices(),
             defaultDeviceID: MicrophoneService.defaultInputDeviceID()
         )
-        if let targetDeviceID,
-           AudioCaptureBackend.backend(forTransportType: MicrophoneService.transportType(of: targetDeviceID)) == .directCoreAudio,
-           let direct = DirectCoreAudioInput(deviceID: targetDeviceID) {
-            startDirectRecording(direct, targetDeviceID: targetDeviceID)
+        guard let targetDeviceID, let direct = DirectCoreAudioInput(deviceID: targetDeviceID) else {
+            errorMessage = "Kein Mikrofon verfügbar."
             return
         }
-        startEngineRecording(targetDeviceID: targetDeviceID)
+        startDirectRecording(direct, targetDeviceID: targetDeviceID)
     }
 
     private func startDirectRecording(_ direct: DirectCoreAudioInput, targetDeviceID: AudioDeviceID) {
@@ -85,38 +77,7 @@ final class AudioRecorder: NSObject {
         withDiagnostics { $0.recordActualDevice(targetDeviceID) }
     }
 
-    private func startEngineRecording(targetDeviceID: AudioDeviceID?) {
-        if let targetDeviceID {
-            setEngineInputDevice(targetDeviceID)
-        }
-
-        let inputNode = engine.inputNode
-        let inputFormat = inputNode.outputFormat(forBus: 0)
-        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
-            errorMessage = "Kein Mikrofon verfügbar."
-            return
-        }
-        guard beginSession(format: inputFormat, targetDeviceID: targetDeviceID) else { return }
-
-        installTap(on: inputNode, format: inputFormat)
-
-        do {
-            engine.prepare()
-            try engine.start()
-            recordingStartedAt = Date()
-            isRecording = true
-            startMetering()
-            engineActive = true
-            observeConfigurationChanges(targetDeviceID: targetDeviceID)
-            let actualID = actualEngineInputDeviceID()
-            withDiagnostics { $0.recordActualDevice(actualID) }
-        } catch {
-            inputNode.removeTap(onBus: 0)
-            abortSession("Aufnahme konnte nicht gestartet werden: \(error.localizedDescription)")
-        }
-    }
-
-    /// Opens the output file and per-recording state shared by both capture backends.
+    /// Opens the output file and per-recording state for the capture.
     private func beginSession(format: AVAudioFormat, targetDeviceID: AudioDeviceID?) -> Bool {
         let recordingFormat = AudioDownmix.recordingFormat(for: format)
         inputFormat = recordingFormat
@@ -155,15 +116,8 @@ final class AudioRecorder: NSObject {
 
     func stopRecording() {
         stopMetering()
-        if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
-        configObserver = nil
         directInput?.stop()
         directInput = nil
-        if engineActive {
-            engine.inputNode.removeTap(onBus: 0)
-            engine.stop()
-            engineActive = false
-        }
         withDiagnostics { $0.log() }
         diagnostics = nil
         adapter = nil
@@ -220,68 +174,6 @@ final class AudioRecorder: NSObject {
         diagnostics = current
     }
 
-    /// Bluetooth profile switches and other apps (e.g. a video conference) claiming the
-    /// device stop the engine and change the input format; re-tap with the new format and restart.
-    private func observeConfigurationChanges(targetDeviceID: AudioDeviceID?) {
-        configObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
-        ) { [weak self] _ in
-            self?.restartAfterConfigurationChange(targetDeviceID: targetDeviceID)
-        }
-    }
-
-    private func restartAfterConfigurationChange(targetDeviceID: AudioDeviceID?) {
-        guard isRecording else { return }
-        configurationRestarts += 1
-        withDiagnostics { $0.recordConfigurationChange() }
-        guard configurationRestarts <= Self.maxConfigurationRestarts else {
-            failRecording("Aufnahme wiederholt unterbrochen (Audiogerät wechselt ständig).")
-            return
-        }
-        let inputNode = engine.inputNode
-        inputNode.removeTap(onBus: 0)
-        engine.stop()
-        let refreshedTarget = Self.resolveTargetDeviceID(
-            preferredUID: preferredInputDeviceUID(),
-            availableDevices: MicrophoneService.availableInputDevices(),
-            defaultDeviceID: MicrophoneService.defaultInputDeviceID()
-        ) ?? targetDeviceID
-        if let refreshedTarget { setEngineInputDevice(refreshedTarget) }
-        let newFormat = inputNode.outputFormat(forBus: 0)
-        guard newFormat.sampleRate > 0, newFormat.channelCount > 0 else {
-            failRecording("Kein Mikrofon verfügbar.")
-            return
-        }
-        installTap(on: inputNode, format: newFormat)
-        engine.prepare()
-        do {
-            try engine.start()
-        } catch {
-            failRecording("Aufnahme konnte nicht fortgesetzt werden: \(error.localizedDescription)")
-        }
-        let actualID = actualEngineInputDeviceID()
-        withDiagnostics { $0.recordActualDevice(actualID) }
-    }
-
-    /// Leaves stopping to the owning pipeline so its recording state stays consistent.
-    private func failRecording(_ message: String) {
-        errorMessage = message
-    }
-
-    private func installTap(on inputNode: AVAudioInputNode, format: AVAudioFormat) {
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-            self?.handleBuffer(buffer)
-        }
-    }
-
-    private func actualEngineInputDeviceID() -> AudioDeviceID? {
-        guard let inputUnit = engine.inputNode.audioUnit else { return nil }
-        var deviceID = AudioDeviceID(0)
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        let status = AudioUnitGetProperty(inputUnit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &deviceID, &size)
-        return status == noErr ? deviceID : nil
-    }
-
     static func isUsableSignal(_ peakLevel: Float) -> Bool {
         peakLevel > usableSignalThreshold
     }
@@ -324,19 +216,6 @@ final class AudioRecorder: NSObject {
     /// `AudioRecorder` never writes this key itself.
     private func preferredInputDeviceUID() -> String? {
         defaults.string(forKey: "selectedMicUID").flatMap { $0.isEmpty ? nil : $0 }
-    }
-
-    private func setEngineInputDevice(_ deviceID: AudioDeviceID) {
-        guard let inputUnit = engine.inputNode.audioUnit else { return }
-        var mutableDeviceID = deviceID
-        AudioUnitSetProperty(
-            inputUnit,
-            kAudioOutputUnitProperty_CurrentDevice,
-            kAudioUnitScope_Global,
-            0,
-            &mutableDeviceID,
-            UInt32(MemoryLayout<AudioDeviceID>.size)
-        )
     }
 
     private func startMetering() {

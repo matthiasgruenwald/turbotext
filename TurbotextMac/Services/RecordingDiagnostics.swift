@@ -20,7 +20,6 @@ struct RecordingDiagnostics {
     let startFormat: Format
     private(set) var bufferCount = 0
     private(set) var peakLevel: Float = -160
-    private(set) var configurationChanges = 0
     private(set) var convertedBuffers = 0
     private(set) var writeFailures = 0
     private(set) var conversionFailures = 0
@@ -46,7 +45,6 @@ struct RecordingDiagnostics {
         if !formatsSeen.contains(seen) { formatsSeen.append(seen) }
     }
 
-    mutating func recordConfigurationChange() { configurationChanges += 1 }
     mutating func recordWriteFailure() { writeFailures += 1 }
     mutating func recordConversionFailure() { conversionFailures += 1 }
     mutating func recordActualDevice(_ id: AudioDeviceID?) { actualDeviceID = id }
@@ -65,7 +63,7 @@ struct RecordingDiagnostics {
         let formats = formatsSeen.map { "\(Int($0.sampleRate))Hz/\($0.channelCount)ch" }.joined(separator: ",")
         return "device=\(requestedDeviceUID ?? "default") id=\(targetDeviceID.map(String.init) ?? "nil") actualId=\(actualDeviceID.map(String.init) ?? "nil") "
             + "startFormat=\(Int(startFormat.sampleRate))Hz/\(startFormat.channelCount)ch formatsSeen=[\(formats)] "
-            + "buffers=\(bufferCount) converted=\(convertedBuffers) configChanges=\(configurationChanges) "
+            + "buffers=\(bufferCount) converted=\(convertedBuffers) "
             + "lastFormat=\(lastFormat.map { "\(Int($0.sampleRate))Hz/\($0.channelCount)ch" } ?? "nil") peak=\(peakLevel)dB rms=\(rmsLevel)dB verdict=\(verdict)"
     }
 

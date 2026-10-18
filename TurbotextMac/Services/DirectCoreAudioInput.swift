@@ -1,22 +1,6 @@
 import AVFoundation
 import CoreAudio
 
-enum AudioCaptureBackend: Equatable {
-    case audioEngine
-    case directCoreAudio
-
-    /// Single seam deciding which capture path a device uses. Bluetooth headsets switch to the
-    /// headset profile with a different sample rate, which AVAudioEngine does not follow.
-    static func backend(forTransportType transport: UInt32?) -> AudioCaptureBackend {
-        switch transport {
-        case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE:
-            return .directCoreAudio
-        default:
-            return .audioEngine
-        }
-    }
-}
-
 /// Captures from one device through a CoreAudio IOProc, reading the device's real stream format.
 final class DirectCoreAudioInput {
     let deviceID: AudioDeviceID
